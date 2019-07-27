@@ -1,6 +1,10 @@
 # pip install xarray-ms
 # pip install datashader
 # pip install holoviews
+# pip install pandas
+
+import matplotlib
+matplotlib.use('agg')
 
 from collections import OrderedDict as odict
 import colorcet
