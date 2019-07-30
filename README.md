@@ -1,4 +1,4 @@
-# shadems
+# shadeMS
 
 Rapid Measurement Set plotting with xarray-ms and datashader.
 
