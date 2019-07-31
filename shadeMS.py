@@ -32,9 +32,9 @@ def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=
     fig = pylab.figure(figsize=(figx,figy))
     ax = fig.add_subplot(111)
     ax.imshow(X=data,extent=[xmin,xmax,ymin,ymax],aspect='auto',origin='upper',cmap='gist_heat')
-    ax.set_title(myms)
-    ax.set_xlabel(xaxis.capitalize())
-    ax.set_ylabel(yaxis+' '+doplot.capitalize())
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
     fig.savefig(pngname,bbox_inches='tight')
 
     return pngname
@@ -64,7 +64,7 @@ def main():
     yaxis = options.yaxis
     doplot = options.doplot.lower()
     fields = options.fields
-    corr = options.corr
+    corr = int(options.corr)
     normalize = options.normalize
     xmin = options.xmin
     xmax = options.xmax
@@ -72,6 +72,7 @@ def main():
     ymax = options.ymax
     xcanvas = options.xcanvas
     ycanvas = options.ycanvas
+    pngname = options.pngname
 
     if len(args) != 1:
         print 'Please specify a Measurement Set to plot'
@@ -81,7 +82,8 @@ def main():
 
     clock_start = time.time()
 
-
+    if pngname == '':
+        pngname = 'plot_'+myms+'_'+doplot+'_'+'corr'+str(corr)+'.png'
 
     msdata = xms.xds_from_ms(myms,columns=[yaxis,'TIME','FLAG'])
 
@@ -115,7 +117,7 @@ def main():
             ddid = group.DATA_DESC_ID
             visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
             xdata = numpy.append(xdata,numpy.repeat(group.TIME.values,nchan))
-            xlabel = xaxis.capitalize()+' [s]' # Add t = t - t[0] and make it relative
+            xlabel = xaxis.capitalize()+' [s]' # Add t = t - t[0] and make it relative, get fields sorted first because need true t0
 
     elif xaxis == 'CHAN':
         for group in msdata:
