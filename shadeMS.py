@@ -71,7 +71,7 @@ def main():
     ymin = options.ymin
     ymax = options.ymax
     xcanvas = options.xcanvas
-    ycancas = options.ycanvas
+    ycanvas = options.ycanvas
 
     if len(args) != 1:
         print 'Please specify a Measurement Set to plot'
