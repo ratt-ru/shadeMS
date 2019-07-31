@@ -227,9 +227,7 @@ def main():
 	#img = tf.set_background(tf.shade(agg, cmap=colorcet.dimgray,how='log'),"black")
 		
 
-	# Set plot limits based on data extent or user values 
-	# NOT WORKING
-	# Need to impose x/y min/max cuts on the dataframe prior to running datashader!
+	# Set plot limits based on data extent or user values for axis labels
 
 	if ymin == '':
 		ymin = numpy.min(agg.coords[yaxis].values)
@@ -260,7 +258,7 @@ def main():
 	clock_stop = time.time()
 	elapsed = str(round((clock_stop-clock_start),2))
 
-	print ('Done. Elapsed time: %s seconds.' % elapsed)
+	print ('%sDone. Elapsed time: %s seconds.' % (now(),elapsed))
 
 
 
