@@ -26,7 +26,7 @@ def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=
 
 	fig = pylab.figure(figsize=(figx,figy))
 	ax = fig.add_subplot(111)
-	ax.imshow(X=data,extent=[xmin,xmax,ymin,ymax],aspect='auto',origin='upper',cmap='gist_heat')
+	ax.imshow(X=data,extent=[xmin,xmax,ymin,ymax],aspect='auto',origin='upper')
 	ax.set_title(title)
 	ax.set_xlabel(xlabel)
 	ax.set_ylabel(ylabel)
@@ -120,16 +120,16 @@ def main():
 		group.rename({yaxis:'VISDATA'},inplace=True)
 		if doplot == 'a':
 			group.VISDATA.values = numpy.abs(group.VISDATA.values)
-			ylabel = yaxis.capitalize()+' Amplitude'
+			ylabel = yaxis+' Amplitude'
 		elif doplot == 'p':
 			group.VISDATA.values = numpy.angle(group.VISDATA.values)
-			ylabel = yaxis.capitalize()+' Phase'
+			ylabel = yaxis+' Phase'
 		elif doplot == 'r':
 			group.VISDATA.values = numpy.real(group.VISDATA.values)
-			ylabel = yaxis.capitalize()+' Real'
+			ylabel = yaxis+' Real'
 		elif doplot == 'i':
 			group.VISDATA.values = numpy.imag(group.VISDATA.values)
-			ylabel = yaxis.capitalize()+' Imaginary'
+			ylabel = yaxis+' Imaginary'
 
 
 	# Initialise arrays for plot data
@@ -163,6 +163,9 @@ def main():
 			xdata = numpy.tile(numpy.arange(nchan),nrows)
 			xlabel = xaxis.capitalize()
 
+
+	# Drop flagged data if required
+
 	if not noflags:
 
 		bool_flags = list(map(bool,flags))
@@ -170,6 +173,38 @@ def main():
 		masked_visdata = numpy.ma.masked_array(data=visdata,mask=bool_flags)
 		masked_xdata = numpy.ma.masked_array(data=xdata,mask=bool_flags)
 
+		visdata = masked_visdata.compressed()
+		xdata = masked_xdata.compressed()
+
+
+	# Drop data out of plot range(s)
+
+
+	if xmin != '':
+		xmin = float(xmin)
+		masked_xdata = numpy.ma.masked_less(xdata,xmin)
+		masked_visdata = numpy.ma.masked_array(data=visdata,mask=masked_xdata.mask)
+		visdata = masked_visdata.compressed()
+		xdata = masked_xdata.compressed()
+
+	if xmax != '':
+		xmax = float(xmax)
+		masked_xdata = numpy.ma.masked_greater(xdata,xmax)
+		masked_visdata = numpy.ma.masked_array(data=visdata,mask=masked_xdata.mask)
+		visdata = masked_visdata.compressed()
+		xdata = masked_xdata.compressed()
+
+	if ymin != '':
+		ymin = float(ymin)
+		masked_visdata = numpy.ma.masked_less(visdata,ymin)
+		masked_xdata = numpy.ma.masked_array(data=xdata,mask=masked_visdata.mask)
+		visdata = masked_visdata.compressed()
+		xdata = masked_xdata.compressed()
+
+	if ymax != '':
+		ymax = float(ymax)
+		masked_visdata = numpy.ma.masked_greater(visdata,ymax)
+		masked_xdata = numpy.ma.masked_array(data=xdata,mask=masked_visdata.mask)
 		visdata = masked_visdata.compressed()
 		xdata = masked_xdata.compressed()
 
