@@ -35,7 +35,16 @@ def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=
 	return pngname
 
 
+def now():
+	stamp = time.strftime('[%Y-%m-%d %H:%M:%S]: ')
+	msg = '\033[92m'+stamp+'\033[0m'
+	return msg
+
+
 def main():
+
+
+	clock_start = time.time()
 
 
 	# Command line options
@@ -47,13 +56,14 @@ def main():
 	parser.add_option('--field',dest='fields',help='Field ID',default='all')
 	parser.add_option('--corr',dest='corr',help='Correlation (default = 0)',default=0)
 	parser.add_option('--spw',dest='spw',help='Spectral window (or DDID, default = all)',default='all')
+	parser.add_option('--noflags',dest='noflags',help='Plot flagged data (default = False)',action='store_true',default=False)
 	parser.add_option('--norm',dest='normalize',help='Pixel scale noramlization (default = eq_hist)',default='eq_hist')
 	parser.add_option('--xmin',dest='xmin',help='Minimum x-axis value (default = data min)',default='')
 	parser.add_option('--xmax',dest='xmax',help='Maximum x-axis value (default = data max)',default='')
 	parser.add_option('--ymin',dest='ymin',help='Minimum y-axis value (default = data min)',default='')
 	parser.add_option('--ymax',dest='ymax',help='Maximum y-axis value (default = data max)',default='')
-	parser.add_option('--xcanvas',dest='xcanvas',help='Canvas x-size in pixels (default = 2048)',default=2048)
-	parser.add_option('--ycanvas',dest='ycanvas',help='Canvas y-size in pixels (default = 1024)',default=1024)
+	parser.add_option('--xcanvas',dest='xcanvas',help='Canvas x-size in pixels (default = 1280)',default=1280)
+	parser.add_option('--ycanvas',dest='ycanvas',help='Canvas y-size in pixels (default = 800)',default=800)
 	parser.add_option('--png',dest='pngname',help='PNG name (default = something sensible)',default='')
 
 
@@ -65,13 +75,15 @@ def main():
 	doplot = options.doplot.lower()
 	fields = options.fields
 	corr = int(options.corr)
+	spw = options.spw
+	noflags = options.noflags
 	normalize = options.normalize
 	xmin = options.xmin
 	xmax = options.xmax
 	ymin = options.ymin
 	ymax = options.ymax
-	xcanvas = options.xcanvas
-	ycanvas = options.ycanvas
+	xcanvas = int(options.xcanvas)
+	ycanvas = int(options.ycanvas)
 	pngname = options.pngname
 
 
@@ -82,8 +94,6 @@ def main():
 		sys.exit()
 	else:
 		myms = args[0].rstrip('/')
-
-	clock_start = time.time()
 
 
 	# Set plot file name and title
@@ -96,11 +106,15 @@ def main():
 
 	# Get MS data into xarray
 
+	print('%sReading %s' % (now(),myms))
+
 	msdata = xms.xds_from_ms(myms,columns=[yaxis,'TIME','FLAG'])
 
 
 	# Replace xarray data with a,p,r,i in situ
 	# Set ylabel while we're at it
+
+	print('%sRearranging the deck chairs' % now())
 
 	for group in msdata:
 		group.rename({yaxis:'VISDATA'},inplace=True)
@@ -122,6 +136,7 @@ def main():
 
 	visdata = numpy.array(())
 	xdata = numpy.array(())
+	flags = numpy.array(())
 
 
 	# Get plot data into a pair of numpy arrays
@@ -133,8 +148,9 @@ def main():
 			fld = group.FIELD_ID
 			ddid = group.DATA_DESC_ID
 			visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
+			flags = numpy.append(flags,group.FLAG.values[:,:,corr])
 			xdata = numpy.append(xdata,numpy.repeat(group.TIME.values,nchan))
-			xlabel = xaxis.capitalize()+' [s]' # Add t = t - t[0] and make it relative, get fields sorted first because need true t0
+			xlabel = xaxis.capitalize()+' [s]' # Add t = t - t[0] and make it relative
 
 	elif xaxis == 'CHAN':
 		for group in msdata:
@@ -143,17 +159,32 @@ def main():
 			fld = group.FIELD_ID
 			ddid = group.DATA_DESC_ID
 			visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
+			flags = numpy.append(flags,group.FLAG.values[:,:,corr])
 			xdata = numpy.tile(numpy.arange(nchan),nrows)
-			xlabel = xaxis.capitalise()
+			xlabel = xaxis.capitalize()
+
+	if not noflags:
+
+		bool_flags = list(map(bool,flags))
+
+		masked_visdata = numpy.ma.masked_array(data=visdata,mask=bool_flags)
+		masked_xdata = numpy.ma.masked_array(data=xdata,mask=bool_flags)
+
+		visdata = masked_visdata.compressed()
+		xdata = masked_xdata.compressed()
 
 
 	# Put plotdata into pandas data frame
 	# This should be possible with xarray directly, but for freq plots we need a corner turn
 
+	print('%sMaking Pandas dataframe' % now())
+
 	dists = {'plotdata': pd.DataFrame(odict([(xaxis,xdata),(yaxis,visdata)]))}
 	df = pd.concat(dists,ignore_index=True)
 
 	# Run datashader on the pandas df
+
+	print('%sRunning datashader' % now())
 
 	canvas = ds.Canvas(xcanvas,ycanvas)
 	agg = canvas.points(df,xaxis,yaxis)
@@ -161,7 +192,9 @@ def main():
 	#img = tf.set_background(tf.shade(agg, cmap=colorcet.dimgray,how='log'),"black")
 		
 
-	# Set plot limits based on data extent or user values
+	# Set plot limits based on data extent or user values 
+	# NOT WORKING
+	# Need to impose x/y min/max cuts on the dataframe prior to running datashader!
 
 	if ymin == '':
 		ymin = numpy.min(agg.coords[yaxis].values)
@@ -182,6 +215,8 @@ def main():
 
 	# Render the plot
 
+	print('%sRendering plot' % now())
+
 	make_plot(img.data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname)
 
 
@@ -189,7 +224,9 @@ def main():
 
 	clock_stop = time.time()
 	elapsed = str(round((clock_stop-clock_start),2))
-	print 'Plotted ',len(visdata),' visibility points in '+elapsed+' seconds.'
+
+	print ('Done. Elapsed time: %s seconds.' % elapsed)
+
 
 
 if __name__ == "__main__":
