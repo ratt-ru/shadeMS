@@ -50,7 +50,7 @@ def main():
     parser.add_option('--field',dest='fields',help='Field ID',default='all')
     parser.add_option('--corr',dest='corr',help='Correlation (default = 0)',default=0)
     parser.add_option('--spw',dest='spw',help='Spectral window (or DDID, default = all)',default='all')
-    parser.add_option('--norm',dest='nomralize',help='Pixel scale noramlization (default = eq_hist)',default='eq_hist')
+    parser.add_option('--norm',dest='normalize',help='Pixel scale noramlization (default = eq_hist)',default='eq_hist')
     parser.add_option('--xmin',dest='xmin',help='Minimum x-axis value (default = data min)',default='')
     parser.add_option('--xmax',dest='xmax',help='Maximum x-axis value (default = data max)',default='')
     parser.add_option('--ymin',dest='ymin',help='Minimum y-axis value (default = data min)',default='')
