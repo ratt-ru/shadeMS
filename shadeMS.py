@@ -1,16 +1,10 @@
 #!/usr/bin/env python
 # ian.heywood@physics.ox.ac.uk
 
-# pip install xarray-ms
-# pip install dask
-# pip install "dask[dataframe]"
-# pip install datashader
-# pip install holoviews
-# pip install colorcet
-# pip install pandas
 
 import matplotlib
 matplotlib.use('agg')
+
 
 from collections import OrderedDict as odict
 import colorcet
@@ -26,6 +20,7 @@ import sys
 import time
 import xarray as xa
 import xarrayms as xms
+
 
 def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=12):
 
@@ -43,6 +38,8 @@ def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=
 def main():
 
 
+    # Command line options
+
     parser = OptionParser(usage='%prog [options] ms')
     parser.add_option('--xaxis',dest='xaxis',help='x-axis (TIME [default] or CHAN)',default='TIME')
     parser.add_option('--yaxis',dest='yaxis',help='y-axis data column (default = DATA)',default='DATA')
@@ -59,6 +56,9 @@ def main():
     parser.add_option('--ycanvas',dest='ycanvas',help='Canvas y-size in pixels (default = 1024)',default=1024)
     parser.add_option('--png',dest='pngname',help='PNG name (default = something sensible)',default='')
 
+
+    # Assign inputs
+
     (options,args) = parser.parse_args()
     xaxis = options.xaxis
     yaxis = options.yaxis
@@ -66,13 +66,16 @@ def main():
     fields = options.fields
     corr = int(options.corr)
     normalize = options.normalize
-    xmin = options.xmin
-    xmax = options.xmax
-    ymin = options.ymin
-    ymax = options.ymax
+    xmin = float(options.xmin)
+    xmax = float(options.xmax)
+    ymin = float(options.ymin)
+    ymax = float(options.ymax)
     xcanvas = options.xcanvas
     ycanvas = options.ycanvas
     pngname = options.pngname
+
+
+    # Trap no MS
 
     if len(args) != 1:
         print 'Please specify a Measurement Set to plot'
@@ -82,12 +85,22 @@ def main():
 
     clock_start = time.time()
 
+
+    # Set plot file name and title
+
     if pngname == '':
-        pngname = 'plot_'+myms+'_'+doplot+'_'+'corr'+str(corr)+'.png'
+        pngname = 'plot_'+myms+'_'+doplot+'_'+'corr'+str(corr)+'.png'    
+
+    title = myms
+
+
+    # Get MS data into xarray
 
     msdata = xms.xds_from_ms(myms,columns=[yaxis,'TIME','FLAG'])
 
 
+    # Replace xarray data with a,p,r,i in situ
+    # Set ylabel while we're at it
 
     for group in msdata:
         group.rename({yaxis:'VISDATA'},inplace=True)
@@ -105,10 +118,14 @@ def main():
             ylabel = yaxis.capitalize()+' Imaginary'
 
 
+    # Initialise arrays for plot data
 
     visdata = numpy.array(())
     xdata = numpy.array(())
 
+
+    # Get plot data into a pair of numpy arrays
+    # Set xlabels while we're at it
 
     if xaxis == 'TIME':
         for group in msdata:
@@ -129,10 +146,14 @@ def main():
             xdata = numpy.tile(numpy.arange(nchan),nrows)
             xlabel = xaxis.capitalise()
 
-    title = myms
+
+    # Put plotdata into pandas data frame
+    # This should be possible with xarray directly, but for freq plots we need a corner turn
 
     dists = {'plotdata': pd.DataFrame(odict([(xaxis,xdata),(yaxis,visdata)]))}
     df = pd.concat(dists,ignore_index=True)
+
+    # Run datashader on the pandas df
 
     canvas = ds.Canvas(xcanvas,ycanvas)
     agg = canvas.points(df,xaxis,yaxis)
@@ -140,12 +161,23 @@ def main():
     #img = tf.set_background(tf.shade(agg, cmap=colorcet.dimgray,how='log'),"black")
         
 
-    ymin = numpy.min(agg.coords[yaxis].values)
-    ymax = numpy.max(agg.coords[yaxis].values)
-    xmin = numpy.min(agg.coords[xaxis].values)
-    xmax = numpy.max(agg.coords[xaxis].values)
+    # Set plot limits based on data extent or user values
+
+    if ymin == '':
+        ymin = numpy.min(agg.coords[yaxis].values)
+    if ymax == '':
+        ymax = numpy.max(agg.coords[yaxis].values)
+    if xmin == '':
+        xmin = numpy.min(agg.coords[xaxis].values)
+    if xmax == '':
+        xmax = numpy.max(agg.coords[xaxis].values)
+
+    # Render the plot
 
     make_plot(img.data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname)
+
+
+    # Stop the clock
 
     clock_stop = time.time()
     elapsed = str(round((clock_stop-clock_start),2))
