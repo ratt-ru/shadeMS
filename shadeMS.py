@@ -90,7 +90,7 @@ def main():
 	# Trap no MS
 
 	if len(args) != 1:
-		print 'Please specify a Measurement Set to plot'
+		print('Please specify a Measurement Set to plot')
 		sys.exit()
 	else:
 		myms = args[0].rstrip('/')
