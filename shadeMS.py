@@ -117,7 +117,7 @@ def main():
 	print('%sRearranging the deck chairs' % now())
 
 	for group in msdata:
-		group.rename({yaxis:'VISDATA'},inplace=True)
+		group.rename({yaxis:'VISDATA'})#,inplace=True)
 		if doplot == 'a':
 			group.VISDATA.values = numpy.abs(group.VISDATA.values)
 			ylabel = yaxis+' Amplitude'
