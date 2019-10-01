@@ -116,19 +116,34 @@ def main():
 
 	print('%sRearranging the deck chairs' % now())
 
-	for group in msdata:
-		group = group.rename({yaxis:'VISDATA'})#,inplace=True)
+	# for group in msdata:
+	# 	group = group.rename({yaxis:'VISDATA'},inplace=True)
+	# 	if doplot == 'a':
+	# 		group.VISDATA.values = numpy.abs(group.VISDATA.values)
+	# 		ylabel = yaxis+' Amplitude'
+	# 	elif doplot == 'p':
+	# 		group.VISDATA.values = numpy.angle(group.VISDATA.values)
+	# 		ylabel = yaxis+' Phase'
+	# 	elif doplot == 'r':
+	# 		group.VISDATA.values = numpy.real(group.VISDATA.values)
+	# 		ylabel = yaxis+' Real'
+	# 	elif doplot == 'i':
+	# 		group.VISDATA.values = numpy.imag(group.VISDATA.values)
+	# 		ylabel = yaxis+' Imaginary'
+
+	for i in range(0,len(msdata)):
+		msdata[i] = msdata[i].rename({yaxis:'VISDATA'})
 		if doplot == 'a':
-			group.VISDATA.values = numpy.abs(group.VISDATA.values)
+			msdata[i].VISDATA.values = numpy.abs(group.VISDATA.values)
 			ylabel = yaxis+' Amplitude'
 		elif doplot == 'p':
-			group.VISDATA.values = numpy.angle(group.VISDATA.values)
+			msdata[i].VISDATA.values = numpy.angle(group.VISDATA.values)
 			ylabel = yaxis+' Phase'
 		elif doplot == 'r':
-			group.VISDATA.values = numpy.real(group.VISDATA.values)
+			msdata[i].VISDATA.values = numpy.real(group.VISDATA.values)
 			ylabel = yaxis+' Real'
 		elif doplot == 'i':
-			group.VISDATA.values = numpy.imag(group.VISDATA.values)
+			msdata[i].VISDATA.values = numpy.imag(group.VISDATA.values)
 			ylabel = yaxis+' Imaginary'
 
 
