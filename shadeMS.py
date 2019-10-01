@@ -99,7 +99,7 @@ def main():
 	# Set plot file name and title
 
 	if pngname == '':
-		pngname = 'plot_'+myms+'_'+doplot+'_'+'corr'+str(corr)+'.png'    
+		pngname = 'plot_'+myms+'_'+doplot+'_'+xaxis+'_'+'corr'+str(corr)+'.png'    
 
 	title = myms
 
