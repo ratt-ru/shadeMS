@@ -134,16 +134,16 @@ def main():
 	for i in range(0,len(msdata)):
 		msdata[i] = msdata[i].rename({yaxis:'VISDATA'})
 		if doplot == 'a':
-			msdata[i].VISDATA.values = numpy.abs(group.VISDATA.values)
+			msdata[i].VISDATA.values = numpy.abs(msdata[i].VISDATA.values.VISDATA.values)
 			ylabel = yaxis+' Amplitude'
 		elif doplot == 'p':
-			msdata[i].VISDATA.values = numpy.angle(group.VISDATA.values)
+			msdata[i].VISDATA.values = numpy.angle(msdata[i].VISDATA.values.VISDATA.values)
 			ylabel = yaxis+' Phase'
 		elif doplot == 'r':
-			msdata[i].VISDATA.values = numpy.real(group.VISDATA.values)
+			msdata[i].VISDATA.values = numpy.real(msdata[i].VISDATA.values.VISDATA.values)
 			ylabel = yaxis+' Real'
 		elif doplot == 'i':
-			msdata[i].VISDATA.values = numpy.imag(group.VISDATA.values)
+			msdata[i].VISDATA.values = numpy.imag(msdata[i].VISDATA.values.VISDATA.values)
 			ylabel = yaxis+' Imaginary'
 
 
