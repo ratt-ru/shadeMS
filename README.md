@@ -24,7 +24,7 @@ Options:
   --corr=CORR        Correlation (default = 0)
   --spw=SPW          Spectral window (or DDID, default = all)
   --noflags          Plot flagged data (default = False)
-  --norm=NORMALIZE   Pixel scale noramlization (default = eq_hist)
+  --norm=NORMALIZE   Pixel scale normalization (default = eq_hist)
   --xmin=XMIN        Minimum x-axis value (default = data min)
   --xmax=XMAX        Maximum x-axis value (default = data max)
   --ymin=YMIN        Minimum y-axis value (default = data min)
