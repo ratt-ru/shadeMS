@@ -22,8 +22,19 @@ import xarray as xa
 import xarrayms as xms
 
 
-def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=12):
+def get_chan_freqs(myms):
+	spw_tab = xms.xds_from_table(myms+'::SPECTRAL_WINDOW',columns=['CHAN_FREQ'])
+	chan_freqs = spw_tab[0].CHAN_FREQ
+	return chan_freqs
 
+
+def get_field_names(myms):
+	field_tab = xms.xds_from_table(myms+'::FIELD',columns=['NAME'])
+	field_names = field_tab[0].NAME.values
+	return field_names
+
+
+def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=12):
 	fig = pylab.figure(figsize=(figx,figy))
 	ax = fig.add_subplot(111)
 	ax.imshow(X=data,extent=[xmin,xmax,ymin,ymax],aspect='auto',origin='upper')
@@ -31,7 +42,6 @@ def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=
 	ax.set_xlabel(xlabel)
 	ax.set_ylabel(ylabel)
 	fig.savefig(pngname,bbox_inches='tight')
-
 	return pngname
 
 
@@ -39,6 +49,10 @@ def now():
 	stamp = time.strftime('[%Y-%m-%d %H:%M:%S]: ')
 	msg = '\033[92m'+stamp+'\033[0m'
 	return msg
+
+
+def blank():
+	print('%s' % now())
 
 
 def main():
@@ -53,9 +67,9 @@ def main():
 	parser.add_option('--xaxis',dest='xaxis',help='x-axis (TIME [default] or CHAN)',default='TIME')
 	parser.add_option('--yaxis',dest='yaxis',help='y-axis data column (default = DATA)',default='DATA')
 	parser.add_option('--doplot',dest='doplot',help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary',default='a')
-	parser.add_option('--field',dest='fields',help='Field ID',default='all')
+	parser.add_option('--field',dest='fields',help='Field ID(s) to plot (comma separated list, default = all)',default='all')
 	parser.add_option('--corr',dest='corr',help='Correlation (default = 0)',default=0)
-	parser.add_option('--spw',dest='spw',help='Spectral window (or DDID, default = all)',default='all')
+	parser.add_option('--spws',dest='spws',help='Spectral windows (DDIDs) to plot (comma separated list, default = all)',default='all')
 	parser.add_option('--noflags',dest='noflags',help='Plot flagged data (default = False)',action='store_true',default=False)
 	parser.add_option('--norm',dest='normalize',help='Pixel scale normalization (default = eq_hist)',default='eq_hist')
 	parser.add_option('--xmin',dest='xmin',help='Minimum x-axis value (default = data min)',default='')
@@ -75,7 +89,7 @@ def main():
 	doplot = options.doplot.lower()
 	fields = options.fields
 	corr = int(options.corr)
-	spw = options.spw
+	spws = options.spws
 	noflags = options.noflags
 	normalize = options.normalize
 	xmin = options.xmin
@@ -96,40 +110,61 @@ def main():
 		myms = args[0].rstrip('/')
 
 
+	# Get MS data
+
+	print('%sReading %s' % (now(),myms))
+
+	msdata = xms.xds_from_ms(myms,columns=[yaxis,'TIME','FLAG','FIELD_ID'])
+	chan_freqs = get_chan_freqs(myms)
+	field_names = get_field_names(myms)
+
+
+	# Sort out field selection(s)
+
+	if fields == 'all':
+		fields = []
+		for group in msdata:
+			fields.append(group.FIELD_ID)
+		fields = numpy.unique(fields)
+	else:
+		fields = list(map(int, fields.split(',')))
+
+	blank()
+	print('%s FIELD_ID   NAME' % now())
+	for i in fields:
+		print('%s %-10s %-16s' % (now(),i,field_names[i]))
+
+	# Sort out SPW selection(s)
+
+	if spws == 'all':
+		spws = []
+		for group in msdata:
+			spws.append(group.DATA_DESC_ID)
+		spws = numpy.unique(spws)
+	else:
+		spws = list(map(int, spws.split(',')))
+
+	blank()
+	print('%s SPW_ID     NCHAN ' % now())
+	for i in spws:
+		nchan = len(chan_freqs.values[i])
+		print('%s %-10s %-16s' % (now(),i,nchan))
+
+
 	# Set plot file name and title
 
 	if pngname == '':
 		pngname = 'plot_'+myms.split('/')[-1]+'_'+doplot+'_'+xaxis+'_'+'corr'+str(corr)+'.png'    
-
 	title = myms
-
-
-	# Get MS data into xarray
-
-	print('%sReading %s' % (now(),myms))
-
-	msdata = xms.xds_from_ms(myms,columns=[yaxis,'TIME','FLAG'])
 
 
 	# Replace xarray data with a,p,r,i in situ
 	# Set ylabel while we're at it
 
+
+	blank()
 	print('%sRearranging the deck chairs' % now())
 
-	# for group in msdata:
-	# 	group = group.rename({yaxis:'VISDATA'},inplace=True)
-	# 	if doplot == 'a':
-	# 		group.VISDATA.values = numpy.abs(group.VISDATA.values)
-	# 		ylabel = yaxis+' Amplitude'
-	# 	elif doplot == 'p':
-	# 		group.VISDATA.values = numpy.angle(group.VISDATA.values)
-	# 		ylabel = yaxis+' Phase'
-	# 	elif doplot == 'r':
-	# 		group.VISDATA.values = numpy.real(group.VISDATA.values)
-	# 		ylabel = yaxis+' Real'
-	# 	elif doplot == 'i':
-	# 		group.VISDATA.values = numpy.imag(group.VISDATA.values)
-	# 		ylabel = yaxis+' Imaginary'
 
 	for i in range(0,len(msdata)):
 		msdata[i] = msdata[i].rename({yaxis:'VISDATA'})
@@ -162,10 +197,11 @@ def main():
 			nchan = group.VISDATA.values.shape[1]
 			fld = group.FIELD_ID
 			ddid = group.DATA_DESC_ID
-			visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
-			flags = numpy.append(flags,group.FLAG.values[:,:,corr])
-			xdata = numpy.append(xdata,numpy.repeat(group.TIME.values,nchan))
-			xlabel = xaxis.capitalize()+' [s]' # Add t = t - t[0] and make it relative
+			if fld in fields and ddid in spws:
+				visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
+				flags = numpy.append(flags,group.FLAG.values[:,:,corr])
+				xdata = numpy.append(xdata,numpy.repeat(group.TIME.values,nchan))
+		xlabel = xaxis.capitalize()+' [s]' # Add t = t - t[0] and make it relative
 
 	elif xaxis == 'CHAN':
 		for group in msdata:
@@ -173,10 +209,14 @@ def main():
 			nchan = group.VISDATA.values.shape[1]
 			fld = group.FIELD_ID
 			ddid = group.DATA_DESC_ID
-			visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
-			flags = numpy.append(flags,group.FLAG.values[:,:,corr])
-			xdata = numpy.tile(numpy.arange(nchan),nrows)
-			xlabel = xaxis.capitalize()
+			print ddid
+			if fld in fields and ddid in spws:
+				chans = chan_freqs.values[ddid]
+				visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
+				flags = numpy.append(flags,group.FLAG.values[:,:,corr])
+#				xdata = numpy.append(xdata,numpy.tile(numpy.arange(nchan),nrows))
+				xdata = numpy.append(xdata,numpy.tile(chans,nrows))
+		xlabel = xaxis.capitalize()
 
 
 	# Drop flagged data if required
@@ -231,6 +271,7 @@ def main():
 
 	dists = {'plotdata': pd.DataFrame(odict([(xaxis,xdata),(yaxis,visdata)]))}
 	df = pd.concat(dists,ignore_index=True)
+
 
 	# Run datashader on the pandas df
 
