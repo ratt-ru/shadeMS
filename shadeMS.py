@@ -209,7 +209,6 @@ def main():
 			nchan = group.VISDATA.values.shape[1]
 			fld = group.FIELD_ID
 			ddid = group.DATA_DESC_ID
-			print ddid
 			if fld in fields and ddid in spws:
 				chans = chan_freqs.values[ddid]
 				visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
