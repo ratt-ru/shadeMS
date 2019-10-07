@@ -17,12 +17,13 @@ Usage: shadeMS.py [options] ms
 
 Options:
   -h, --help         show this help message and exit
-  --xaxis=XAXIS      x-axis (TIME [default] or CHAN)
-  --yaxis=YAXIS      y-axis data column (default = DATA)
-  --doplot=DOPLOT    [a]mplitude (default), [p]hase, [r]eal, [i]maginary
-  --field=FIELDS     Field ID
-  --corr=CORR        Correlation (default = 0)
-  --spw=SPW          Spectral window (or DDID, default = all)
+  --xaxis=XAXIS      [t] (default), [f]requency, [c]hannels
+  --yaxis=YAXIS      [a]mplitude (default), [p]hase, [r]eal, [i]maginary
+  --col=COL          Measurement Set column to plot (default = DATA)
+  --field=FIELDS     Field ID(s) to plot (comma separated list, default = all)
+  --spws=SPWS        Spectral windows (DDIDs) to plot (comma separated list,
+                     default = all)
+  --corr=CORR        Correlation index to plot (default = 0)
   --noflags          Plot flagged data (default = False)
   --norm=NORMALIZE   Pixel scale normalization (default = eq_hist)
   --xmin=XMIN        Minimum x-axis value (default = data min)
