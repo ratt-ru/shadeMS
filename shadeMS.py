@@ -56,6 +56,20 @@ def blank():
 	print('%s' % now())
 
 
+def fullname(shortname):
+	fullnames = [('a','Amplitude'),
+		('p','Phase'),
+		('r','Real'),
+		('i','Imaginary'),
+		('t','Time'),
+		('c','Channel'),
+		('f','Frequency')]
+	for xx in fullnames:
+		if xx[0] == shortname:
+			fullname = xx[1]
+	return fullname
+
+
 def main():
 
 
@@ -65,12 +79,12 @@ def main():
 	# Command line options
 
 	parser = OptionParser(usage='%prog [options] ms')
-	parser.add_option('--xaxis',dest='xaxis',help='x-axis (TIME [default] or CHAN)',default='TIME')
-	parser.add_option('--yaxis',dest='yaxis',help='y-axis data column (default = DATA)',default='DATA')
-	parser.add_option('--doplot',dest='doplot',help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary',default='a')
+	parser.add_option('--xaxis',dest='xaxis',help='[t] (default), [f]requency, [c]hannels',default='t')
+	parser.add_option('--yaxis',dest='yaxis',help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary',default='a')
+	parser.add_option('--col',dest='col',help='Measurement Set column to plot (default = DATA)',default='DATA')
 	parser.add_option('--field',dest='fields',help='Field ID(s) to plot (comma separated list, default = all)',default='all')
-	parser.add_option('--corr',dest='corr',help='Correlation (default = 0)',default=0)
 	parser.add_option('--spws',dest='spws',help='Spectral windows (DDIDs) to plot (comma separated list, default = all)',default='all')
+	parser.add_option('--corr',dest='corr',help='Correlation index to plot (default = 0)',default=0)
 	parser.add_option('--noflags',dest='noflags',help='Plot flagged data (default = False)',action='store_true',default=False)
 	parser.add_option('--norm',dest='normalize',help='Pixel scale normalization (default = eq_hist)',default='eq_hist')
 	parser.add_option('--xmin',dest='xmin',help='Minimum x-axis value (default = data min)',default='')
@@ -85,9 +99,9 @@ def main():
 	# Assign inputs
 
 	(options,args) = parser.parse_args()
-	xaxis = options.xaxis
-	yaxis = options.yaxis
-	doplot = options.doplot.lower()
+	xaxis = (options.xaxis).lower()
+	yaxis = (options.yaxis).lower()
+	col = options.col.upper()
 	fields = options.fields
 	corr = int(options.corr)
 	spws = options.spws
@@ -110,6 +124,8 @@ def main():
 	else:
 		myms = args[0].rstrip('/')
 
+	print('%sPlotting %s vs %s' % (now(),fullname(yaxis),fullname(xaxis)))
+	print('%sCorrelation index %s' % (now(),str(corr)))
 
 	# Get MS data
 
@@ -129,9 +145,9 @@ def main():
 		fields = list(map(int, fields.split(',')))
 
 	blank()
-	print('%s FIELD_ID   NAME' % now())
+	print('%sFIELD_ID   NAME' % now())
 	for i in fields:
-		print('%s %-10s %-16s' % (now(),i,field_names[i]))
+		print('%s%-10s %-16s' % (now(),i,field_names[i]))
 
 	# Sort out SPW selection(s)
 
@@ -141,13 +157,15 @@ def main():
 		spws = list(map(int, spws.split(',')))
 
 	blank()
-	print('%s SPW_ID     NCHAN ' % now())
+	print('%sSPW_ID     NCHAN ' % now())
 	for i in spws:
 		nchan = len(chan_freqs.values[i])
-		print('%s %-10s %-16s' % (now(),i,nchan))
+		print('%s%-10s %-16s' % (now(),i,nchan))
+
+	blank()
 
 
-	# Construct TaQL string based on FIELD and SPW selections:
+	# Construct TaQL string based on FIELD and SPW selections
 
 	field_taq = []
 	for fld in fields:
@@ -158,43 +176,31 @@ def main():
 		spw_taq.append('DATA_DESC_ID=='+str(spw))
 
 	mytaql = '('+' || '.join(field_taq)+') && ('+' || '.join(spw_taq)+')'
-	print(mytaql)
+
+
+	# Read the selected data
 
 	print('%sReading %s' % (now(),myms))
+	print('%s%s column' % (now(),col))
 
-	msdata = xms.xds_from_ms(myms,columns=[yaxis,'TIME','FLAG','FIELD_ID'],taql_where=mytaql)
-
-
-	# Set plot file name and title
-
-	if pngname == '':
-		pngname = 'plot_'+myms.split('/')[-1]+'_'+doplot+'_'+xaxis+'_'+'corr'+str(corr)+'.png'    
-	title = myms
+	msdata = xms.xds_from_ms(myms,columns=[col,'TIME','FLAG','FIELD_ID'],taql_where=mytaql)
 
 
 	# Replace xarray data with a,p,r,i in situ
-	# Set ylabel while we're at it
 
-
-	blank()
 	print('%sRearranging the deck chairs' % now())
 
 
 	for i in range(0,len(msdata)):
-		msdata[i] = msdata[i].rename({yaxis:'VISDATA'})
-		if doplot == 'a':
+		msdata[i] = msdata[i].rename({col:'VISDATA'})
+		if yaxis == 'a':
 			msdata[i].VISDATA.values = numpy.abs(msdata[i].VISDATA.values)
-			ylabel = yaxis+' Amplitude'
-		elif doplot == 'p':
+		elif yaxis == 'p':
 			msdata[i].VISDATA.values = numpy.angle(msdata[i].VISDATA.values)
-			ylabel = yaxis+' Phase'
-		elif doplot == 'r':
+		elif yaxis == 'r':
 			msdata[i].VISDATA.values = numpy.real(msdata[i].VISDATA.values)
-			ylabel = yaxis+' Real'
-		elif doplot == 'i':
+		elif yaxis == 'i':
 			msdata[i].VISDATA.values = numpy.imag(msdata[i].VISDATA.values)
-			ylabel = yaxis+' Imaginary'
-
 
 	# Initialise arrays for plot data
 
@@ -204,9 +210,8 @@ def main():
 
 
 	# Get plot data into a pair of numpy arrays
-	# Set xlabels while we're at it
 
-	if xaxis == 'TIME':
+	if xaxis == 't':
 		for group in msdata:
 			nchan = group.VISDATA.values.shape[1]
 			fld = group.FIELD_ID
@@ -215,9 +220,8 @@ def main():
 				visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
 				flags = numpy.append(flags,group.FLAG.values[:,:,corr])
 				xdata = numpy.append(xdata,numpy.repeat(group.TIME.values,nchan))
-		xlabel = xaxis.capitalize()+' [s]' # Add t = t - t[0] and make it relative
-
-	elif xaxis == 'CHAN':
+#	elif xaxis == 'f':
+	else:
 		for group in msdata:
 			nrows = group.VISDATA.values.shape[0]
 			nchan = group.VISDATA.values.shape[1]
@@ -227,9 +231,10 @@ def main():
 				chans = chan_freqs.values[ddid]
 				visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
 				flags = numpy.append(flags,group.FLAG.values[:,:,corr])
-#				xdata = numpy.append(xdata,numpy.tile(numpy.arange(nchan),nrows))
-				xdata = numpy.append(xdata,numpy.tile(chans,nrows))
-		xlabel = xaxis.capitalize()
+				if xaxis == 'f':
+					xdata = numpy.append(xdata,numpy.tile(chans,nrows))
+				elif xaxis == 'c':
+					xdata = numpy.append(xdata,numpy.tile(numpy.arange(nchan),nrows))
 
 
 	# Drop flagged data if required
@@ -314,6 +319,17 @@ def main():
 		xmax = numpy.max(agg.coords[xaxis].values)
 	else:
 		xmax = float(xmax)
+
+
+	# Setup plot labels and PNG name
+
+	ylabel = col+' '+fullname(yaxis)
+	xlabel = fullname(xaxis) # Add t = t - t[0] and make it relative
+
+	if pngname == '':
+		pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'+fullname(yaxis)+'_vs_'+fullname(xaxis)+'_'+'corr'+str(corr)+'.png'    
+	title = myms+' (correlation '+str(corr)+')'
+
 
 	# Render the plot
 
