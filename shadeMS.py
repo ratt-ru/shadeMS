@@ -82,8 +82,8 @@ def main():
 	parser.add_option('--xaxis',dest='xaxis',help='[t] (default), [f]requency, [c]hannels',default='t')
 	parser.add_option('--yaxis',dest='yaxis',help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary',default='a')
 	parser.add_option('--col',dest='col',help='Measurement Set column to plot (default = DATA)',default='DATA')
-	parser.add_option('--field',dest='fields',help='Field ID(s) to plot (comma separated list, default = all)',default='all')
-	parser.add_option('--spws',dest='spws',help='Spectral windows (DDIDs) to plot (comma separated list, default = all)',default='all')
+	parser.add_option('--field',dest='myfields',help='Field ID(s) to plot (comma separated list, default = all)',default='all')
+	parser.add_option('--spws',dest='myspws',help='Spectral windows (DDIDs) to plot (comma separated list, default = all)',default='all')
 	parser.add_option('--corr',dest='corr',help='Correlation index to plot (default = 0)',default=0)
 	parser.add_option('--noflags',dest='noflags',help='Plot flagged data (default = False)',action='store_true',default=False)
 	parser.add_option('--norm',dest='normalize',help='Pixel scale normalization (default = eq_hist)',default='eq_hist')
@@ -93,7 +93,7 @@ def main():
 	parser.add_option('--ymax',dest='ymax',help='Maximum y-axis value (default = data max)',default='')
 	parser.add_option('--xcanvas',dest='xcanvas',help='Canvas x-size in pixels (default = 1280)',default=1280)
 	parser.add_option('--ycanvas',dest='ycanvas',help='Canvas y-size in pixels (default = 800)',default=800)
-	parser.add_option('--png',dest='pngname',help='PNG name (default = something sensible)',default='')
+	parser.add_option('--png',dest='pngname',help='PNG name (default = something very verbose)',default='')
 
 
 	# Assign inputs
@@ -102,9 +102,9 @@ def main():
 	xaxis = (options.xaxis).lower()
 	yaxis = (options.yaxis).lower()
 	col = options.col.upper()
-	fields = options.fields
+	myfields = options.myfields
 	corr = int(options.corr)
-	spws = options.spws
+	myspws = options.myspws
 	noflags = options.noflags
 	normalize = options.normalize
 	xmin = options.xmin
@@ -135,14 +135,14 @@ def main():
 
 	# Sort out field selection(s)
 
-	if fields == 'all':
+	if myfields == 'all':
 		fields = field_ids	
 		# fields = []
 		# for group in msdata:
 		# 	fields.append(group.FIELD_ID)
 		# fields = numpy.unique(fields)
 	else:
-		fields = list(map(int, fields.split(',')))
+		fields = list(map(int, myfields.split(',')))
 
 	blank()
 	print('%sFIELD_ID   NAME' % now())
@@ -151,10 +151,10 @@ def main():
 
 	# Sort out SPW selection(s)
 
-	if spws == 'all':
+	if myspws == 'all':
 		spws = numpy.arange(len(chan_freqs))
 	else:
-		spws = list(map(int, spws.split(',')))
+		spws = list(map(int, myspws.split(',')))
 
 	blank()
 	print('%sSPW_ID     NCHAN ' % now())
@@ -327,7 +327,9 @@ def main():
 	xlabel = fullname(xaxis) # Add t = t - t[0] and make it relative
 
 	if pngname == '':
-		pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'+fullname(yaxis)+'_vs_'+fullname(xaxis)+'_'+'corr'+str(corr)+'.png'    
+		pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
+		pngname += 'SPW-'+myspws.replace(',','-')+'_FIELD-'+myfields.replace(',','-')+'_'
+		pngname += fullname(yaxis)+'_vs_'+fullname(xaxis)+'_'+'corr'+str(corr)+'.png'    
 	title = myms+' (correlation '+str(corr)+')'
 
 
