@@ -29,9 +29,10 @@ def get_chan_freqs(myms):
 
 
 def get_field_names(myms):
-	field_tab = xms.xds_from_table(myms+'::FIELD',columns=['NAME'])
+	field_tab = xms.xds_from_table(myms+'::FIELD',columns=['NAME','SOURCE_ID'])
+	field_ids = field_tab[0].SOURCE_ID.values
 	field_names = field_tab[0].NAME.values
-	return field_names
+	return field_ids,field_names
 
 
 def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=12):
@@ -112,20 +113,18 @@ def main():
 
 	# Get MS data
 
-	print('%sReading %s' % (now(),myms))
-
-	msdata = xms.xds_from_ms(myms,columns=[yaxis,'TIME','FLAG','FIELD_ID'])
 	chan_freqs = get_chan_freqs(myms)
-	field_names = get_field_names(myms)
+	field_ids,field_names = get_field_names(myms)
 
 
 	# Sort out field selection(s)
 
 	if fields == 'all':
-		fields = []
-		for group in msdata:
-			fields.append(group.FIELD_ID)
-		fields = numpy.unique(fields)
+		fields = field_ids	
+		# fields = []
+		# for group in msdata:
+		# 	fields.append(group.FIELD_ID)
+		# fields = numpy.unique(fields)
 	else:
 		fields = list(map(int, fields.split(',')))
 
@@ -137,10 +136,7 @@ def main():
 	# Sort out SPW selection(s)
 
 	if spws == 'all':
-		spws = []
-		for group in msdata:
-			spws.append(group.DATA_DESC_ID)
-		spws = numpy.unique(spws)
+		spws = numpy.arange(len(chan_freqs))
 	else:
 		spws = list(map(int, spws.split(',')))
 
@@ -149,6 +145,24 @@ def main():
 	for i in spws:
 		nchan = len(chan_freqs.values[i])
 		print('%s %-10s %-16s' % (now(),i,nchan))
+
+
+	# Construct TaQL string based on FIELD and SPW selections:
+
+	field_taq = []
+	for fld in fields:
+		field_taq.append('FIELD_ID=='+str(fld))
+
+	spw_taq = []
+	for spw in spws:
+		spw_taq.append('DATA_DESC_ID=='+str(spw))
+
+	mytaql = '('+' || '.join(field_taq)+') && ('+' || '.join(spw_taq)+')'
+	print(mytaql)
+
+	print('%sReading %s' % (now(),myms))
+
+	msdata = xms.xds_from_ms(myms,columns=[yaxis,'TIME','FLAG','FIELD_ID'],taql_where=mytaql)
 
 
 	# Set plot file name and title
