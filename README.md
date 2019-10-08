@@ -32,5 +32,5 @@ Options:
   --ymax=YMAX        Maximum y-axis value (default = data max)
   --xcanvas=XCANVAS  Canvas x-size in pixels (default = 1280)
   --ycanvas=YCANVAS  Canvas y-size in pixels (default = 800)
-  --png=PNGNAME      PNG name (default = something sensible)
+  --png=PNGNAME      PNG name (default = something very verbose)
 ```
