@@ -26,12 +26,15 @@ Options:
                      default = all)
   --corr=CORR        Correlation index to plot (default = 0)
   --noflags          Plot flagged data (default = False)
-  --norm=NORMALIZE   Pixel scale normalization (default = eq_hist)
+  --norm=NORMALIZE   Pixel scale normalization: eq_hist (default), cbrt, log,
+                     linear
   --xmin=XMIN        Minimum x-axis value (default = data min)
   --xmax=XMAX        Maximum x-axis value (default = data max)
   --ymin=YMIN        Minimum y-axis value (default = data min)
   --ymax=YMAX        Maximum y-axis value (default = data max)
   --xcanvas=XCANVAS  Canvas x-size in pixels (default = 1280)
   --ycanvas=YCANVAS  Canvas y-size in pixels (default = 800)
+  --cmap=MYCMAP      Colorcet map to use (default = bkr)
+  --doblack          Set plot background to black (default = False)
   --png=PNGNAME      PNG name (default = something very verbose)
 ```

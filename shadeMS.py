@@ -35,9 +35,12 @@ def get_field_names(myms):
 	return field_ids,field_names
 
 
-def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=12):
+def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=12,doblack=False):
 	fig = pylab.figure(figsize=(figx,figy))
-	ax = fig.add_subplot(111)
+	if doblack:
+		ax = fig.add_subplot(111,facecolor='black')
+	else:
+		ax = fig.add_subplot(111)
 	ax.imshow(X=data,extent=[xmin,xmax,ymin,ymax],aspect='auto',origin='upper')
 	ax.set_title(title)
 	ax.set_xlabel(xlabel)
@@ -48,7 +51,8 @@ def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=
 
 def now():
 	stamp = time.strftime('[%Y-%m-%d %H:%M:%S]: ')
-	msg = '\033[92m'+stamp+'\033[0m'
+	# msg = '\033[92m'+stamp+'\033[0m' # time in green
+	msg = stamp+' '
 	return msg
 
 
@@ -87,13 +91,15 @@ def main():
 	parser.add_option('--spws',dest='myspws',help='Spectral windows (DDIDs) to plot (comma separated list, default = all)',default='all')
 	parser.add_option('--corr',dest='corr',help='Correlation index to plot (default = 0)',default=0)
 	parser.add_option('--noflags',dest='noflags',help='Plot flagged data (default = False)',action='store_true',default=False)
-	parser.add_option('--norm',dest='normalize',help='Pixel scale normalization (default = eq_hist)',default='eq_hist')
+	parser.add_option('--norm',dest='normalize',help='Pixel scale normalization: eq_hist (default), cbrt, log, linear',default='eq_hist')
 	parser.add_option('--xmin',dest='xmin',help='Minimum x-axis value (default = data min)',default='')
 	parser.add_option('--xmax',dest='xmax',help='Maximum x-axis value (default = data max)',default='')
 	parser.add_option('--ymin',dest='ymin',help='Minimum y-axis value (default = data min)',default='')
 	parser.add_option('--ymax',dest='ymax',help='Maximum y-axis value (default = data max)',default='')
 	parser.add_option('--xcanvas',dest='xcanvas',help='Canvas x-size in pixels (default = 1280)',default=1280)
 	parser.add_option('--ycanvas',dest='ycanvas',help='Canvas y-size in pixels (default = 800)',default=800)
+	parser.add_option('--cmap',dest='mycmap',help='Colorcet map to use (default = bkr)',default='bkr')
+	parser.add_option('--doblack',dest='doblack',help='Set plot background to black (default = False)',action='store_true',default=False)
 	parser.add_option('--png',dest='pngname',help='PNG name (default = something very verbose)',default='')
 
 
@@ -114,6 +120,8 @@ def main():
 	ymax = options.ymax
 	xcanvas = int(options.xcanvas)
 	ycanvas = int(options.ycanvas)
+	mycmap = options.mycmap
+	doblack = options.doblack
 	pngname = options.pngname
 
 
@@ -206,7 +214,7 @@ def main():
 
 	# Initialise arrays for plot data
 
-	visdata = numpy.array(())
+	ydata = numpy.array(())
 	xdata = numpy.array(())
 	flags = numpy.array(())
 
@@ -223,13 +231,13 @@ def main():
 			flags = numpy.append(flags,group.FLAG.values[:,:,corr])
 
 			if yaxis == 'a':
-				visdata = numpy.append(visdata,numpy.abs(group.VISDATA.values[:,:,corr]))
+				ydata = numpy.append(ydata,numpy.abs(group.VISDATA.values[:,:,corr]))
 			elif yaxis == 'p':
-				visdata = numpy.append(visdata,numpy.angle(group.VISDATA.values[:,:,corr]))
+				ydata = numpy.append(ydata,numpy.angle(group.VISDATA.values[:,:,corr]))
 			elif yaxis == 'r':
-				visdata = numpy.append(visdata,numpy.real(group.VISDATA.values[:,:,corr]))
+				ydata = numpy.append(ydata,numpy.real(group.VISDATA.values[:,:,corr]))
 			elif yaxis == 'i':
-				visdata = numpy.append(visdata,numpy.imag(group.VISDATA.values[:,:,corr]))
+				ydata = numpy.append(ydata,numpy.imag(group.VISDATA.values[:,:,corr]))
 
 			if xaxis == 'f':
 				xdata = numpy.append(xdata,numpy.tile(chans,nrows))
@@ -246,19 +254,16 @@ def main():
 				xdata = numpy.append(xdata,numpy.real(group.VISDATA.values[:,:,corr]))
 
 
-
-
-
 	# Drop flagged data if required
 
 	if not noflags:
 
 		bool_flags = list(map(bool,flags))
 
-		masked_visdata = numpy.ma.masked_array(data=visdata,mask=bool_flags)
+		masked_ydata = numpy.ma.masked_array(data=ydata,mask=bool_flags)
 		masked_xdata = numpy.ma.masked_array(data=xdata,mask=bool_flags)
 
-		visdata = masked_visdata.compressed()
+		ydata = masked_ydata.compressed()
 		xdata = masked_xdata.compressed()
 
 
@@ -267,29 +272,29 @@ def main():
 	if xmin != '':
 		xmin = float(xmin)
 		masked_xdata = numpy.ma.masked_less(xdata,xmin)
-		masked_visdata = numpy.ma.masked_array(data=visdata,mask=masked_xdata.mask)
-		visdata = masked_visdata.compressed()
+		masked_ydata = numpy.ma.masked_array(data=ydata,mask=masked_xdata.mask)
+		ydata = masked_ydata.compressed()
 		xdata = masked_xdata.compressed()
 
 	if xmax != '':
 		xmax = float(xmax)
 		masked_xdata = numpy.ma.masked_greater(xdata,xmax)
-		masked_visdata = numpy.ma.masked_array(data=visdata,mask=masked_xdata.mask)
-		visdata = masked_visdata.compressed()
+		masked_ydata = numpy.ma.masked_array(data=ydata,mask=masked_xdata.mask)
+		ydata = masked_ydata.compressed()
 		xdata = masked_xdata.compressed()
 
 	if ymin != '':
 		ymin = float(ymin)
-		masked_visdata = numpy.ma.masked_less(visdata,ymin)
-		masked_xdata = numpy.ma.masked_array(data=xdata,mask=masked_visdata.mask)
-		visdata = masked_visdata.compressed()
+		masked_ydata = numpy.ma.masked_less(ydata,ymin)
+		masked_xdata = numpy.ma.masked_array(data=xdata,mask=masked_ydata.mask)
+		ydata = masked_ydata.compressed()
 		xdata = masked_xdata.compressed()
 
 	if ymax != '':
 		ymax = float(ymax)
-		masked_visdata = numpy.ma.masked_greater(visdata,ymax)
-		masked_xdata = numpy.ma.masked_array(data=xdata,mask=masked_visdata.mask)
-		visdata = masked_visdata.compressed()
+		masked_ydata = numpy.ma.masked_greater(ydata,ymax)
+		masked_xdata = numpy.ma.masked_array(data=xdata,mask=masked_ydata.mask)
+		ydata = masked_ydata.compressed()
 		xdata = masked_xdata.compressed()
 
 
@@ -298,7 +303,7 @@ def main():
 
 	print('%sMaking Pandas dataframe' % now())
 
-	dists = {'plotdata': pd.DataFrame(odict([(xaxis,xdata),(yaxis,visdata)]))}
+	dists = {'plotdata': pd.DataFrame(odict([(xaxis,xdata),(yaxis,ydata)]))}
 	df = pd.concat(dists,ignore_index=True)
 
 
@@ -308,7 +313,7 @@ def main():
 
 	canvas = ds.Canvas(xcanvas,ycanvas)
 	agg = canvas.points(df,xaxis,yaxis)
-	img = hd.shade(hv.Image(agg),cmap=colorcet.bkr,normalization=normalize)
+	img = hd.shade(hv.Image(agg),cmap=getattr(colorcet,mycmap),normalization=normalize)
 	#img = tf.set_background(tf.shade(agg, cmap=colorcet.dimgray,how='log'),"black")
 		
 
@@ -347,7 +352,7 @@ def main():
 
 	print('%sRendering plot' % now())
 
-	make_plot(img.data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=xcanvas/70,figy=ycanvas/70)
+	make_plot(img.data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=xcanvas/60,figy=ycanvas/60,doblack=doblack)
 
 
 	# Stop the clock
