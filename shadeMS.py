@@ -63,7 +63,8 @@ def fullname(shortname):
 		('i','Imaginary'),
 		('t','Time'),
 		('c','Channel'),
-		('f','Frequency')]
+		('f','Frequency'),
+		('uv','uv-distance')]
 	for xx in fullnames:
 		if xx[0] == shortname:
 			fullname = xx[1]
@@ -79,7 +80,7 @@ def main():
 	# Command line options
 
 	parser = OptionParser(usage='%prog [options] ms')
-	parser.add_option('--xaxis',dest='xaxis',help='[t] (default), [f]requency, [c]hannels',default='t')
+	parser.add_option('--xaxis',dest='xaxis',help='[t] (default), [f]requency, [c]hannels, [uv]distance, [r]eal',default='t')
 	parser.add_option('--yaxis',dest='yaxis',help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary',default='a')
 	parser.add_option('--col',dest='col',help='Measurement Set column to plot (default = DATA)',default='DATA')
 	parser.add_option('--field',dest='myfields',help='Field ID(s) to plot (comma separated list, default = all)',default='all')
@@ -124,8 +125,16 @@ def main():
 	else:
 		myms = args[0].rstrip('/')
 
+	# Check for allowed axes
+
+	allowed = ['a','p','r','i','t','f','c','uv']
+	if xaxis not in allowed or yaxis not in allowed:
+		print('Please check requested axes')
+		sys.exit()
+
 	print('%sPlotting %s vs %s' % (now(),fullname(yaxis),fullname(xaxis)))
 	print('%sCorrelation index %s' % (now(),str(corr)))
+
 
 	# Get MS data
 
@@ -148,6 +157,7 @@ def main():
 	print('%sFIELD_ID   NAME' % now())
 	for i in fields:
 		print('%s%-10s %-16s' % (now(),i,field_names[i]))
+
 
 	# Sort out SPW selection(s)
 
@@ -183,24 +193,16 @@ def main():
 	print('%sReading %s' % (now(),myms))
 	print('%s%s column' % (now(),col))
 
-	msdata = xms.xds_from_ms(myms,columns=[col,'TIME','FLAG','FIELD_ID'],taql_where=mytaql)
+	msdata = xms.xds_from_ms(myms,columns=[col,'TIME','FLAG','FIELD_ID','UVW'],taql_where=mytaql)
 
 
 	# Replace xarray data with a,p,r,i in situ
 
 	print('%sRearranging the deck chairs' % now())
 
-
 	for i in range(0,len(msdata)):
 		msdata[i] = msdata[i].rename({col:'VISDATA'})
-		if yaxis == 'a':
-			msdata[i].VISDATA.values = numpy.abs(msdata[i].VISDATA.values)
-		elif yaxis == 'p':
-			msdata[i].VISDATA.values = numpy.angle(msdata[i].VISDATA.values)
-		elif yaxis == 'r':
-			msdata[i].VISDATA.values = numpy.real(msdata[i].VISDATA.values)
-		elif yaxis == 'i':
-			msdata[i].VISDATA.values = numpy.imag(msdata[i].VISDATA.values)
+
 
 	# Initialise arrays for plot data
 
@@ -211,30 +213,40 @@ def main():
 
 	# Get plot data into a pair of numpy arrays
 
-	if xaxis == 't':
-		for group in msdata:
-			nchan = group.VISDATA.values.shape[1]
-			fld = group.FIELD_ID
-			ddid = group.DATA_DESC_ID
-			if fld in fields and ddid in spws:
-				visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
-				flags = numpy.append(flags,group.FLAG.values[:,:,corr])
+	for group in msdata:
+		nrows = group.VISDATA.values.shape[0]
+		nchan = group.VISDATA.values.shape[1]
+		fld = group.FIELD_ID
+		ddid = group.DATA_DESC_ID
+		if fld in fields and ddid in spws:
+			chans = chan_freqs.values[ddid]
+			flags = numpy.append(flags,group.FLAG.values[:,:,corr])
+
+			if yaxis == 'a':
+				visdata = numpy.append(visdata,numpy.abs(group.VISDATA.values[:,:,corr]))
+			elif yaxis == 'p':
+				visdata = numpy.append(visdata,numpy.angle(group.VISDATA.values[:,:,corr]))
+			elif yaxis == 'r':
+				visdata = numpy.append(visdata,numpy.real(group.VISDATA.values[:,:,corr]))
+			elif yaxis == 'i':
+				visdata = numpy.append(visdata,numpy.imag(group.VISDATA.values[:,:,corr]))
+
+			if xaxis == 'f':
+				xdata = numpy.append(xdata,numpy.tile(chans,nrows))
+			elif xaxis == 'c':
+				xdata = numpy.append(xdata,numpy.tile(numpy.arange(nchan),nrows))
+			elif xaxis == 't':
 				xdata = numpy.append(xdata,numpy.repeat(group.TIME.values,nchan))
-#	elif xaxis == 'f':
-	else:
-		for group in msdata:
-			nrows = group.VISDATA.values.shape[0]
-			nchan = group.VISDATA.values.shape[1]
-			fld = group.FIELD_ID
-			ddid = group.DATA_DESC_ID
-			if fld in fields and ddid in spws:
-				chans = chan_freqs.values[ddid]
-				visdata = numpy.append(visdata,group.VISDATA.values[:,:,corr])
-				flags = numpy.append(flags,group.FLAG.values[:,:,corr])
-				if xaxis == 'f':
-					xdata = numpy.append(xdata,numpy.tile(chans,nrows))
-				elif xaxis == 'c':
-					xdata = numpy.append(xdata,numpy.tile(numpy.arange(nchan),nrows))
+			elif xaxis == 'uv':
+				uu = group.UVW.values[:,0]
+				vv = group.UVW.values[:,1]
+				uvdist = ((uu**2.0)+(vv**2.0))**0.5
+				xdata = numpy.append(xdata,numpy.repeat(uvdist,nchan))
+			elif xaxis == 'r':
+				xdata = numpy.append(xdata,numpy.real(group.VISDATA.values[:,:,corr]))
+
+
+
 
 
 	# Drop flagged data if required
@@ -251,7 +263,6 @@ def main():
 
 
 	# Drop data out of plot range(s)
-
 
 	if xmin != '':
 		xmin = float(xmin)
@@ -323,21 +334,20 @@ def main():
 
 	# Setup plot labels and PNG name
 
-	ylabel = col+' '+fullname(yaxis)
+	ylabel = fullname(yaxis)
 	xlabel = fullname(xaxis) # Add t = t - t[0] and make it relative
-
+	title = myms+' '+col+' (correlation '+str(corr)+')'
 	if pngname == '':
 		pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
 		pngname += 'SPW-'+myspws.replace(',','-')+'_FIELD-'+myfields.replace(',','-')+'_'
 		pngname += fullname(yaxis)+'_vs_'+fullname(xaxis)+'_'+'corr'+str(corr)+'.png'    
-	title = myms+' (correlation '+str(corr)+')'
 
 
 	# Render the plot
 
 	print('%sRendering plot' % now())
 
-	make_plot(img.data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname)
+	make_plot(img.data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=xcanvas/70,figy=ycanvas/70)
 
 
 	# Stop the clock
