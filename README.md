@@ -17,11 +17,12 @@ Usage: shadeMS.py [options] ms
 
 Options:
   -h, --help         show this help message and exit
-  --xaxis=XAXIS      [t] (default), [f]requency, [c]hannels
+  --xaxis=XAXIS      [t] (default), [f]requency, [c]hannels, [uv]distance,
+                     [r]eal
   --yaxis=YAXIS      [a]mplitude (default), [p]hase, [r]eal, [i]maginary
   --col=COL          Measurement Set column to plot (default = DATA)
-  --field=FIELDS     Field ID(s) to plot (comma separated list, default = all)
-  --spws=SPWS        Spectral windows (DDIDs) to plot (comma separated list,
+  --field=MYFIELDS   Field ID(s) to plot (comma separated list, default = all)
+  --spws=MYSPWS      Spectral windows (DDIDs) to plot (comma separated list,
                      default = all)
   --corr=CORR        Correlation index to plot (default = 0)
   --noflags          Plot flagged data (default = False)
