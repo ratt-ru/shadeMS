@@ -2,6 +2,8 @@
 
 Rapid Measurement Set plotting with xarray-ms and datashader.
 
+Requirements:
+
 ```
 pip install colorcet
 pip install dask
@@ -11,6 +13,8 @@ pip install holoviews
 pip install pandas
 pip install xarray-ms
 ```
+
+Help:
 
 ```
 Usage: shadeMS.py [options] ms
