@@ -46,5 +46,5 @@ To-do:
 
 ```
 - CASA-style formatting for SPW selection
-- Arbitrary plot selections for x and y axis
+- Arbitrary plot selections for x and y axes
 ```
