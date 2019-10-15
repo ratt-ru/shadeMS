@@ -46,5 +46,7 @@ To-do:
 
 ```
 - CASA-style formatting for SPW selection
+- Antenna / baseline selection
 - Arbitrary plot selections for x and y axes
+- Iteration option for multi-panel plots?
 ```
