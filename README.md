@@ -37,3 +37,10 @@ Options:
   --fontsize=FONTSIZE  Font size for all text elements (default = 20)
   --png=PNGNAME        PNG name (default = something verbose)
 ```
+
+To-do:
+
+```
+- CASA-style formatting for SPW selection
+- Arbitrary plot selections for x and y axis
+```
