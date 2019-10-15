@@ -35,23 +35,32 @@ def get_field_names(myms):
     return field_ids,field_names
 
 
-def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=24,figy=12,doblack=False):
+def freq_to_wavel(ff):
+    c = 299792458.0 # m/s
+    return c/ff
+
+
+def make_plot(data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,figx=24,figy=12):
+
+    def match(artist):
+        return artist.__module__ == 'matplotlib.text'
+
     fig = pylab.figure(figsize=(figx,figy))
-    if doblack:
-        ax = fig.add_subplot(111,facecolor='black')
-    else:
-        ax = fig.add_subplot(111)
+    ax = fig.add_subplot(111,facecolor=bgcol)
     ax.imshow(X=data,extent=[xmin,xmax,ymin,ymax],aspect='auto',origin='upper')
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
+    for textobj in fig.findobj(match=match):
+        textobj.set_fontsize(fontsize)
     fig.savefig(pngname,bbox_inches='tight')
     return pngname
 
 
 def now():
-    stamp = time.strftime('[%Y-%m-%d %H:%M:%S]: ')
+    # stamp = time.strftime('[%Y-%m-%d %H:%M:%S]: ')
     # msg = '\033[92m'+stamp+'\033[0m' # time in green
+    stamp = time.strftime(' [%H:%M:%S] ')
     msg = stamp+' '
     return msg
 
@@ -61,18 +70,21 @@ def blank():
 
 
 def fullname(shortname):
-    fullnames = [('a','Amplitude'),
-        ('p','Phase'),
-        ('r','Real'),
-        ('i','Imaginary'),
-        ('t','Time'),
+    fullnames = [('a','Amplitude',''),
+        ('p','Phase','[rad]'),
+        ('r','Real',''),
+        ('i','Imaginary',''),
+        ('t','Time','[s]'),
         ('c','Channel'),
-        ('f','Frequency'),
-        ('uv','uv-distance')]
+        ('f','Frequency','[Hz]'),
+        ('uv','uv-distance','[wavelengths]'),
+        ('u','u','[wavelengths]'),
+        ('v','v','[wavelengths]')]
     for xx in fullnames:
         if xx[0] == shortname:
             fullname = xx[1]
-    return fullname
+            units = xx[2]
+    return fullname,units
 
 
 def main():
@@ -84,23 +96,25 @@ def main():
     # Command line options
 
     parser = OptionParser(usage='%prog [options] ms')
-    parser.add_option('--xaxis',dest='xaxis',help='[t] (default), [f]requency, [c]hannels, [uv]distance, [r]eal',default='t')
-    parser.add_option('--yaxis',dest='yaxis',help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary',default='a')
+    parser.add_option('--xaxis',dest='xaxis',help='[t]ime (default), [f]requency, [c]hannels, [u], [uv]distance, [r]eal',default='t')
+    parser.add_option('--yaxis',dest='yaxis',help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary, [v]',default='a')
     parser.add_option('--col',dest='col',help='Measurement Set column to plot (default = DATA)',default='DATA')
     parser.add_option('--field',dest='myfields',help='Field ID(s) to plot (comma separated list, default = all)',default='all')
     parser.add_option('--spws',dest='myspws',help='Spectral windows (DDIDs) to plot (comma separated list, default = all)',default='all')
     parser.add_option('--corr',dest='corr',help='Correlation index to plot (default = 0)',default=0)
     parser.add_option('--noflags',dest='noflags',help='Plot flagged data (default = False)',action='store_true',default=False)
+    parser.add_option('--noconj',dest='noconj',help='Do not show conjugate points in u,v plots (default = plot conjugates)',action='store_true',default=False)
     parser.add_option('--xmin',dest='xmin',help='Minimum x-axis value (default = data min)',default='')
     parser.add_option('--xmax',dest='xmax',help='Maximum x-axis value (default = data max)',default='')
     parser.add_option('--ymin',dest='ymin',help='Minimum y-axis value (default = data min)',default='')
     parser.add_option('--ymax',dest='ymax',help='Maximum y-axis value (default = data max)',default='')
     parser.add_option('--xcanvas',dest='xcanvas',help='Canvas x-size in pixels (default = 1280)',default=1280)
-    parser.add_option('--ycanvas',dest='ycanvas',help='Canvas y-size in pixels (default = 800)',default=800)
+    parser.add_option('--ycanvas',dest='ycanvas',help='Canvas y-size in pixels (default = 800)',default=900)
     parser.add_option('--norm',dest='normalize',help='Pixel scale normalization: eq_hist (default), cbrt, log, linear',default='eq_hist')
     parser.add_option('--cmap',dest='mycmap',help='Colorcet map to use (default = bkr)',default='bkr')
-    parser.add_option('--doblack',dest='doblack',help='Set plot background to black (default = False)',action='store_true',default=False)
-    parser.add_option('--png',dest='pngname',help='PNG name (default = something very verbose)',default='')
+    parser.add_option('--bgcol',dest='bgcol',help='RGB hex code for background colour (default = FFFFFF)',default='FFFFFF')
+    parser.add_option('--fontsize',dest='fontsize',help='Font size for all text elements (default = 20)',default=20)
+    parser.add_option('--png',dest='pngname',help='PNG name (default = something verbose)',default='')
 
 
     # Assign inputs
@@ -113,6 +127,7 @@ def main():
     corr = int(options.corr)
     myspws = options.myspws
     noflags = options.noflags
+    noconj = options.noconj
     xmin = options.xmin
     xmax = options.xmax
     ymin = options.ymin
@@ -121,7 +136,8 @@ def main():
     ycanvas = int(options.ycanvas)
     normalize = options.normalize
     mycmap = options.mycmap
-    doblack = options.doblack
+    bgcol = '#'+options.bgcol.lstrip('#')
+    fontsize = options.fontsize
     pngname = options.pngname
 
 
@@ -135,16 +151,21 @@ def main():
 
     # Check for allowed axes
 
-    allowed = ['a','p','r','i','t','f','c','uv']
+    allowed = ['a','p','r','i','t','f','c','uv','u','v']
     if xaxis not in allowed or yaxis not in allowed:
         print('Please check requested axes')
         sys.exit()
 
-    print('%sPlotting %s vs %s' % (now(),fullname(yaxis),fullname(xaxis)))
+
+    xfullname,xunits = fullname(xaxis)
+    yfullname,yunits = fullname(yaxis)
+
+
+    print('%sPlotting %s vs %s' % (now(),yfullname,xfullname))
     print('%sCorrelation index %s' % (now(),str(corr)))
 
 
-    # Get MS data
+    # Get MS metadata
 
     chan_freqs = get_chan_freqs(myms)
     field_ids,field_names = get_field_names(myms)
@@ -230,6 +251,16 @@ def main():
             chans = chan_freqs.values[ddid]
             flags = numpy.append(flags,group.FLAG.values[:,:,corr])
 
+
+            if xaxis == 'uv' or xaxis == 'u' or yaxis == 'v':
+                uu = group.UVW.values[:,0]
+                vv = group.UVW.values[:,1]
+                chans_wavel = freq_to_wavel(chans)
+                uu_wavel = numpy.ravel(uu / numpy.transpose(numpy.array([chans_wavel,]*len(uu))))
+                vv_wavel = numpy.ravel(vv / numpy.transpose(numpy.array([chans_wavel,]*len(vv))))
+                uvdist_wavel = ((uu_wavel**2.0)+(vv_wavel**2.0))**0.5
+
+
             if yaxis == 'a':
                 ydata = numpy.append(ydata,numpy.abs(group.VISDATA.values[:,:,corr]))
             elif yaxis == 'p':
@@ -238,20 +269,22 @@ def main():
                 ydata = numpy.append(ydata,numpy.real(group.VISDATA.values[:,:,corr]))
             elif yaxis == 'i':
                 ydata = numpy.append(ydata,numpy.imag(group.VISDATA.values[:,:,corr]))
+            elif yaxis == 'v':
+                ydata = uu_wavel
 
             if xaxis == 'f':
                 xdata = numpy.append(xdata,numpy.tile(chans,nrows))
             elif xaxis == 'c':
                 xdata = numpy.append(xdata,numpy.tile(numpy.arange(nchan),nrows))
             elif xaxis == 't':
+                # Add t = t - t[0] and make it relative
                 xdata = numpy.append(xdata,numpy.repeat(group.TIME.values,nchan))
             elif xaxis == 'uv':
-                uu = group.UVW.values[:,0]
-                vv = group.UVW.values[:,1]
-                uvdist = ((uu**2.0)+(vv**2.0))**0.5
-                xdata = numpy.append(xdata,numpy.repeat(uvdist,nchan))
+                xdata = uvdist_wavel
             elif xaxis == 'r':
                 xdata = numpy.append(xdata,numpy.real(group.VISDATA.values[:,:,corr]))
+            elif xaxis == 'u':
+                xdata = vv_wavel
 
 
     # Drop flagged data if required
@@ -265,6 +298,14 @@ def main():
 
         ydata = masked_ydata.compressed()
         xdata = masked_xdata.compressed()
+
+
+    # Plot the conjugate points for a u,v plot if requested
+    # This is done at this stage so we don't have to worry about the flags
+
+    if not noconj and xaxis == 'u' and yaxis == 'v':
+        xdata = numpy.append(xdata,xdata*-1.0)
+        ydata = numpy.append(ydata,ydata*-1.0)
 
 
     # Drop data out of plot range(s)
@@ -314,7 +355,6 @@ def main():
     canvas = ds.Canvas(xcanvas,ycanvas)
     agg = canvas.points(df,xaxis,yaxis)
     img = hd.shade(hv.Image(agg),cmap=getattr(colorcet,mycmap),normalization=normalize)
-    #img = tf.set_background(tf.shade(agg, cmap=colorcet.dimgray,how='log'),"black")
         
 
     # Set plot limits based on data extent or user values for axis labels
@@ -339,20 +379,32 @@ def main():
 
     # Setup plot labels and PNG name
 
-    ylabel = fullname(yaxis)
-    xlabel = fullname(xaxis) # Add t = t - t[0] and make it relative
+    ylabel = yfullname+' '+yunits
+    xlabel = xfullname+' '+xunits 
     title = myms+' '+col+' (correlation '+str(corr)+')'
     if pngname == '':
         pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
         pngname += 'SPW-'+myspws.replace(',','-')+'_FIELD-'+myfields.replace(',','-')+'_'
-        pngname += fullname(yaxis)+'_vs_'+fullname(xaxis)+'_'+'corr'+str(corr)+'.png'    
+        pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)+'.png'    
 
 
     # Render the plot
 
     print('%sRendering plot' % now())
 
-    make_plot(img.data,xmin,xmax,ymin,ymax,xlabel,ylabel,title,pngname,figx=xcanvas/60,figy=ycanvas/60,doblack=doblack)
+    make_plot(img.data,
+        xmin,
+        xmax,
+        ymin,
+        ymax,
+        xlabel,
+        ylabel,
+        title,
+        pngname,
+        bgcol,
+        fontsize,
+        figx=xcanvas/60,
+        figy=ycanvas/60)
 
 
     # Stop the clock
