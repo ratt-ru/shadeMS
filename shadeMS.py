@@ -65,6 +65,10 @@ def now():
     return msg
 
 
+def stamp():
+    return str(time.time()).replace('.','')
+
+
 def blank():
     print('%s' % now())
 
@@ -115,6 +119,7 @@ def main():
     parser.add_option('--bgcol',dest='bgcol',help='RGB hex code for background colour (default = FFFFFF)',default='FFFFFF')
     parser.add_option('--fontsize',dest='fontsize',help='Font size for all text elements (default = 20)',default=20)
     parser.add_option('--png',dest='pngname',help='PNG name (default = something verbose)',default='')
+    parser.add_option('--stamp',dest='stamp',help='Add timestamp to default PNG name',action='store_true',default=False)
 
 
     # Assign inputs
@@ -139,6 +144,7 @@ def main():
     bgcol = '#'+options.bgcol.lstrip('#')
     fontsize = options.fontsize
     pngname = options.pngname
+    stamp = options.stamp
 
 
     # Trap no MS
@@ -385,7 +391,10 @@ def main():
     if pngname == '':
         pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
         pngname += 'SPW-'+myspws.replace(',','-')+'_FIELD-'+myfields.replace(',','-')+'_'
-        pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)+'.png'    
+        pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
+        if stamp:
+            pngname += '_'+stamp()
+        pngname += '.png'    
 
 
     # Render the plot
