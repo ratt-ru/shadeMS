@@ -100,7 +100,7 @@ def main():
     # Command line options
 
     parser = OptionParser(usage='%prog [options] ms')
-    parser.add_option('--xaxis',dest='xaxis',help='[t]ime (default), [f]requency, [c]hannels, [u], [uv]distance, [r]eal',default='t')
+    parser.add_option('--xaxis',dest='xaxis',help='[t]ime (default), [f]requency, [c]hannels, [u], [uv]distance, [r]eal, [a]mplitude',default='t')
     parser.add_option('--yaxis',dest='yaxis',help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary, [v]',default='a')
     parser.add_option('--col',dest='col',help='Measurement Set column to plot (default = DATA)',default='DATA')
     parser.add_option('--field',dest='myfields',help='Field ID(s) to plot (comma separated list, default = all)',default='all')
@@ -291,6 +291,9 @@ def main():
                 xdata = numpy.append(xdata,numpy.real(group.VISDATA.values[:,:,corr]))
             elif xaxis == 'u':
                 xdata = vv_wavel
+            elif xaxis == 'a':
+                xdata = numpy.append(xdata,numpy.abs(group.VISDATA.values[:,:,corr]))
+
 
 
     # Drop flagged data if required
