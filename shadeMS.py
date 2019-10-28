@@ -119,7 +119,7 @@ def main():
     parser.add_option('--bgcol',dest='bgcol',help='RGB hex code for background colour (default = FFFFFF)',default='FFFFFF')
     parser.add_option('--fontsize',dest='fontsize',help='Font size for all text elements (default = 20)',default=20)
     parser.add_option('--png',dest='pngname',help='PNG name (default = something verbose)',default='')
-    parser.add_option('--stamp',dest='stamp',help='Add timestamp to default PNG name',action='store_true',default=False)
+    parser.add_option('--stamp',dest='dostamp',help='Add timestamp to default PNG name',action='store_true',default=False)
 
 
     # Assign inputs
@@ -144,7 +144,7 @@ def main():
     bgcol = '#'+options.bgcol.lstrip('#')
     fontsize = options.fontsize
     pngname = options.pngname
-    stamp = options.stamp
+    dostamp = options.dostamp
 
 
     # Trap no MS
