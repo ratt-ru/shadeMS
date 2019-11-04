@@ -395,7 +395,7 @@ def main():
         pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
         pngname += 'SPW-'+myspws.replace(',','-')+'_FIELD-'+myfields.replace(',','-')+'_'
         pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
-        if stamp:
+        if dostamp:
             pngname += '_'+stamp()
         pngname += '.png'    
 
