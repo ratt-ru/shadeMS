@@ -230,6 +230,7 @@ def main():
             scan_taq.append('SCAN_NUMBER=='+str(myscan))
         mytaql += ' && ('+' || '.join(scan_taq)+')'
 
+    print(mytaql)
 
     # Read the selected data
 
