@@ -105,7 +105,7 @@ def main():
     parser.add_option('--col',dest='col',help='Measurement Set column to plot (default = DATA)',default='DATA')
     parser.add_option('--field',dest='myfields',help='Field ID(s) to plot (comma separated list, default = all)',default='all')
     parser.add_option('--spw',dest='myspws',help='Spectral windows (DDIDs) to plot (comma separated list, default = all)',default='all')
-    parser.add_option('--scan',dest='myscans',help='Scan numbers to plot (comma separated list, default = all)',default='all')
+#    parser.add_option('--scan',dest='myscans',help='Scan numbers to plot (comma separated list, default = all)',default='all')
     parser.add_option('--corr',dest='corr',help='Correlation index to plot (default = 0)',default=0)
     parser.add_option('--noflags',dest='noflags',help='Plot flagged data (default = False)',action='store_true',default=False)
     parser.add_option('--noconj',dest='noconj',help='Do not show conjugate points in u,v plots (default = plot conjugates)',action='store_true',default=False)
@@ -132,7 +132,7 @@ def main():
     myfields = options.myfields
     corr = int(options.corr)
     myspws = options.myspws
-    myscans = options.myscans
+#    myscans = options.myscans
     noflags = options.noflags
     noconj = options.noconj
     xmin = options.xmin
@@ -224,14 +224,13 @@ def main():
 
     mytaql = '('+' || '.join(field_taq)+') && ('+' || '.join(spw_taq)+')'
 
-    scan_taq = []
-    if myscans != 'all':
-        scans = list(map(int, myscans.split(',')))
-        for myscan in scans:
-            scan_taq.append('SCAN_NUMBER=='+str(myscan))
-        mytaql += ' && ('+' || '.join(scan_taq)+')'
+    # scan_taq = []
+    # if myscans != 'all':
+    #     scans = list(map(int, myscans.split(',')))
+    #     for myscan in scans:
+    #         scan_taq.append('SCAN_NUMBER=='+str(myscan))
+    #     mytaql += ' && ('+' || '.join(scan_taq)+')'
 
-    print(mytaql)
 
     # Read the selected data
 
@@ -404,7 +403,7 @@ def main():
     if pngname == '':
         pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
         pngname += 'SPW-'+myspws.replace(',','-')+'_FIELD-'+myfields.replace(',','-')+'_'
-        pngname += 'SCAN-'+myscans.replace(',','-')+'_'
+#        pngname += 'SCAN-'+myscans.replace(',','-')+'_'
         pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
         if dostamp:
             pngname += '_'+stamp()
