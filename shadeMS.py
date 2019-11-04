@@ -228,7 +228,7 @@ def main():
     if myscans != 'all':
         for myscan in myscans:
             scan_taq.append('SCAN_NUMBER=='+str(myscan))
-        mytaql += ' && ('+' || '.join(scan_taq+')'
+        mytaql += ' && ('+' || '.join(scan_taq)+')'
 
 
     # Read the selected data
