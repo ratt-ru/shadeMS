@@ -227,7 +227,7 @@ def main():
     scan_taq = []
     if myscans != 'all':
         scans = list(map(int, myscans.split(',')))
-        for myscan in myscans:
+        for myscan in scans:
             scan_taq.append('SCAN_NUMBER=='+str(myscan))
         mytaql += ' && ('+' || '.join(scan_taq)+')'
 
