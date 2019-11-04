@@ -79,7 +79,7 @@ def fullname(shortname):
         ('r','Real',''),
         ('i','Imaginary',''),
         ('t','Time','[s]'),
-        ('c','Channel'),
+        ('c','Channel',''),
         ('f','Frequency','[Hz]'),
         ('uv','uv-distance','[wavelengths]'),
         ('u','u','[wavelengths]'),
