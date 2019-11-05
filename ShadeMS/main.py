@@ -128,7 +128,7 @@ def main(argv):
 
     allowed = ['a', 'p', 'r', 'i', 't', 'f', 'c', 'uv', 'u', 'v']
     if xaxis not in allowed or yaxis not in allowed:
-        raise ValueError('xaxis "%d" is unknown. Please check requested axes')
+        raise ValueError('xaxis "%s" is unknown. Please check requested axes' % xaxis)
 
     xfullname, xunits = sms.fullname(xaxis)
     yfullname, yunits = sms.fullname(yaxis)
