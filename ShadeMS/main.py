@@ -17,7 +17,30 @@ import holoviews.operation.datashader as hd
 import datashader as ds
 import dask.dataframe as dd
 from collections import OrderedDict as odict
+import pkg_resources
+import logging
 
+# create logger with 'spam_application'
+log = logging.getLogger('shadems')
+log.setLevel(logging.DEBUG)
+# create file handler which logs even debug messages
+fh = logging.FileHandler('log-shadems.txt')
+fh.setLevel(logging.DEBUG)
+# create console handler with a higher log level
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+# create formatter and add it to the handlers
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fh.setFormatter(formatter)
+ch.setFormatter(formatter)
+# add the handlers to the logger
+log.addHandler(fh)
+log.addHandler(ch)
+
+try:
+    __version__ = pkg_resources.require("shadems")[0].version
+except pkg_resources.DistributionNotFound:
+    __version__ = "dev"
 
 def main(argv):
 
@@ -25,11 +48,12 @@ def main(argv):
 
     # Command line options
 
-    parser = ArgumentParser(description='Rapid Measurement Set plotting with xarray-ms and datashader')
-
+    parser = ArgumentParser(description='Rapid Measurement Set plotting with xarray-ms and datashader. Version {0:s}'.format(__version__))
 
     parser.add_argument('ms', 
                       help='Measurement set')
+    parser.add_argument("-v", "--version", action='version',
+                      version='{:s} version {:s}'.format(parser.prog, __version__))
     parser.add_argument('--xaxis', dest='xaxis',
                       help='[t]ime (default), [f]requency, [c]hannels, [u], [uv]distance, [r]eal, [a]mplitude', default='t')
     parser.add_argument('--yaxis', dest='yaxis',
@@ -104,14 +128,13 @@ def main(argv):
 
     allowed = ['a', 'p', 'r', 'i', 't', 'f', 'c', 'uv', 'u', 'v']
     if xaxis not in allowed or yaxis not in allowed:
-        print('Please check requested axes')
-        sys.exit()
+        raise ValueError('xaxis "%d" is unknown. Please check requested axes')
 
     xfullname, xunits = sms.fullname(xaxis)
     yfullname, yunits = sms.fullname(yaxis)
 
-    print(('%sPlotting %s vs %s' % (sms.now(), yfullname, xfullname)))
-    print(('%sCorrelation index %s' % (sms.now(), str(corr))))
+    log.info('Plotting %s vs %s' % (yfullname, xfullname))
+    log.info('Correlation index %d' % corr)
 
     # Get MS metadata
 
@@ -130,9 +153,9 @@ def main(argv):
         fields = list(map(int, myfields.split(',')))
 
     sms.blank()
-    print(('%sFIELD_ID   NAME' % sms.now()))
+    log.info('FIELD_ID   NAME')
     for i in fields:
-        print(('%s%-10s %-16s' % (sms.now(), i, field_names[i])))
+        log.info('%-10s %-16s' % (i, field_names[i]))
 
     # Sort out SPW selection(s)
 
@@ -142,10 +165,10 @@ def main(argv):
         spws = list(map(int, myspws.split(',')))
 
     sms.blank()
-    print(('%sSPW_ID     NCHAN ' % sms.now()))
+    log.info('SPW_ID     NCHAN ')
     for i in spws:
         nchan = len(chan_freqs.values[i])
-        print(('%s%-10s %-16s' % (sms.now(), i, nchan)))
+        log.info('%-10s %-16s' % (i, nchan))
 
     sms.blank()
 
@@ -163,15 +186,15 @@ def main(argv):
 
     # Read the selected data
 
-    print(('%sReading %s' % (sms.now(), myms)))
-    print(('%s%s column' % (sms.now(), col)))
+    log.info('Reading %s' % (myms))
+    log.info('%s column' % (col))
 
     msdata = xms.xds_from_ms(
         myms, columns=[col, 'TIME', 'FLAG', 'FIELD_ID', 'UVW'], taql_where=mytaql)
 
     # Replace xarray data with a,p,r,i in situ
 
-    print(('%sRearranging the deck chairs' % sms.now()))
+    log.info('Rearranging the deck chairs')
 
     for i in range(0, len(msdata)):
         msdata[i] = msdata[i].rename({col: 'VISDATA'})
@@ -294,14 +317,14 @@ def main(argv):
     # Put plotdata into pandas data frame
     # This should be possible with xarray directly, but for freq plots we need a corner turn
 
-    print(('%sMaking Pandas dataframe' % sms.now()))
+    log.info('Making Pandas dataframe')
 
     dists = {'plotdata': pd.DataFrame(odict([(xaxis, xdata), (yaxis, ydata)]))}
     df = pd.concat(dists, ignore_index=True)
 
     # Run datashader on the pandas df
 
-    print(('%sRunning datashader' % sms.now()))
+    log.info('Running datashader')
 
     canvas = ds.Canvas(xcanvas, ycanvas)
     agg = canvas.points(df, xaxis, yaxis)
@@ -343,7 +366,7 @@ def main(argv):
 
     # Render the plot
 
-    print(('%sRendering plot' % sms.now()))
+    log.info('Rendering plot')
 
     sms.make_plot(img.data,
               xmin,
@@ -364,4 +387,4 @@ def main(argv):
     clock_stop = time.time()
     elapsed = str(round((clock_stop-clock_start), 2))
 
-    print(('%sDone. Elapsed time: %s seconds.' % (sms.now(), elapsed)))
+    log.info('Done. Elapsed time: %s seconds.' % (elapsed))

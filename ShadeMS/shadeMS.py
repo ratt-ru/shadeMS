@@ -9,6 +9,7 @@ import time
 import sys
 import pylab
 import numpy
+from ShadeMS import main
 
 def get_chan_freqs(myms):
     spw_tab = xms.xds_from_table(
@@ -61,7 +62,7 @@ def stamp():
 
 
 def blank():
-    print(('%s' % now()))
+    main.log.info('')
 
 
 def fullname(shortname):
@@ -78,6 +79,5 @@ def fullname(shortname):
     for xx in fullnames:
         if xx[0] == shortname:
             fullname = xx[1]
-            print(xx)
             units = xx[2]
     return fullname, units
