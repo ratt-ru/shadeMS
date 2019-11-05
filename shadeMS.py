@@ -248,6 +248,7 @@ def main():
     ydata = numpy.array(())
     xdata = numpy.array(())
     flags = numpy.array(())
+    t0 = False
 
 
     # Get plot data into a pair of numpy arrays
@@ -289,6 +290,8 @@ def main():
             elif xaxis == 't':
                 # Add t = t - t[0] and make it relative
                 xdata = numpy.append(xdata,numpy.repeat(group.TIME.values,nchan))
+                t0 = xdata[0]
+                xdata = xdata - t0
             elif xaxis == 'uv':
                 xdata = uvdist_wavel
             elif xaxis == 'r':
@@ -394,6 +397,8 @@ def main():
 
     ylabel = yfullname+' '+yunits
     xlabel = xfullname+' '+xunits 
+    if t0:
+        xlabel += ' relative to '+str(t0)
     title = myms+' '+col+' (correlation '+str(corr)+')'
     if pngname == '':
         pngname = prefix+'_'+myms.split('/')[-1]+'_'+col+'_'
