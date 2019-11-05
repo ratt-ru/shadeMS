@@ -68,6 +68,8 @@ def main(argv):
                       help='Font size for all text elements (default = 20)', default=20)
     parser.add_argument('--png', dest='pngname',
                       help='PNG name (default = something verbose)', default='')
+    parser.add_argument('--prefix',dest='prefix',
+                      help='Prefix string for default PNG name (default = plot)',default='plot')
     parser.add_argument('--stamp', dest='dostamp',
                       help='Add timestamp to default PNG name', action='store_true', default=False)
 
@@ -94,6 +96,7 @@ def main(argv):
     bgcol = '#'+options.bgcol.lstrip('#')
     fontsize = options.fontsize
     pngname = options.pngname
+    prefix = options.prefix
     dostamp = options.dostamp
 
     # Trap no MS
@@ -181,6 +184,7 @@ def main(argv):
     ydata = numpy.array(())
     xdata = numpy.array(())
     flags = numpy.array(())
+    t0 = False
 
     # Get plot data into a pair of numpy arrays
 
@@ -224,9 +228,10 @@ def main(argv):
                 xdata = numpy.append(xdata, numpy.tile(
                     numpy.arange(nchan), nrows))
             elif xaxis == 't':
-                # Add t = t - t[0] and make it relative
                 xdata = numpy.append(
                     xdata, numpy.repeat(group.TIME.values, nchan))
+                t0 = xdata[0]
+                xdata = xdata - t0
             elif xaxis == 'uv':
                 xdata = uvdist_wavel
             elif xaxis == 'r':
@@ -331,9 +336,11 @@ def main(argv):
 
     ylabel = yfullname+' '+yunits
     xlabel = xfullname+' '+xunits
+    if t0:
+        xlabel += ' relative to '+str(t0)
     title = myms+' '+col+' (correlation '+str(corr)+')'
     if pngname == '':
-        pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
+        pngname = prefix+'_'+myms.split('/')[-1]+'_'+col+'_'
         pngname += 'SPW-' + \
             myspws.replace(',', '-')+'_FIELD-'+myfields.replace(',', '-')+'_'
         pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
