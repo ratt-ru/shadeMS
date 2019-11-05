@@ -78,6 +78,5 @@ def fullname(shortname):
     for xx in fullnames:
         if xx[0] == shortname:
             fullname = xx[1]
-            print(xx)
             units = xx[2]
     return fullname, units
