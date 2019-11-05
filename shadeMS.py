@@ -120,6 +120,7 @@ def main():
     parser.add_option('--bgcol',dest='bgcol',help='RGB hex code for background colour (default = FFFFFF)',default='FFFFFF')
     parser.add_option('--fontsize',dest='fontsize',help='Font size for all text elements (default = 20)',default=20)
     parser.add_option('--png',dest='pngname',help='PNG name (default = something verbose)',default='')
+    parser.add_option('--prefix',dest='prefix',help='Prefix for default PNG name (default = plot)',default='plot')
     parser.add_option('--stamp',dest='dostamp',help='Add timestamp to default PNG name',action='store_true',default=False)
 
 
@@ -146,6 +147,7 @@ def main():
     bgcol = '#'+options.bgcol.lstrip('#')
     fontsize = options.fontsize
     pngname = options.pngname
+    prefix = options.prefix
     dostamp = options.dostamp
 
 
@@ -212,7 +214,7 @@ def main():
     blank()
 
 
-    # Construct TaQL string based on FIELD, SPW and SCAN selections
+    # Construct TaQL string based on FIELD and SPW selections
 
     field_taq = []
     for fld in fields:
@@ -223,13 +225,6 @@ def main():
         spw_taq.append('DATA_DESC_ID=='+str(spw))
 
     mytaql = '('+' || '.join(field_taq)+') && ('+' || '.join(spw_taq)+')'
-
-    # scan_taq = []
-    # if myscans != 'all':
-    #     scans = list(map(int, myscans.split(',')))
-    #     for myscan in scans:
-    #         scan_taq.append('SCAN_NUMBER=='+str(myscan))
-    #     mytaql += ' && ('+' || '.join(scan_taq)+')'
 
 
     # Read the selected data
@@ -401,7 +396,7 @@ def main():
     xlabel = xfullname+' '+xunits 
     title = myms+' '+col+' (correlation '+str(corr)+')'
     if pngname == '':
-        pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
+        pngname = prefix+'_'+myms.split('/')[-1]+'_'+col+'_'
         pngname += 'SPW-'+myspws.replace(',','-')+'_FIELD-'+myfields.replace(',','-')+'_'
 #        pngname += 'SCAN-'+myscans.replace(',','-')+'_'
         pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
