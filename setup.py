@@ -4,23 +4,16 @@ import os
 from setuptools import setup
 
 requirements = [
-"colorcet",
-"holoviews",
-"pandas",
-"dask[complete]",
 "dask-ms[xarray]",
+"dask[dataframe]",
 "datashader",
-"future",
-"matplotlib<=2.2.3; python_version <= '2.7'",
+"holoviews",
 "matplotlib>2.2.3; python_version >= '3.5'",
-"numpy>=1.14",
-"python-casacore",
-"xarray",
-"requests[cmd]",
+"requests",
 ]
 
 PACKAGE_NAME = 'shadems'
-__version__ = '0.0.1'
+__version__ = '0.0.2'
 
 setup(name = PACKAGE_NAME,
     version = __version__,
