@@ -9,7 +9,9 @@ import time
 import sys
 import pylab
 import numpy
-from ShadeMS import main
+import ShadeMS
+
+log = ShadeMS.log
 
 def get_chan_freqs(myms):
     spw_tab = xms.xds_from_table(
@@ -62,7 +64,7 @@ def stamp():
 
 
 def blank():
-    main.log.info('')
+    log.info('')
 
 
 def fullname(shortname):

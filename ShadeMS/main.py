@@ -5,7 +5,7 @@ import matplotlib
 matplotlib.use('agg')
 
 from argparse import ArgumentParser
-import logging
+import ShadeMS
 from ShadeMS import shadeMS as sms
 import time
 import numpy
@@ -18,24 +18,8 @@ import datashader as ds
 import dask.dataframe as dd
 from collections import OrderedDict as odict
 import pkg_resources
-import logging
 
-# create logger with 'spam_application'
-log = logging.getLogger('shadems')
-log.setLevel(logging.DEBUG)
-# create file handler which logs even debug messages
-fh = logging.FileHandler('log-shadems.txt')
-fh.setLevel(logging.DEBUG)
-# create console handler with a higher log level
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-# create formatter and add it to the handlers
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-fh.setFormatter(formatter)
-ch.setFormatter(formatter)
-# add the handlers to the logger
-log.addHandler(fh)
-log.addHandler(ch)
+log = ShadeMS.log
 
 try:
     __version__ = pkg_resources.require("shadems")[0].version

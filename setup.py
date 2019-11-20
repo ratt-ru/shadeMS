@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import os
-from setuptools import setup
+from setuptools import setup, find_packages
 
 requirements = [
 "dask-ms[xarray]",
@@ -21,7 +21,7 @@ setup(name = PACKAGE_NAME,
     author = "Ian Heywood",
     author_email = "ian.heywood@gmail.com",
     url = "https://github.com/IanHeywood/shadeMS",
-    packages=["ShadeMS"], 
+    packages=find_packages(), 
     install_requires = requirements,
     include_package_data = True,
     scripts=["bin/" + i for i in os.listdir("bin")],
