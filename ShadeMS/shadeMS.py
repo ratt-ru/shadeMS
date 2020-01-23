@@ -33,18 +33,27 @@ def freq_to_wavel(ff):
     return c/ff
 
 
-def make_plot(data, xmin, xmax, ymin, ymax, xlabel, ylabel, title, pngname, bgcol, fontsize, figx=24, figy=12):
+def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin, ymax, xlabel, ylabel, title, pngname, bgcol, fontsize, figx=24, figy=12):
 
     def match(artist):
         return artist.__module__ == 'matplotlib.text'
 
     fig = pylab.figure(figsize=(figx, figy))
     ax = fig.add_subplot(111, facecolor=bgcol)
-    ax.imshow(X=data, extent=[xmin, xmax, ymin, ymax],
+    ax.imshow(X=data, extent=[data_xmin, data_xmax, data_ymin, data_ymax],
               aspect='auto', origin='upper')
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
+    ax.plot(xmin,ymin,'.',alpha=0.0)
+    ax.plot(xmax,ymax,'.',alpha=0.0)
+
+    ax.set_xlim([numpy.min((data_xmin,xmin)),
+        numpy.max((data_xmax,xmax))])
+
+    ax.set_ylim([numpy.min((data_ymin,ymin)),
+        numpy.max((data_ymax,ymax))])
+
     for textobj in fig.findobj(match=match):
         textobj.set_fontsize(fontsize)
     fig.savefig(pngname, bbox_inches='tight')

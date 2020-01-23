@@ -204,7 +204,6 @@ def main(argv):
             if xaxis == 'uv' or xaxis == 'u' or yaxis == 'v':
                 uu = group.UVW.values[:, 0]
                 vv = group.UVW.values[:, 1]
-                print ('--- uu ',len(uu))
                 chans_wavel = sms.freq_to_wavel(chans)
                 uu_wavel = numpy.ravel(
                     uu / numpy.transpose(numpy.array([chans_wavel, ]*len(uu))))
@@ -225,7 +224,7 @@ def main(argv):
                 ydata = numpy.append(ydata, numpy.imag(
                     group.VISDATA.values[:, :, corr]))
             elif yaxis == 'v':
-            	ydata = numpy.append(ydata, vv_wavel)
+                ydata = numpy.append(ydata, vv_wavel)
 
             if xaxis == 'f':
                 xdata = numpy.append(xdata, numpy.tile(chans, nrows))
@@ -242,7 +241,7 @@ def main(argv):
                 xdata = numpy.append(xdata, numpy.real(
                     group.VISDATA.values[:, :, corr]))
             elif xaxis == 'u':
-            	xdata = numpy.append(xdata, uu_wavel)
+                xdata = numpy.append(xdata, uu_wavel)
             elif xaxis == 'a':
                 xdata = numpy.append(xdata, numpy.abs(
                     group.VISDATA.values[:, :, corr]))
@@ -319,22 +318,28 @@ def main(argv):
 
     # Set plot limits based on data extent or user values for axis labels
 
+    data_xmin = numpy.min(agg.coords[xaxis].values)
+    data_ymin = numpy.min(agg.coords[yaxis].values)
+    data_xmax = numpy.max(agg.coords[xaxis].values)
+    data_ymax = numpy.max(agg.coords[yaxis].values)
+
     if ymin == '':
-        ymin = numpy.min(agg.coords[yaxis].values)
+        ymin = data_ymin
     else:
         ymin = float(ymin)
     if ymax == '':
-        ymax = numpy.max(agg.coords[yaxis].values)
+        ymax = data_ymax
     else:
         ymax = float(ymax)
     if xmin == '':
-        xmin = numpy.min(agg.coords[xaxis].values)
+        xmin = data_xmin
     else:
         xmin = float(xmin)
     if xmax == '':
-        xmax = numpy.max(agg.coords[xaxis].values)
+        xmax = data_xmax
     else:
         xmax = float(xmax)
+
 
     # Setup plot labels and PNG name
 
@@ -355,6 +360,10 @@ def main(argv):
     log.info('Rendering plot')
 
     sms.make_plot(img.data,
+              data_xmin,
+              data_xmax,
+              data_ymin,
+              data_ymax,
               xmin,
               xmax,
               ymin,
