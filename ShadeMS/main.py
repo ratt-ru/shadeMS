@@ -196,6 +196,7 @@ def main(argv):
         nchan = group.VISDATA.values.shape[1]
         fld = group.FIELD_ID
         ddid = group.DATA_DESC_ID
+
         if fld in fields and ddid in spws:
             chans = chan_freqs.values[ddid]
             flags = numpy.append(flags, group.FLAG.values[:, :, corr])
@@ -203,6 +204,7 @@ def main(argv):
             if xaxis == 'uv' or xaxis == 'u' or yaxis == 'v':
                 uu = group.UVW.values[:, 0]
                 vv = group.UVW.values[:, 1]
+                print ('--- uu ',len(uu))
                 chans_wavel = sms.freq_to_wavel(chans)
                 uu_wavel = numpy.ravel(
                     uu / numpy.transpose(numpy.array([chans_wavel, ]*len(uu))))
@@ -223,7 +225,7 @@ def main(argv):
                 ydata = numpy.append(ydata, numpy.imag(
                     group.VISDATA.values[:, :, corr]))
             elif yaxis == 'v':
-                ydata = uu_wavel
+            	ydata = numpy.append(ydata, vv_wavel)
 
             if xaxis == 'f':
                 xdata = numpy.append(xdata, numpy.tile(chans, nrows))
@@ -235,12 +237,12 @@ def main(argv):
                 xdata = numpy.append(
                     xdata, numpy.repeat(group.TIME.values, nchan))
             elif xaxis == 'uv':
-                xdata = uvdist_wavel
+                xdata = numpy.append(xdata, uvdist_wavel)
             elif xaxis == 'r':
                 xdata = numpy.append(xdata, numpy.real(
                     group.VISDATA.values[:, :, corr]))
             elif xaxis == 'u':
-                xdata = vv_wavel
+            	xdata = numpy.append(xdata, uu_wavel)
             elif xaxis == 'a':
                 xdata = numpy.append(xdata, numpy.abs(
                     group.VISDATA.values[:, :, corr]))
