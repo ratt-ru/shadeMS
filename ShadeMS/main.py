@@ -192,8 +192,8 @@ def main(argv):
     # Get plot data into a pair of numpy arrays
 
     for group in msdata:
-        nrows = group.VISDATA.values.shape[0]
-        nchan = group.VISDATA.values.shape[1]
+        nrows = group.VISDATA.shape[0]
+        nchan = group.VISDATA.shape[1]
         fld = group.FIELD_ID
         ddid = group.DATA_DESC_ID
 
