@@ -48,6 +48,8 @@ def main(argv):
                       help='Field ID(s) to plot (comma separated list, default = all)', default='all')
     parser.add_argument('--spws', dest='myspws',
                       help='Spectral windows (DDIDs) to plot (comma separated list, default = all)', default='all')
+    parser.add_argument('--scans', dest='myscans',
+                      help='Scans to plot (comma separated list, default = all)', default='all')    
     parser.add_argument('--corr', dest='corr',
                       help='Correlation index to plot (default = 0)', default=0)
     parser.add_argument('--noflags', dest='noflags',
@@ -89,6 +91,7 @@ def main(argv):
     myfields = options.myfields
     corr = int(options.corr)
     myspws = options.myspws
+    myscans = options.myscans
     noflags = options.noflags
     noconj = options.noconj
     xmin = options.xmin
@@ -129,10 +132,6 @@ def main(argv):
 
     if myfields == 'all':
         fields = field_ids
-        # fields = []
-        # for group in msdata:
-        #   fields.append(group.FIELD_ID)
-        # fields = numpy.unique(fields)
     else:
         fields = list(map(int, myfields.split(',')))
 
@@ -156,8 +155,10 @@ def main(argv):
 
     sms.blank()
 
-    # Construct TaQL string based on FIELD and SPW selections
+    # Construct TaQL string based on FIELD, SPW and SCAN selections
 
+    group_cols = ['FIELD_ID', 'DATA_DESC_ID']
+    
     field_taq = []
     for fld in fields:
         field_taq.append('FIELD_ID=='+str(fld))
@@ -166,15 +167,32 @@ def main(argv):
     for spw in spws:
         spw_taq.append('DATA_DESC_ID=='+str(spw))
 
+    
+    scan_taq = []
+    if myscans != 'all':
+        group_cols.append('SCAN_NUMBER')
+        scans = list(map(int, myscans.split(',')))
+        for scan in scans:
+            scan_taq.append('SCAN_NUMBER=='+str(scan))
+
+
     mytaql = '('+' || '.join(field_taq)+') && ('+' || '.join(spw_taq)+')'
+
+    if scan_taq:
+        mytaql += ' && ('+' || '.join(scan_taq)+')'
+
+    print(mytaql)
 
     # Read the selected data
 
     log.info('Reading %s' % (myms))
     log.info('%s column' % (col))
+    
 
     msdata = xms.xds_from_ms(
-        myms, columns=[col, 'TIME', 'FLAG', 'FIELD_ID', 'UVW'], taql_where=mytaql)
+        myms, columns=[col, 'TIME', 'FLAG', 'FIELD_ID', 'UVW'], 
+        group_cols=group_cols,
+        taql_where=mytaql)
 
     # Replace xarray data with a,p,r,i in situ
 
@@ -348,8 +366,9 @@ def main(argv):
     title = myms+' '+col+' (correlation '+str(corr)+')'
     if pngname == '':
         pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
-        pngname += 'SPW-' + \
-            myspws.replace(',', '-')+'_FIELD-'+myfields.replace(',', '-')+'_'
+        pngname += 'SPW-' + myspws.replace(',', '-')+ \
+            '_FIELD-'+myfields.replace(',', '-')+\
+            '_SCAN-'+myscans.replace(',', '-')+'_'
         pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
         if dostamp:
             pngname += '_'+sms.stamp()

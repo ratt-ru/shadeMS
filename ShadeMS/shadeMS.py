@@ -41,7 +41,7 @@ def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin
     fig = pylab.figure(figsize=(figx, figy))
     ax = fig.add_subplot(111, facecolor=bgcol)
     ax.imshow(X=data, extent=[data_xmin, data_xmax, data_ymin, data_ymax],
-              aspect='auto', origin='upper')
+              aspect='auto', origin='lower')
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
