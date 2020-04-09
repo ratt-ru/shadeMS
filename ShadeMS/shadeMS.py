@@ -29,7 +29,7 @@ def get_chan_freqs(myms):
 
 def get_field_names(myms):
     field_tab = xms.xds_from_table(
-        myms+'::FIELD', columns=['NAME', 'SOURCE_ID'])
+        myms+'::FIELD', columns=['NAME','SOURCE_ID'])
     field_ids = field_tab[0].SOURCE_ID.values
     field_names = field_tab[0].NAME.values
     return field_ids, field_names
@@ -40,6 +40,15 @@ def get_scan_numbers(myms):
         myms, columns=['SCAN_NUMBER'])
     scan_numbers = numpy.unique(tab[0].SCAN_NUMBER.values)
     return scan_numbers
+
+
+def get_antennas(myms):
+    tab = xms.xds_from_table(
+        myms, columns=['ANTENNA1','ANTENNA2'])
+    ant1 = numpy.unique(tab[0].ANTENNA1.values)
+    ant2 = numpy.unique(tab[0].ANTENNA2.values)
+    ants = numpy.unique(numpy.concatenate((ant1,ant2)))
+    return ants
 
 
 def freq_to_wavel(ff):
@@ -81,7 +90,7 @@ def fullname(shortname):
     return fullname, units
 
 
-def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,p,q,spws,fields,corr,noflags,noconj):
+def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr,noflags,noconj):
 
     msdata = xms.xds_from_ms(
         myms, columns=[col, 'TIME', 'FLAG', 'FIELD_ID', 'UVW'], 

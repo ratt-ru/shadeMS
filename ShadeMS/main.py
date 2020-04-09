@@ -51,8 +51,8 @@ def main(argv):
                       help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary, [v]', default='a')
     data_opts.add_argument('--col', dest='col',
                       help='Measurement Set column to plot (default = DATA)', default='DATA')
-    data_opts.add_argument('--p', dest='antenna1',
-                      help='Antenna 1 (comma-separated list, default = all)', default='all')
+    data_opts.add_argument('--ant', dest='myants',
+                      help='Antenna to plot (comma-separated list, default = all)', default='all')
     data_opts.add_argument('--q', dest='antenna2',
                       help='Antenna 2 (comma-separated list, default = all)', default='all')
     data_opts.add_argument('--spw', dest='myspws',
@@ -67,7 +67,7 @@ def main(argv):
 
     figure_opts = parser.add_argument_group('Plot settings')
     figure_opts.add_argument('--iterate', dest='iterate',
-                      help='Set to p, q, spw, field or scan to produce a plot per selection or MS content (default = do not iterate)', default='')
+                      help='Set to ant, q, spw, field or scan to produce a plot per selection or MS content (default = do not iterate)', default='')
     figure_opts.add_argument('--noflags', dest='noflags',
                       help='Enable to include flagged data', action='store_true', default=False)
     figure_opts.add_argument('--noconj', dest='noconj',
@@ -106,7 +106,7 @@ def main(argv):
     xaxis = options.xaxis.lower()
     yaxis = options.yaxis.lower()
     col = options.col.upper()
-    p = options.antenna1
+    myants = options.myants
     q = options.antenna2
     myspws = options.myspws
     myfields = options.myfields
@@ -155,95 +155,76 @@ def main(argv):
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
 
-    # Default group cols
+    log.info('Measurement Set is %s' % myms)
+    log.info('Plotting %s column' % col)
+    log.info('Plotting correlation product %d' %corr)
+
     group_cols = ['FIELD_ID', 'DATA_DESC_ID']
-
-
-    # # Sort out SPW selection
-
     chan_freqs = sms.get_chan_freqs(myms)
-    # if myspws == 'all':
-    #     spws = numpy.arange(len(chan_freqs))
-    # else:
-    #     spws = list(map(int, myspws.split(',')))    
 
-
-    # # Sort out field selection
-
-    # field_ids, field_names = sms.get_field_names(myms)
-    # if myfields == 'all':
-    #     fields = field_ids
-    # else:
-    #     fields = list(map(int, myfields.split(',')))
-
-
-    # # Sort out scan selection
-
-    # if myscans != 'all':
-    #     group_cols.append('SCAN_NUMBER')
-    #     scans = list(map(int, myscans.split(',')))
-    # else:
-    #     scans = sms.get_scan_numbers(myms)
-
-
-    # Construct TaQL string based on FIELD, SPW and SCAN selections
     
     mytaql = []
 
-    if myfields != 'all' and iterate != 'field':
+    if myants != 'all': 
+        ant_taql = []
+        group_cols.append('ANTENNA1')
+        ants = list(map(int, myants.split(',')))
+        if iterate != 'ant':
+            for ant in ants:
+                ant_taql.append('ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant))
+            mytaql.append(('('+' || '.join(ant_taql)+')'))
+            log.info('Considering antenna(s): %s' % ants)
+    else:
+        log.info('Considering all antennas')
+
+
+    if myfields != 'all': 
         field_taql = []
         fields = list(map(int, myfields.split(',')))
-        for fld in fields:
-            field_taql.append('FIELD_ID=='+str(fld))
-        mytaql.append(('('+' || '.join(field_taql)+')'))
+        if iterate != 'field':
+            for fld in fields:
+                field_taql.append('FIELD_ID=='+str(fld))
+            mytaql.append(('('+' || '.join(field_taql)+')'))
+            log.info('Considering field(s): %s' % fields)
     else:
-        fields, field_names = sms.get_field_names(myms) 
+        fields, field_names = sms.get_field_names(myms)
+        log.info('Considering all fields')
 
-    if myspws != 'all' and iterate != 'spw':
+
+    if myspws != 'all': 
         spw_taql = []
         spws = list(map(int, myspws.split(',')))    
-        for spw in spws:
-            spw_taql.append('DATA_DESC_ID=='+str(spw))
-        mytaql.append(('('+' || '.join(spw_taql)+')'))
+        if iterate != 'spw':
+            for spw in spws:
+                spw_taql.append('DATA_DESC_ID=='+str(spw))
+            mytaql.append(('('+' || '.join(spw_taql)+')'))
+            log.info('Considering SPW(s): %s' % fields)
     else:
-        spws = numpy.arange(len(chan_freqs)) 
+        spws = numpy.arange(len(chan_freqs))
+        log.info('Considering all SPWs') 
 
-    if myscans != 'all' and iterate != 'scan':
+
+    if myscans != 'all':
         scan_taql = []
         group_cols.append('SCAN_NUMBER')
         scans = list(map(int, myscans.split(',')))
-        for scan in scans:
-            scan_taql.append('SCAN_NUMBER=='+str(scan))
-        mytaql.append(('('+' || '.join(scan_taql)+')'))
+        if iterate != 'scan':
+            for scan in scans:
+                scan_taql.append('SCAN_NUMBER=='+str(scan))
+            mytaql.append(('('+' || '.join(scan_taql)+')'))
+            log.info('Considering scan(s): %s' %scans)
+    else:
+        log.info('Considering all scans')
+
 
     if mytaql:
         mytaql = ' && '.join(mytaql)
     else:
         mytaql = ''
 
-#    mytaql = '('+' || '.join(field_taq)+') && ('+' || '.join(spw_taq)+')'
-
     print(mytaql)
-
-    # log.info('Plotting %s vs %s' % (yfullname, xfullname))
-    # log.info('Correlation index %d' % corr)
-    # sms.blank()
-    # log.info('FIELD_ID   NAME')
-    # for i in fields:
-    #     log.info('%-10s %-16s' % (i, field_names[i]))
-    # sms.blank()
-    # log.info('SPW_ID     NCHAN ')
-    # for i in spws:
-    #     nchan = len(chan_freqs.values[i])
-    #     log.info('%-10s %-16s' % (i, nchan))
-    # sms.blank()
-
-    # Read the selected data
-
-    log.info('Reading %s' % (myms))
-    log.info('%s column' % (col))
     
-    xdata,ydata = sms.getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,p,q,spws,fields,corr,noflags,noconj)
+    xdata,ydata = sms.getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr,noflags,noconj)
 
     img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata,ydata,xaxis,yaxis,
                     xcanvas,ycanvas,xmin,xmax,ymin,ymax,mycmap,normalize) 
