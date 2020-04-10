@@ -156,8 +156,8 @@ def main(argv):
     # ---------------------------------------------------------------------------------------------------------------------------------------------
 
     log.info('Measurement Set is %s' % myms)
-    log.info('Plotting %s column' % col)
-    log.info('Plotting correlation product %d' %corr)
+    log.info('Plotting: %s column' % col)
+    log.info('--------- correlation product %d' %corr)
 
     group_cols = ['FIELD_ID', 'DATA_DESC_ID']
     chan_freqs = sms.get_chan_freqs(myms)
@@ -173,9 +173,9 @@ def main(argv):
             for ant in ants:
                 ant_taql.append('ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant))
             mytaql.append(('('+' || '.join(ant_taql)+')'))
-            log.info('Considering antenna(s): %s' % ants)
+            log.info('--------- antenna(s): %s' % ants)
     else:
-        log.info('Considering all antennas')
+        log.info('--------- all antennas')
 
 
     if myfields != 'all': 
@@ -185,10 +185,10 @@ def main(argv):
             for fld in fields:
                 field_taql.append('FIELD_ID=='+str(fld))
             mytaql.append(('('+' || '.join(field_taql)+')'))
-            log.info('Considering field(s): %s' % fields)
+            log.info('--------- field(s): %s' % fields)
     else:
         fields, field_names = sms.get_field_names(myms)
-        log.info('Considering all fields')
+        log.info('--------- all fields')
 
 
     if myspws != 'all': 
@@ -198,10 +198,10 @@ def main(argv):
             for spw in spws:
                 spw_taql.append('DATA_DESC_ID=='+str(spw))
             mytaql.append(('('+' || '.join(spw_taql)+')'))
-            log.info('Considering SPW(s): %s' % fields)
+            log.info('--------- SPW(s): %s' % fields)
     else:
         spws = numpy.arange(len(chan_freqs))
-        log.info('Considering all SPWs') 
+        log.info('--------- all SPWs') 
 
 
     if myscans != 'all':
@@ -212,9 +212,9 @@ def main(argv):
             for scan in scans:
                 scan_taql.append('SCAN_NUMBER=='+str(scan))
             mytaql.append(('('+' || '.join(scan_taql)+')'))
-            log.info('Considering scan(s): %s' %scans)
+            log.info('--------- scan(s): %s' %scans)
     else:
-        log.info('Considering all scans')
+        log.info('--------- all scans')
 
 
     if mytaql:
@@ -223,52 +223,59 @@ def main(argv):
         mytaql = ''
 
     print(mytaql)
-    
-    xdata,ydata = sms.getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr,noflags,noconj)
 
-    img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata,ydata,xaxis,yaxis,
-                    xcanvas,ycanvas,xmin,xmax,ymin,ymax,mycmap,normalize) 
+    if iterate == '':
 
+        xdata,ydata = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, xaxis, yaxis,
+                        spws,fields,corr,noflags,noconj)
 
+        img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
+                        xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
 
+        # Setup plot labels and PNG name
 
-    # Setup plot labels and PNG name
+        ylabel = yfullname+' '+yunits
+        xlabel = xfullname+' '+xunits
+        title = myms+' '+col+' (correlation '+str(corr)+')'
+        if pngname == '':
+            pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
+            pngname += 'SPW-' + myspws.replace(',', '-')+ \
+                '_FIELD-'+myfields.replace(',', '-')+\
+                '_SCAN-'+myscans.replace(',', '-')+'_'
+            pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
+            if dostamp:
+                pngname += '_'+sms.stamp()
+            pngname += '.png'
 
-    ylabel = yfullname+' '+yunits
-    xlabel = xfullname+' '+xunits
-    title = myms+' '+col+' (correlation '+str(corr)+')'
-    if pngname == '':
-        pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
-        pngname += 'SPW-' + myspws.replace(',', '-')+ \
-            '_FIELD-'+myfields.replace(',', '-')+\
-            '_SCAN-'+myscans.replace(',', '-')+'_'
-        pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
-        if dostamp:
-            pngname += '_'+sms.stamp()
-        pngname += '.png'
+        # Render the plot
 
-    # Render the plot
+        sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
+                        xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
+                        figx=xcanvas/60,figy=ycanvas/60)
 
-    log.info('Rendering plot')
+    elif iterate == 'field':
 
-    sms.make_plot(img_data,
-              data_xmin,
-              data_xmax,
-              data_ymin,
-              data_ymax,
-              xmin,
-              xmax,
-              ymin,
-              ymax,
-              xlabel,
-              ylabel,
-              title,
-              pngname,
-              bgcol,
-              fontsize,
-              figx=xcanvas/60,
-              figy=ycanvas/60)
+        log.info('Iterating over fields (%d in total)' % len(fields))
 
+        for field in fields:
+
+            taql_i = mytaql+' (FIELD_ID=='+str(field)+')'
+
+            print(taql_i)
+
+            xdata,ydata = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
+                            spws,fields,corr,noflags,noconj)
+
+            img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
+                            xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
+            ylabel = yfullname+' '+yunits
+            xlabel = xfullname+' '+xunits
+            title = myms+' '+col+' (correlation '+str(corr)+')'
+            pngname = 'plot_'+str(field)+'.png'
+
+            sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
+                            xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
+                            figx=xcanvas/60,figy=ycanvas/60)
     # Stop the clock
 
     clock_stop = time.time()

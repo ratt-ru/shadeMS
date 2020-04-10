@@ -99,7 +99,7 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr
 
     # Replace xarray data with a,p,r,i in situ
 
-    log.info('Rearranging the deck chairs')
+    log.info('Getting plot data, please wait')
 
     for i in range(0, len(msdata)):
         msdata[i] = msdata[i].rename({col: 'VISDATA'})
@@ -265,11 +265,14 @@ def generate_pngname(myms,col,corr,xfullname,xunits,yfullname,yunits,spwstr,fiel
         if dostamp:
             pngname += '_'+sms.stamp()
         pngname += '.png'
+    return pngname
 
 
 
 def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin, ymax, 
                 xlabel, ylabel, title, pngname, bgcol, fontsize, figx=24, figy=12):
+
+    log.info('Rendering plot')
 
     def match(artist):
         return artist.__module__ == 'matplotlib.text'
@@ -295,7 +298,8 @@ def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin
     ax = fig.add_subplot(111, facecolor=bgcol)
     ax.imshow(X=data, extent=[data_xmin, data_xmax, data_ymin, data_ymax],
               aspect='auto', origin='lower')
-    ax.set_title(title)
+#    ax.set_title(title)
+    fig.suptitle(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.plot(xmin,ymin,'.',alpha=0.0)
