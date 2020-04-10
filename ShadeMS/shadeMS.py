@@ -96,14 +96,15 @@ def fullname(shortname):
 
 def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr,noflags,noconj):
 
+    ms_cols = [col, 'TIME', 'FLAG']
+    if xaxis == 'uv' or xaxis == 'u' or yaxis == 'v': ms_cols.append('UVW')
+
     msdata = xms.xds_from_ms(
-        myms, columns=[col, 'TIME', 'FLAG', 'FIELD_ID', 'UVW'], 
+        myms, columns=ms_cols,# 'FIELD_ID', 'UVW'], 
         group_cols=group_cols,
         taql_where=mytaql)
 
-    # Replace xarray data with a,p,r,i in situ
-
-    log.info('Getting plot data, please wait...')
+    log.info('                 : Reading MS, please wait')
 
     for i in range(0, len(msdata)):
         msdata[i] = msdata[i].rename({col: 'VISDATA'})
@@ -272,7 +273,7 @@ def generate_pngname(myms,col,corr,xfullname,xunits,yfullname,yunits,spwstr,fiel
 def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin, ymax, 
                 xlabel, ylabel, title, pngname, bgcol, fontsize, figx=24, figy=12):
 
-    log.info('Rendering plot')
+    log.info('                 : Rendering image')
 
     def match(artist):
         return artist.__module__ == 'matplotlib.text'
@@ -314,7 +315,7 @@ def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin
         textobj.set_fontsize(fontsize)
     fig.savefig(pngname, bbox_inches='tight')
 
-    fig.clf()
+    pylab.close()
 
     return pngname
 

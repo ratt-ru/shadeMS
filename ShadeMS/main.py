@@ -53,10 +53,10 @@ def main(argv):
                       help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary, [v]', default='a')
     data_opts.add_argument('--col', dest='col',
                       help='Measurement Set column to plot (default = DATA)', default='DATA')
-    data_opts.add_argument('--ant', dest='myants',
-                      help='Antenna to plot (comma-separated list, default = all)', default='all')
-    data_opts.add_argument('--q', dest='antenna2',
-                      help='Antenna 2 (comma-separated list, default = all)', default='all')
+    data_opts.add_argument('--antenna', dest='myants',
+                      help='Antenna(s) to plot (comma-separated list, default = all)', default='all')
+    # data_opts.add_argument('--q', dest='antenna2',
+    #                   help='Antenna 2 (comma-separated list, default = all)', default='all')
     data_opts.add_argument('--spw', dest='myspws',
                       help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)', default='all')
     data_opts.add_argument('--field', dest='myfields',
@@ -69,7 +69,7 @@ def main(argv):
 
     figure_opts = parser.add_argument_group('Plot settings')
     figure_opts.add_argument('--iterate', dest='iterate',
-                      help='Set to ant, q, spw, field or scan to produce a plot per selection or MS content (default = do not iterate)', default='none')
+                      help='Set to antenna, spw, field or scan to produce a plot per selection or MS content (default = do not iterate)', default='none')
     figure_opts.add_argument('--noflags', dest='noflags',
                       help='Enable to include flagged data', action='store_true', default=False)
     figure_opts.add_argument('--noconj', dest='noconj',
@@ -111,7 +111,7 @@ def main(argv):
     yaxis = options.yaxis.lower()
     col = options.col.upper()
     myants = options.myants
-    q = options.antenna2
+#    q = options.antenna2
     myspws = options.myspws
     myfields = options.myfields
     myscans = options.myscans
@@ -143,7 +143,7 @@ def main(argv):
 
 
     allowed_axes = ['a', 'p', 'r', 'i', 't', 'c', 'f', 'uv', 'u', 'v']
-    allowed_iterators = ['none','antenna','q','spw','field','scan']
+    allowed_iterators = ['none','antenna','spw','field','scan']
 
     if xaxis not in allowed_axes:
         raise ValueError('--xaxis setting "%s" is unknown, please check inputs.' % xaxis)
@@ -157,6 +157,8 @@ def main(argv):
     xfullname, xunits = sms.fullname(xaxis)
     yfullname, yunits = sms.fullname(yaxis)
 
+    ylabel = yfullname+' '+yunits
+    xlabel = xfullname+' '+xunits
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -196,9 +198,11 @@ def main(argv):
                 ant_taql.append('ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant))
             mytaql.append(('('+' || '.join(ant_taql)+')'))
     else:
+        ants = sms.get_antennas(myms)
         log.info('Antenna(s)       : all')
 
 
+    fields, field_names = sms.get_field_names(myms)
     if myfields != 'all': 
         field_taql = []
         fields = list(map(int, myfields.split(',')))
@@ -208,7 +212,6 @@ def main(argv):
                 field_taql.append('FIELD_ID=='+str(fld))
             mytaql.append(('('+' || '.join(field_taql)+')'))
     else:
-        fields, field_names = sms.get_field_names(myms)
         log.info('Field(s)         : all')
 
 
@@ -248,6 +251,8 @@ def main(argv):
 
     if iterate == 'none':
 
+
+
         xdata,ydata = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, xaxis, yaxis,
                         spws,fields,corr,noflags,noconj)
 
@@ -256,8 +261,7 @@ def main(argv):
 
         # Setup plot labels and PNG name
 
-        ylabel = yfullname+' '+yunits
-        xlabel = xfullname+' '+xunits
+
         title = myms+' '+col+' (correlation '+str(corr)+')'
         if pngname == '':
             pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
@@ -277,56 +281,78 @@ def main(argv):
 
     else:
 
-        if iterate == 'field':
+        iters = []
+
+        if iterate == 'antenna':
+            iterate_over = ants
+            group_cols.append('ANTENNA1')
+            group_cols.append('ANTENNA2')
+            for i in iterate_over:
+                iter_taql = 'ANTENNA1=='+str(i)+' || ANTENNA2=='+str(i)
+                iter_info = 'Antenna '+str(i)
+                iters.append((iter_taql,iter_info,i))
+            log.info('Iterating over   : antennas (%d in total)' % len(ants))
+
+        elif iterate == 'field':
             iterate_over = fields
-            taql_prefix = 'FIELD_ID=='
+            for i in iterate_over:
+                iter_taql = 'FIELD_ID=='+str(i)
+                iter_info = '(Field '+str(i)+', '+field_names[i]+')'
+                iters.append((iter_taql,iter_info,i))
             log.info('Iterating over   : fields (%d in total)' % len(fields))
+
         elif iterate == 'spw':
             iterate_over = spws
-            taql_prefix = 'DATA_DESC_ID=='
+            for i in iterate_over:
+                iter_taql = 'DATA_DESC_ID=='+str(i)
+                iter_info = '(SPW '+str(i)+')'
+                iters.append((iter_taql,iter_info,i))
             log.info('Iterating over   : SPWs (%d in total)' % len(spws))
+
         elif iterate == 'scan':
             iterate_over = scans
             group_cols.append('SCAN_NUMBER')
-            taql_prefix = 'SCAN_NUMBER=='
+            for i in iterate_over:
+                iter_taql = 'SCAN_NUMBER=='+str(i)
+                iter_info = '(Scan '+str(i)+')'
+                iters.append((iter_taql,iter_info,i))
             log.info('Iterating over   : scans (%d in total)' % len(scans))
 
         sms.blank()
 
-        i = 1
+        count = 1
 
-        mytaql = ''
-
-        for item in iterate_over:
+        for ii in iters:
 
             clock_start_iter = time.time()
 
-            log.info('Iteration        : %d / %d' % (i,len(iterate_over)))
+            taql_i = ii[0]
+            info_i = ii[1]
 
-#            taql_i = mytaql+'('+taql_prefix+str(item)+')'
+            log.info('Iteration        : %d / %d %s' % (count,len(iterate_over),info_i))
 
-            taql_i = taql_prefix+str(item)
+            if mytaql != '':
+                taql_i = mytaql+' && '+taql_i
 
             xdata,ydata = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
                             spws,fields,corr,noflags,noconj)
 
             img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
                             xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
-            ylabel = yfullname+' '+yunits
-            xlabel = xfullname+' '+xunits
+
             title = myms+' '+col+' CORR'+str(corr)+' SCAN'+str(i)
-            pngname = 'plot_'+str(item)+'.png'
+            pngname = 'plot_'+str(count)+'.png'
 
             sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
                             xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
                             figx=xcanvas/60,figy=ycanvas/60)
 
-            i += 1
+            count += 1
 
             clock_stop_iter = time.time()
             elapsed_iter = str(round((clock_stop_iter-clock_start_iter), 2))
 
-            log.info('Iteration time   : %s seconds' % (elapsed_iter))
+            log.info('                 : Plot took %s seconds' % (elapsed_iter))
 
             sms.blank()
     # Stop the clock
