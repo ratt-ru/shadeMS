@@ -39,7 +39,7 @@ def get_scan_numbers(myms):
     tab = xms.xds_from_table(
         myms, columns=['SCAN_NUMBER'])
     scan_numbers = numpy.unique(tab[0].SCAN_NUMBER.values)
-    return scan_numbers
+    return scan_numbers.tolist()
 
 
 def get_antennas(myms):
@@ -48,7 +48,11 @@ def get_antennas(myms):
     ant1 = numpy.unique(tab[0].ANTENNA1.values)
     ant2 = numpy.unique(tab[0].ANTENNA2.values)
     ants = numpy.unique(numpy.concatenate((ant1,ant2)))
-    return ants
+    # ant_tab = xmd.xds_from_table(
+    #     myms+'::ANTENNA', columns=['NAME','STATION'])
+    # names = ant_tab[0].NAME.values
+    # stations = ant_tab[0].STATION.values
+    return ants.tolist()
 
 
 def freq_to_wavel(ff):
@@ -69,7 +73,7 @@ def stamp():
 
 
 def blank():
-    log.info('')
+    log.info('--------------------------------------------------')
 
 
 def fullname(shortname):
@@ -99,7 +103,7 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr
 
     # Replace xarray data with a,p,r,i in situ
 
-    log.info('Getting plot data, please wait')
+    log.info('Getting plot data, please wait...')
 
     for i in range(0, len(msdata)):
         msdata[i] = msdata[i].rename({col: 'VISDATA'})
@@ -228,14 +232,10 @@ def run_datashader(xdata,ydata,xaxis,yaxis,xcanvas,ycanvas,
     # Put plotdata into pandas data frame
     # This should be possible with xarray directly, but for freq plots we need a corner turn
 
-    log.info('Making Pandas dataframe')
-
     dists = {'plotdata': pd.DataFrame(odict([(xaxis, xdata), (yaxis, ydata)]))}
     df = pd.concat(dists, ignore_index=True)
 
     # Run datashader on the pandas df
-
-    log.info('Running datashader')
 
     canvas = ds.Canvas(xcanvas, ycanvas)
     agg = canvas.points(df, xaxis, yaxis)
@@ -298,8 +298,7 @@ def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin
     ax = fig.add_subplot(111, facecolor=bgcol)
     ax.imshow(X=data, extent=[data_xmin, data_xmax, data_ymin, data_ymax],
               aspect='auto', origin='lower')
-#    ax.set_title(title)
-    fig.suptitle(title)
+    ax.set_title(title,loc='left')
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.plot(xmin,ymin,'.',alpha=0.0)
@@ -314,5 +313,8 @@ def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin
     for textobj in fig.findobj(match=match):
         textobj.set_fontsize(fontsize)
     fig.savefig(pngname, bbox_inches='tight')
+
+    fig.clf()
+
     return pngname
 

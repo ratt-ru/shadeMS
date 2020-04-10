@@ -6,14 +6,16 @@ import matplotlib
 matplotlib.use('agg')
 
 
-from argparse import ArgumentParser
-import ShadeMS
-from ShadeMS import shadeMS as sms
-import time
-import numpy
 import daskms as xms
-#import dask.dataframe as dd
+import numpy
+import os
 import pkg_resources
+import ShadeMS
+import time
+
+
+from argparse import ArgumentParser
+from ShadeMS import shadeMS as sms
 
 
 log = ShadeMS.log
@@ -67,7 +69,7 @@ def main(argv):
 
     figure_opts = parser.add_argument_group('Plot settings')
     figure_opts.add_argument('--iterate', dest='iterate',
-                      help='Set to ant, q, spw, field or scan to produce a plot per selection or MS content (default = do not iterate)', default='')
+                      help='Set to ant, q, spw, field or scan to produce a plot per selection or MS content (default = do not iterate)', default='none')
     figure_opts.add_argument('--noflags', dest='noflags',
                       help='Enable to include flagged data', action='store_true', default=False)
     figure_opts.add_argument('--noconj', dest='noconj',
@@ -97,6 +99,8 @@ def main(argv):
     output_opts = parser.add_argument_group('Output')
     output_opts.add_argument('--png', dest='pngname',
                       help='PNG name (default = something verbose)', default='')
+    output_opts.add_argument('--dest', dest='destdir',
+                      help='Destination path for output PNGs (will be created if not present, default = CWD)', default='')
     output_opts.add_argument('--stamp', dest='dostamp',
                       help='Enable to add timestamp to default PNG name', action='store_true', default=False)
 
@@ -128,6 +132,7 @@ def main(argv):
     fontsize = options.fontsize
 
     pngname = options.pngname
+    destdir = options.destdir
     dostamp = options.dostamp
 
     myms = options.ms.rstrip('/')
@@ -138,7 +143,7 @@ def main(argv):
 
 
     allowed_axes = ['a', 'p', 'r', 'i', 't', 'c', 'f', 'uv', 'u', 'v']
-    allowed_iterators = ['','p','q','spw','field','scan']
+    allowed_iterators = ['none','antenna','q','spw','field','scan']
 
     if xaxis not in allowed_axes:
         raise ValueError('--xaxis setting "%s" is unknown, please check inputs.' % xaxis)
@@ -155,9 +160,25 @@ def main(argv):
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
 
-    log.info('Measurement Set is %s' % myms)
-    log.info('Plotting: %s column' % col)
-    log.info('--------- correlation product %d' %corr)
+    sms.blank()
+    log.info('Measurement Set  : %s' % myms)
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------
+    # Setup folder if required
+
+    if destdir != '':
+        log.info('Measurement Set  : %s' % myms)
+        log.info('Output directory : %s' % destdir)
+        if not os.path.isdir(destdir):
+            os.mkdir(destdir)
+            log.info('                 : Created')
+        else:
+            log.info('                 : Found')
+
+    sms.blank()
+    log.info('Plotting         : %s vs %s' % (yfullname, xfullname))
+    log.info('MS column        : %s ' % col)
+    log.info('Correlation      : %d' % corr)
 
     group_cols = ['FIELD_ID', 'DATA_DESC_ID']
     chan_freqs = sms.get_chan_freqs(myms)
@@ -169,52 +190,53 @@ def main(argv):
         ant_taql = []
         group_cols.append('ANTENNA1')
         ants = list(map(int, myants.split(',')))
+        log.info('Antenna(s)       : %s' % ants)
         if iterate != 'ant':
             for ant in ants:
                 ant_taql.append('ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant))
             mytaql.append(('('+' || '.join(ant_taql)+')'))
-            log.info('--------- antenna(s): %s' % ants)
     else:
-        log.info('--------- all antennas')
+        log.info('Antenna(s)       : all')
 
 
     if myfields != 'all': 
         field_taql = []
         fields = list(map(int, myfields.split(',')))
+        log.info('Field(s)         : %s' % fields)
         if iterate != 'field':
             for fld in fields:
                 field_taql.append('FIELD_ID=='+str(fld))
             mytaql.append(('('+' || '.join(field_taql)+')'))
-            log.info('--------- field(s): %s' % fields)
     else:
         fields, field_names = sms.get_field_names(myms)
-        log.info('--------- all fields')
+        log.info('Field(s)         : all')
 
 
     if myspws != 'all': 
         spw_taql = []
         spws = list(map(int, myspws.split(',')))    
+        log.info('SPW(s)           : %s' % spws)
         if iterate != 'spw':
             for spw in spws:
                 spw_taql.append('DATA_DESC_ID=='+str(spw))
             mytaql.append(('('+' || '.join(spw_taql)+')'))
-            log.info('--------- SPW(s): %s' % fields)
     else:
         spws = numpy.arange(len(chan_freqs))
-        log.info('--------- all SPWs') 
+        log.info('SPW(s)           : all')
 
 
     if myscans != 'all':
         scan_taql = []
         group_cols.append('SCAN_NUMBER')
         scans = list(map(int, myscans.split(',')))
+        log.info('Scan(s)          : %s' % scans)
         if iterate != 'scan':
             for scan in scans:
                 scan_taql.append('SCAN_NUMBER=='+str(scan))
             mytaql.append(('('+' || '.join(scan_taql)+')'))
-            log.info('--------- scan(s): %s' %scans)
     else:
-        log.info('--------- all scans')
+        scans = sms.get_scan_numbers(myms)
+        log.info('Scan(s)          : all')
 
 
     if mytaql:
@@ -222,9 +244,9 @@ def main(argv):
     else:
         mytaql = ''
 
-    print(mytaql)
+    sms.blank()
 
-    if iterate == '':
+    if iterate == 'none':
 
         xdata,ydata = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, xaxis, yaxis,
                         spws,fields,corr,noflags,noconj)
@@ -253,15 +275,37 @@ def main(argv):
                         xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
                         figx=xcanvas/60,figy=ycanvas/60)
 
-    elif iterate == 'field':
+    else:
 
-        log.info('Iterating over fields (%d in total)' % len(fields))
+        if iterate == 'field':
+            iterate_over = fields
+            taql_prefix = 'FIELD_ID=='
+            log.info('Iterating over   : fields (%d in total)' % len(fields))
+        elif iterate == 'spw':
+            iterate_over = spws
+            taql_prefix = 'DATA_DESC_ID=='
+            log.info('Iterating over   : SPWs (%d in total)' % len(spws))
+        elif iterate == 'scan':
+            iterate_over = scans
+            group_cols.append('SCAN_NUMBER')
+            taql_prefix = 'SCAN_NUMBER=='
+            log.info('Iterating over   : scans (%d in total)' % len(scans))
 
-        for field in fields:
+        sms.blank()
 
-            taql_i = mytaql+' (FIELD_ID=='+str(field)+')'
+        i = 1
 
-            print(taql_i)
+        mytaql = ''
+
+        for item in iterate_over:
+
+            clock_start_iter = time.time()
+
+            log.info('Iteration        : %d / %d' % (i,len(iterate_over)))
+
+#            taql_i = mytaql+'('+taql_prefix+str(item)+')'
+
+            taql_i = taql_prefix+str(item)
 
             xdata,ydata = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
                             spws,fields,corr,noflags,noconj)
@@ -270,15 +314,26 @@ def main(argv):
                             xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
             ylabel = yfullname+' '+yunits
             xlabel = xfullname+' '+xunits
-            title = myms+' '+col+' (correlation '+str(corr)+')'
-            pngname = 'plot_'+str(field)+'.png'
+            title = myms+' '+col+' CORR'+str(corr)+' SCAN'+str(i)
+            pngname = 'plot_'+str(item)+'.png'
 
             sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
                             xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
                             figx=xcanvas/60,figy=ycanvas/60)
+
+            i += 1
+
+            clock_stop_iter = time.time()
+            elapsed_iter = str(round((clock_stop_iter-clock_start_iter), 2))
+
+            log.info('Iteration time   : %s seconds' % (elapsed_iter))
+
+            sms.blank()
     # Stop the clock
 
     clock_stop = time.time()
     elapsed = str(round((clock_stop-clock_start), 2))
 
-    log.info('Done. Elapsed time: %s seconds.' % (elapsed))
+    log.info('Total time       : %s seconds' % (elapsed))
+    log.info('Finished')
+    sms.blank()
