@@ -34,7 +34,6 @@ def main(argv):
 
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
-    # Setup command line options
 
 
     parser = ArgumentParser(description='Rapid Measurement Set plotting with dask-ms and datashader. Version {0:s}'.format(__version__))
@@ -98,7 +97,7 @@ def main(argv):
 
     output_opts = parser.add_argument_group('Output')
     output_opts.add_argument('--png', dest='pngname',
-                      help='PNG name (default = something verbose)', default='')
+                      help='PNG name, without extension, iterations will be added (default = something verbose)', default='')
     output_opts.add_argument('--dest', dest='destdir',
                       help='Destination path for output PNGs (will be created if not present, default = CWD)', default='')
     output_opts.add_argument('--stamp', dest='dostamp',
@@ -139,7 +138,6 @@ def main(argv):
 
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
-    # Check for allowed axis selections and get long forms
 
 
     allowed_axes = ['a', 'p', 'r', 'i', 't', 'c', 'f', 'uv', 'u', 'v']
@@ -160,13 +158,16 @@ def main(argv):
     ylabel = yfullname+' '+yunits
     xlabel = xfullname+' '+xunits
 
+
     # ---------------------------------------------------------------------------------------------------------------------------------------------
+
 
     sms.blank()
     log.info('Measurement Set  : %s' % myms)
 
+
     # ---------------------------------------------------------------------------------------------------------------------------------------------
-    # Setup folder if required
+
 
     if destdir != '':
         log.info('Measurement Set  : %s' % myms)
@@ -176,6 +177,10 @@ def main(argv):
             log.info('                 : Created')
         else:
             log.info('                 : Found')
+
+
+    # ---------------------------------------------------------------------------------------------------------------------------------------------
+
 
     sms.blank()
     log.info('Plotting         : %s vs %s' % (yfullname, xfullname))
@@ -251,33 +256,27 @@ def main(argv):
 
     if iterate == 'none':
 
-
-
         xdata,ydata = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, xaxis, yaxis,
                         spws,fields,corr,noflags,noconj)
 
         img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
                         xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
 
-        # Setup plot labels and PNG name
-
+        if pngname == '':
+            pngname = sms.generate_pngname(myms,col,corr,xfullname,yfullname,
+                        myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                        iterate,-1,dostamp)
+        else:
+            pngname = pngname+'.png'
 
         title = myms+' '+col+' (correlation '+str(corr)+')'
-        if pngname == '':
-            pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
-            pngname += 'SPW-' + myspws.replace(',', '-')+ \
-                '_FIELD-'+myfields.replace(',', '-')+\
-                '_SCAN-'+myscans.replace(',', '-')+'_'
-            pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
-            if dostamp:
-                pngname += '_'+sms.stamp()
-            pngname += '.png'
-
-        # Render the plot
 
         sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
                         xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
                         figx=xcanvas/60,figy=ycanvas/60)
+
+        log.info('                 : %s' % pngname)
+
 
     else:
 
@@ -328,6 +327,7 @@ def main(argv):
 
             taql_i = ii[0]
             info_i = ii[1]
+            i = ii[2]
 
             log.info('Iteration        : %d / %d %s' % (count,len(iterate_over),info_i))
 
@@ -340,11 +340,21 @@ def main(argv):
             img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
                             xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
 
-            title = myms+' '+col+' CORR'+str(corr)+' SCAN'+str(i)
-            pngname = 'plot_'+str(count)+'.png'
+            title = sms.generate_title(myms,col,corr,xfullname,yfullname,
+                            myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                            iterate,i)
+
+            if pngname == '':
+                pngname_i = sms.generate_pngname(myms,col,corr,xfullname,yfullname,
+                            myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                            iterate,i,dostamp)
+            else:
+                pngname_i = pngname+'_'+iterate.upper()+'-'+str(i)+'.png'
+
+            print(pngname_i)
 
             sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
-                            xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
+                            xmax,ymin,ymax,xlabel,ylabel,title,pngname_i,bgcol,fontsize,
                             figx=xcanvas/60,figy=ycanvas/60)
 
             count += 1
@@ -352,10 +362,10 @@ def main(argv):
             clock_stop_iter = time.time()
             elapsed_iter = str(round((clock_stop_iter-clock_start_iter), 2))
 
+            log.info('                 : %s' % pngname_i)
             log.info('                 : Plot took %s seconds' % (elapsed_iter))
 
             sms.blank()
-    # Stop the clock
 
     clock_stop = time.time()
     elapsed = str(round((clock_stop-clock_start), 2))

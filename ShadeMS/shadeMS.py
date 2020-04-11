@@ -253,21 +253,44 @@ def run_datashader(xdata,ydata,xaxis,yaxis,xcanvas,ycanvas,
     return img.data,data_xmin,data_xmax,data_ymin,data_ymax
 
 
-def generate_pngname(myms,col,corr,xfullname,xunits,yfullname,yunits,spwstr,fieldstr,scanstr,dostamp):
-    title = myms+' '+col+' (correlation '+str(corr)+')'
-    ylabel = yfullname+' '+yunits
-    xlabel = xfullname+' '+xunits
-    if pngname == '':
-        pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_'
-        pngname += 'SPW-' + myspws.replace(',', '-')+ \
-            '_FIELD-'+myfields.replace(',', '-')+\
-            '_SCAN-'+myscans.replace(',', '-')+'_'
-        pngname += yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
-        if dostamp:
-            pngname += '_'+sms.stamp()
-        pngname += '.png'
+def generate_pngname(myms,col,corr,xfullname,yfullname,
+                myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                iterate,myiter,dostamp):
+
+    pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_CORR-'+str(corr)
+    if myants != 'all' and iterate != 'ant':
+        pngname += '_ANT-'+myants.replace(',','-')
+    if myspws != 'all' and iterate != 'spw':
+        pngname += '_SPW-'+myspws.replace(',', '-')
+    if myfields != 'all' and iterate != 'field':
+        pngname += '_FIELD-'+myfields.replace(',','-')
+    if myscans != 'all' and iterate != 'scan':
+        pngname += '_SCAN-'+myscans.replace(',','-')
+    if myiter != -1:
+        pngname += '_'+iterate.upper()+'-'+str(myiter)
+    pngname += '_'+yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
+    if dostamp:
+        pngname += '_'+sms.stamp()
+    pngname += '.png'
     return pngname
 
+
+def generate_title(myms,col,corr,xfullname,yfullname,
+                myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                iterate,myiter):
+
+    title = myms+' '+col+' (CORR-'+str(corr)+')'
+    if myants != 'all' and iterate != 'ant':
+        title += ' (ANT-'+myants.replace(',','-')+')'
+    if myspws != 'all' and iterate != 'spw':
+        title += ' (SPW-'+myspws.replace(',', '-')+')'
+    if myfields != 'all' and iterate != 'field':
+        title += ' (FIELD-'+myfields.replace(',','-')+')'
+    if myscans != 'all' and iterate != 'scan':
+        title += ' (SCAN-'+myscans.replace(',','-')+')'
+    if myiter != -1:
+        title += ' ('+iterate.upper()+'-'+str(myiter)+')'
+    return title
 
 
 def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin, ymax, 
