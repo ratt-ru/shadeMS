@@ -286,7 +286,8 @@ def main(argv):
             iterate_over = ants
             if 'ANTENNA1' not in group_cols:
                 group_cols.append('ANTENNA1')
-#            group_cols.append('ANTENNA2')
+            if 'ANTENNA2' not in group_cols:
+                group_cols.append('ANTENNA2')
             for i in iterate_over:
                 iter_taql = 'ANTENNA1=='+str(i)+' || ANTENNA2=='+str(i)
                 iter_info = 'Antenna '+str(i)
@@ -335,6 +336,8 @@ def main(argv):
 
             if mytaql != '':
                 taql_i = mytaql+' && '+taql_i
+
+#            log.info('TaQL             : %s' % taql_i)
 
             xdata,ydata,doplot = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
                             spws,fields,corr,noflags,noconj)
