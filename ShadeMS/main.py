@@ -311,7 +311,8 @@ def main(argv):
 
         elif iterate == 'scan':
             iterate_over = scans
-            group_cols.append('SCAN_NUMBER')
+            if 'SCAN_NUMBER' not in group_cols:
+                group_cols.append('SCAN_NUMBER')
             for i in iterate_over:
                 iter_taql = 'SCAN_NUMBER=='+str(i)
                 iter_info = '(Scan '+str(i)+')'
