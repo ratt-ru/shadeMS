@@ -351,7 +351,6 @@ def main(argv):
             else:
                 pngname_i = pngname+'_'+iterate.upper()+'-'+str(i)+'.png'
 
-            print(pngname_i)
 
             sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
                             xmax,ymin,ymax,xlabel,ylabel,title,pngname_i,bgcol,fontsize,
