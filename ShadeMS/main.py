@@ -336,37 +336,44 @@ def main(argv):
             if mytaql != '':
                 taql_i = mytaql+' && '+taql_i
 
-            xdata,ydata = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
+            xdata,ydata,doplot = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
                             spws,fields,corr,noflags,noconj)
 
-            img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
-                            xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
+            if doplot:
 
-            title = sms.generate_title(myms,col,corr,xfullname,yfullname,
-                            myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                            iterate,i)
+                img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
+                                xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
 
-            if pngname == '':
-                pngname_i = sms.generate_pngname(myms,col,corr,xfullname,yfullname,
-                            myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                            iterate,i,dostamp)
+                title = sms.generate_title(myms,col,corr,xfullname,yfullname,
+                                myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                                iterate,i)
+
+                if pngname == '':
+                    pngname_i = sms.generate_pngname(myms,col,corr,xfullname,yfullname,
+                                myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                                iterate,i,dostamp)
+                else:
+                    pngname_i = pngname+'_'+iterate.upper()+'-'+str(i)+'.png'
+
+
+                sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
+                                xmax,ymin,ymax,xlabel,ylabel,title,pngname_i,bgcol,fontsize,
+                                figx=xcanvas/60,figy=ycanvas/60)
+
+                log.info('                 : %s' % pngname_i)
+
             else:
-                pngname_i = pngname+'_'+iterate.upper()+'-'+str(i)+'.png'
+
+                log.info('                 : No data returned for this selection')
 
 
-            sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
-                            xmax,ymin,ymax,xlabel,ylabel,title,pngname_i,bgcol,fontsize,
-                            figx=xcanvas/60,figy=ycanvas/60)
-
-            count += 1
 
             clock_stop_iter = time.time()
             elapsed_iter = str(round((clock_stop_iter-clock_start_iter), 2))
-
-            log.info('                 : %s' % pngname_i)
-            log.info('                 : Plot took %s seconds' % (elapsed_iter))
-
+            log.info('Time             : %s seconds' % (elapsed_iter))
             sms.blank()
+
+            count += 1
 
     clock_stop = time.time()
     elapsed = str(round((clock_stop-clock_start), 2))

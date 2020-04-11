@@ -75,7 +75,7 @@ def stamp():
 
 
 def blank():
-    log.info('--------------------------------------------------')
+    log.info('------------------------------------------------------')
 
 
 def fullname(shortname):
@@ -174,7 +174,7 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr
                 xdata = numpy.append(xdata, numpy.abs(
                     group.VISDATA.values[:, :, corr]))
 
-    # Drop flagged data if required
+        # Drop flagged data if required
 
     if not noflags:
 
@@ -193,8 +193,12 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr
         xdata = numpy.append(xdata, xdata*-1.0)
         ydata = numpy.append(ydata, ydata*-1.0)
 
+    if len(xdata) == 0 or len(ydata) == 0:
+        doplot = False
+    else:
+        doplot = True
 
-    return xdata,ydata
+    return xdata,ydata,doplot
 
 
 def run_datashader(xdata,ydata,xaxis,yaxis,xcanvas,ycanvas,
