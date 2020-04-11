@@ -13,7 +13,7 @@ requirements = [
 ]
 
 PACKAGE_NAME = 'shadems'
-__version__ = '0.0.2'
+__version__ = '0.0.3'
 
 setup(name = PACKAGE_NAME,
     version = __version__,
