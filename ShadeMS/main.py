@@ -256,26 +256,32 @@ def main(argv):
 
     if iterate == 'none':
 
-        xdata,ydata = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, xaxis, yaxis,
+        xdata,ydata,doplot = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, xaxis, yaxis,
                         spws,fields,corr,noflags,noconj)
 
-        img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
-                        xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
+        if doplot:
 
-        if pngname == '':
-            pngname = sms.generate_pngname(myms,col,corr,xfullname,yfullname,
-                        myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                        iterate,-1,dostamp)
+            img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
+                            xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
+
+            if pngname == '':
+                pngname = sms.generate_pngname(myms,col,corr,xfullname,yfullname,
+                            myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                            iterate,-1,dostamp)
+            else:
+                pngname = pngname+'.png'
+
+            title = myms+' '+col+' (correlation '+str(corr)+')'
+
+            sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
+                            xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
+                            figx=xcanvas/60,figy=ycanvas/60)
+
+            log.info('                 : %s' % pngname)
+
         else:
-            pngname = pngname+'.png'
 
-        title = myms+' '+col+' (correlation '+str(corr)+')'
-
-        sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
-                        xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
-                        figx=xcanvas/60,figy=ycanvas/60)
-
-        log.info('                 : %s' % pngname)
+            log.info('                 : No data returned for this selection')
 
 
     else:
