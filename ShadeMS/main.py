@@ -290,7 +290,7 @@ def main(argv):
                 group_cols.append('ANTENNA2')
             for i in iterate_over:
                 iter_taql = 'ANTENNA1=='+str(i)+' || ANTENNA2=='+str(i)
-                iter_info = 'Antenna '+str(i)
+                iter_info = '(Antenna '+str(i)+')'
                 iters.append((iter_taql,iter_info,i))
             log.info('Iterating over   : antennas (%d in total)' % len(ants))
 
