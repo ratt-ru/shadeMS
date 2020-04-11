@@ -6,6 +6,7 @@ matplotlib.use('agg')
 
 import colorcet
 import daskms as xms
+import datetime
 import datashader as ds
 import holoviews as hv
 import holoviews.operation.datashader as hd
@@ -69,7 +70,8 @@ def now():
 
 
 def stamp():
-    return str(time.time()).replace('.', '')
+    now = str(datetime.datetime.now()).replace(' ','-').replace(':','-').split('.')[0]
+    return now
 
 
 def blank():
@@ -270,7 +272,7 @@ def generate_pngname(myms,col,corr,xfullname,yfullname,
         pngname += '_'+iterate.upper()+'-'+str(myiter)
     pngname += '_'+yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
     if dostamp:
-        pngname += '_'+sms.stamp()
+        pngname += '_'+stamp()
     pngname += '.png'
     return pngname
 

@@ -198,9 +198,9 @@ def main(argv):
         group_cols.append('ANTENNA1')
         ants = list(map(int, myants.split(',')))
         log.info('Antenna(s)       : %s' % ants)
-        if iterate != 'ant':
+        if iterate != 'antenna':
             for ant in ants:
-                ant_taql.append('ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant))
+                ant_taql.append('ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant)+')')
             mytaql.append(('('+' || '.join(ant_taql)+')'))
     else:
         ants = sms.get_antennas(myms)
@@ -284,8 +284,9 @@ def main(argv):
 
         if iterate == 'antenna':
             iterate_over = ants
-            group_cols.append('ANTENNA1')
-            group_cols.append('ANTENNA2')
+            if 'ANTENNA1' not in group_cols:
+                group_cols.append('ANTENNA1')
+#            group_cols.append('ANTENNA2')
             for i in iterate_over:
                 iter_taql = 'ANTENNA1=='+str(i)+' || ANTENNA2=='+str(i)
                 iter_info = 'Antenna '+str(i)
