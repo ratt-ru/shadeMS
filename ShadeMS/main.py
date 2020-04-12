@@ -283,6 +283,7 @@ def main(argv):
 
             log.info('                 : No data returned for this selection')
 
+        sms.blank()
 
     else:
 
