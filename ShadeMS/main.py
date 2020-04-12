@@ -170,6 +170,7 @@ def main(argv):
 
 
     if destdir != '':
+        destdir = destdir.rstrip('/')+'/'
         log.info('Measurement Set  : %s' % myms)
         log.info('Output directory : %s' % destdir)
         if not os.path.isdir(destdir):
@@ -270,6 +271,9 @@ def main(argv):
                             iterate,-1,dostamp)
             else:
                 pngname = pngname+'.png'
+                
+            if destdir != '':
+                pngname = destdir+pngname
 
             title = myms+' '+col+' (correlation '+str(corr)+')'
 
@@ -365,7 +369,9 @@ def main(argv):
                 else:
                     pngname_i = pngname+'_'+iterate.upper()+'-'+str(i)+'.png'
 
-
+                if destdir != '':
+                    pngname = destdir+pngname
+                
                 sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
                                 xmax,ymin,ymax,xlabel,ylabel,title,pngname_i,bgcol,fontsize,
                                 figx=xcanvas/60,figy=ycanvas/60)
