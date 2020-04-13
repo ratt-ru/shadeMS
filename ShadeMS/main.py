@@ -171,7 +171,6 @@ def main(argv):
 
     if destdir != '':
         destdir = destdir.rstrip('/')+'/'
-        log.info('Measurement Set  : %s' % myms)
         log.info('Output directory : %s' % destdir)
         if not os.path.isdir(destdir):
             os.mkdir(destdir)
