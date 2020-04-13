@@ -369,7 +369,7 @@ def main(argv):
                     pngname_i = pngname+'_'+iterate.upper()+'-'+str(i)+'.png'
 
                 if destdir != '':
-                    pngname = destdir+pngname
+                    pngname_i = destdir+pngname_i
                 
                 sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
                                 xmax,ymin,ymax,xlabel,ylabel,title,pngname_i,bgcol,fontsize,
