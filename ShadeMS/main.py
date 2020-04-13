@@ -164,7 +164,7 @@ def main(argv):
 
     sms.blank()
     log.info('Measurement Set  : %s' % myms)
-
+    print('HELLO THERE')
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -274,7 +274,11 @@ def main(argv):
             if destdir != '':
                 pngname = destdir+pngname
 
-            title = myms+' '+col+' (correlation '+str(corr)+')'
+            title = sms.generate_title(myms,col,corr,xfullname,yfullname,
+                            myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                            iterate,-1)
+
+#            title = myms+' '+col+' (correlation '+str(corr)+')'
 
             sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
                             xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
