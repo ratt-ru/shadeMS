@@ -200,7 +200,7 @@ def main(argv):
         log.info('Antenna(s)       : %s' % ants)
         if iterate != 'antenna':
             for ant in ants:
-                ant_taql.append('ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant)+')')
+                ant_taql.append('(ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant)+')')
             mytaql.append(('('+' || '.join(ant_taql)+')'))
     else:
         ants = sms.get_antennas(myms)
