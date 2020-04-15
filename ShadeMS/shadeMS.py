@@ -1,11 +1,15 @@
-#!/usr/bin/env python
+# -*- coding: future_fstrings -*-
+
 # ian.heywood@physics.ox.ac.uk
 
 import matplotlib
 matplotlib.use('agg')
 
 import colorcet
-import daskms as xms
+import daskms
+import dask.array as da
+import dask.array.ma as dama
+import dask.dataframe as dask_df
 import datetime
 import datashader as ds
 import holoviews as hv
@@ -17,20 +21,20 @@ import ShadeMS
 import sys
 import time
 import os.path
-
-from collections import OrderedDict as odict
+import re
+from collections import OrderedDict
 
 log = ShadeMS.log
 
 def get_chan_freqs(myms):
-    spw_tab = xms.xds_from_table(
+    spw_tab = daskms.xds_from_table(
         myms+'::SPECTRAL_WINDOW', columns=['CHAN_FREQ'])
     chan_freqs = spw_tab[0].CHAN_FREQ
     return chan_freqs
 
 
 def get_field_names(myms):
-    field_tab = xms.xds_from_table(
+    field_tab = daskms.xds_from_table(
         myms+'::FIELD', columns=['NAME','SOURCE_ID'])
     field_ids = field_tab[0].SOURCE_ID.values
     field_names = field_tab[0].NAME.values
@@ -38,14 +42,14 @@ def get_field_names(myms):
 
 
 def get_scan_numbers(myms):
-    tab = xms.xds_from_table(
+    tab = daskms.xds_from_table(
         myms, columns=['SCAN_NUMBER'])
     scan_numbers = numpy.unique(tab[0].SCAN_NUMBER.values)
     return scan_numbers.tolist()
 
 
 def get_antennas(myms):
-    tab = xms.xds_from_table(
+    tab = daskms.xds_from_table(
         myms, columns=['ANTENNA1','ANTENNA2'])
     ant1 = numpy.unique(tab[0].ANTENNA1.values)
     ant2 = numpy.unique(tab[0].ANTENNA2.values)
@@ -79,174 +83,192 @@ def blank():
     log.info('------------------------------------------------------')
 
 
-def fullname(shortname):
-    fullnames = [('a', 'Amplitude', ''),
-                 ('p', 'Phase', '[rad]'),
-                 ('r', 'Real', ''),
-                 ('i', 'Imaginary', ''),
-                 ('t', 'Time', '[s]'),
-                 ('c', 'Channel', ''),
-                 ('f', 'Frequency', '[Hz]'),
-                 ('uv', 'uv-distance', '[wavelengths]'),
-                 ('u', 'u', '[wavelengths]'),
-                 ('v', 'v', '[wavelengths]')]
-    for xx in fullnames:
-        if xx[0] == shortname:
-            fullname = xx[1]
-            units = xx[2]
-    return fullname, units
+class DataMapper(object):
+    """This class defines a mapping from a dask group to an array of real values to be plotted"""
+    def __init__(self, fullname, unit, mapper=None, column=None, extras=None, conjugate=False, corr_axis=True):
+        self.fullname, self.unit, self.mapper, self.column, self.extras = fullname, unit, mapper, column, extras
+        self.conjugate = conjugate
+        self.corr_axis = corr_axis
+
+    @staticmethod
+    def get_column(group, colname):
+        """
+        Given a DASK group and a column name, returns corresponding dask array
+        """
+        if colname is None:
+            return None
+        elif hasattr(group, colname):
+            return getattr(group, colname).data
+        elif colname == "D-M":
+            return group.DATA.data - group.MODEL_DATA.data
+        elif colname == "C-M":
+            return group.CORRECTED_DATA.data - group.MODEL_DATA.data
+        elif colname == "D/M":
+            return group.DATA.data / group.MODEL_DATA.data
+        elif colname == "C/M":
+            return group.CORRECTED_DATA.data / group.MODEL_DATA.data
+        else:
+            raise ValueError(f"unknown column name {colname}")
+
+    @staticmethod
+    def get_involved_columns(colname):
+        """Given a column name, returns list of columns involved"""
+        if colname is None:
+            return []
+        elif colname in ("D-M", "D/M"):
+            return ["DATA", "MODEL_DATA"]
+        elif colname == "C-M":
+            return ["CORRECTED_DATA", "MODEL_DATA"]
+        else:
+            return [colname]
+
+    def map_value(self, group, colname, corr, extras, flag, flag_row):
+        # preset column in constructor (UVBW and such) overrides dynamic column name (e.g. for vis columns)
+        coldata = self.get_column(group, self.column or colname)
+        if self.corr_axis:
+            coldata = coldata[..., corr]
+        if self.extras:
+            coldata = self.mapper(coldata, **{name:extras[name] for name in self.extras })
+        elif self.mapper:
+            coldata = self.mapper(coldata)
+        # apply flags
+        if flag is not None and coldata.shape == flag.shape:
+            coldata = dama.masked_array(coldata, flag)
+        elif flag_row is not None and coldata.shape == flag_row.shape:
+            coldata = dama.masked_array(coldata, flag_row)
+        # unravel
+        coldata = coldata.ravel()
+        # conjugate
+        if self.conjugate:
+            coldata = da.concatenate([coldata, -coldata])
+        return coldata
+
+
+
+#
+# this dict maps short axis names into full DataMapper objects
+mappers = OrderedDict(
+    a=DataMapper("Amplitude", "", abs),
+    p=DataMapper("Phase", "[deg]", lambda x:da.rad2deg(da.angle(x))),
+    r=DataMapper("Real", "", da.real),
+    i=DataMapper("Imag", "", da.imag),
+    t=DataMapper("Time", "[s]", column="TIME"),
+    c=DataMapper("Channel", "", column=None, corr_axis=False, extras=["chans"], mapper=lambda x,chans: chans),
+    f=DataMapper("Frequency", "[Hz]", column=None, corr_axis=False, extras=["freqs"], mapper=lambda x, freqs: freqs),
+    uv=DataMapper("uv-distance", "[wavelengths]", column="UVW", corr_axis=False, extras=["wavel"],
+                  mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel[:,numpy.newaxis]),
+    u=DataMapper("u", "[wavelengths]", column="UVW", corr_axis=False, extras=["wavel"],
+                  mapper=lambda uvw, wavel: uvw[:, 0] / wavel[:, numpy.newaxis],
+                 conjugate=True),
+    v=DataMapper("v", "[wavelengths]", column="UVW", corr_axis=False, extras=["wavel"],
+                 mapper=lambda uvw, wavel: uvw[:, 1] / wavel[:, numpy.newaxis],
+                 conjugate=True),
+)
 
 
 def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr,noflags,noconj):
 
-    ms_cols = [col, 'TIME', 'FLAG']
-    if xaxis == 'uv' or xaxis == 'u' or yaxis == 'v': ms_cols.append('UVW')
+    ms_cols = set(DataMapper.get_involved_columns(col))
 
-    msdata = xms.xds_from_ms(
-        myms, columns=ms_cols,# 'FIELD_ID', 'UVW'], 
+    if not noflags:
+        ms_cols.add('FLAG')
+        ms_cols.add('FLAG_ROW')
+
+    for axis in xaxis, yaxis:
+        if mappers[axis].column:
+            ms_cols.add(mappers[axis].column)
+
+    msdata = daskms.xds_from_ms(
+        myms, columns=list(ms_cols),# 'FIELD_ID', 'UVW'],
         group_cols=group_cols,
         taql_where=mytaql)
 
     log.info('                 : Reading MS, please wait')
 
-    for i in range(0, len(msdata)):
-        msdata[i] = msdata[i].rename({col: 'VISDATA'})
+    output_df = None
+    np = 0  # number of points to plot
 
-    # Initialise arrays for plot data
-
-    ydata = numpy.array(())
-    xdata = numpy.array(())
-    flags = numpy.array(())
-
+    xmap = mappers[xaxis]
+    ymap = mappers[yaxis]
     # Get plot data into a pair of numpy arrays
 
     for group in msdata:
-        nrows = group.VISDATA.shape[0]
-        nchan = group.VISDATA.shape[1]
+        if noflags:
+            flag = flag_row = None
+        else:
+            flag = group.FLAG
+            flag_row = group.FLAG_ROW
+
         fld = group.FIELD_ID
         ddid = group.DATA_DESC_ID
 
         if fld in fields and ddid in spws:
-            chans = chan_freqs.values[ddid]
-            flags = numpy.append(flags, group.FLAG.values[:, :, corr])
+            freqs = chan_freqs.values[ddid]
+            nchan = len(freqs)
 
-            if xaxis == 'uv' or xaxis == 'u' or yaxis == 'v':
-                uu = group.UVW.values[:, 0]
-                vv = group.UVW.values[:, 1]
-                chans_wavel = freq_to_wavel(chans)
-                uu_wavel = numpy.ravel(
-                    uu / numpy.transpose(numpy.array([chans_wavel, ]*len(uu))))
-                vv_wavel = numpy.ravel(
-                    vv / numpy.transpose(numpy.array([chans_wavel, ]*len(vv))))
-                uvdist_wavel = ((uu_wavel**2.0)+(vv_wavel**2.0))**0.5
+            # make dictionary of extra values for DataMappers
+            extras = dict(corr=corr, chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
 
-            if yaxis == 'a':
-                ydata = numpy.append(ydata, numpy.abs(
-                    group.VISDATA.values[:, :, corr]))
-            elif yaxis == 'p':
-                ydata = numpy.append(ydata, numpy.angle(
-                    group.VISDATA.values[:, :, corr]))
-            elif yaxis == 'r':
-                ydata = numpy.append(ydata, numpy.real(
-                    group.VISDATA.values[:, :, corr]))
-            elif yaxis == 'i':
-                ydata = numpy.append(ydata, numpy.imag(
-                    group.VISDATA.values[:, :, corr]))
-            elif yaxis == 'v':
-                ydata = numpy.append(ydata, vv_wavel)
+            xdata = xmap.map_value(group, col, corr, extras, flag, flag_row)
+            ydata = ymap.map_value(group, col, corr, extras, flag, flag_row)
 
-            if xaxis == 'f':
-                xdata = numpy.append(xdata, numpy.tile(chans, nrows))
-            elif xaxis == 'c':
-                xdata = numpy.append(xdata, numpy.tile(
-                    numpy.arange(nchan), nrows))
-            elif xaxis == 't':
-                # Add t = t - t[0] and make it relative
-                xdata = numpy.append(
-                    xdata, numpy.repeat(group.TIME.values, nchan))
-            elif xaxis == 'uv':
-                xdata = numpy.append(xdata, uvdist_wavel)
-            elif xaxis == 'r':
-                xdata = numpy.append(xdata, numpy.real(
-                    group.VISDATA.values[:, :, corr]))
-            elif xaxis == 'u':
-                xdata = numpy.append(xdata, uu_wavel)
-            elif xaxis == 'a':
-                xdata = numpy.append(xdata, numpy.abs(
-                    group.VISDATA.values[:, :, corr]))
+            np += xdata.shape[0]
 
-        # Drop flagged data if required
+            ddf = dask_df.from_array(da.stack([xdata, ydata], axis=1), columns=(xaxis, yaxis))
 
-    if not noflags:
+            if output_df is None:
+                output_df = ddf
+            else:
+                output_df = output_df.append(ddf)
 
-        bool_flags = list(map(bool, flags))
-
-        masked_ydata = numpy.ma.masked_array(data=ydata, mask=bool_flags)
-        masked_xdata = numpy.ma.masked_array(data=xdata, mask=bool_flags)
-
-        ydata = masked_ydata.compressed()
-        xdata = masked_xdata.compressed()
-
-    # Plot the conjugate points for a u,v plot if requested
-    # This is done at this stage so we don't have to worry about the flags
-
-    if not noconj and xaxis == 'u' and yaxis == 'v':
-        xdata = numpy.append(xdata, xdata*-1.0)
-        ydata = numpy.append(ydata, ydata*-1.0)
-
-    if len(xdata) == 0 or len(ydata) == 0:
-        doplot = False
-    else:
-        doplot = True
-
-    return xdata,ydata,doplot
+    return output_df, np
 
 
-def run_datashader(xdata,ydata,xaxis,yaxis,xcanvas,ycanvas,
+def run_datashader(ddf,xaxis,yaxis,xcanvas,ycanvas,
             xmin,xmax,ymin,ymax,mycmap,normalize):
 
-    if xmin != '':
-        xmin = float(xmin)
-        masked_xdata = numpy.ma.masked_less(xdata, xmin)
-        masked_ydata = numpy.ma.masked_array(
-            data=ydata, mask=masked_xdata.mask)
-        ydata = masked_ydata.compressed()
-        xdata = masked_xdata.compressed()
-
-    if xmax != '':
-        xmax = float(xmax)
-        masked_xdata = numpy.ma.masked_greater(xdata, xmax)
-        masked_ydata = numpy.ma.masked_array(
-            data=ydata, mask=masked_xdata.mask)
-        ydata = masked_ydata.compressed()
-        xdata = masked_xdata.compressed()
-
-    if ymin != '':
-        ymin = float(ymin)
-        masked_ydata = numpy.ma.masked_less(ydata, ymin)
-        masked_xdata = numpy.ma.masked_array(
-            data=xdata, mask=masked_ydata.mask)
-        ydata = masked_ydata.compressed()
-        xdata = masked_xdata.compressed()
-
-    if ymax != '':
-        ymax = float(ymax)
-        masked_ydata = numpy.ma.masked_greater(ydata, ymax)
-        masked_xdata = numpy.ma.masked_array(
-            data=xdata, mask=masked_ydata.mask)
-        ydata = masked_ydata.compressed()
-        xdata = masked_xdata.compressed()
-
-    # Put plotdata into pandas data frame
-    # This should be possible with xarray directly, but for freq plots we need a corner turn
-
-    dists = {'plotdata': pd.DataFrame(odict([(xaxis, xdata), (yaxis, ydata)]))}
-    df = pd.concat(dists, ignore_index=True)
-
+    # if xmin != '':
+    #     xmin = float(xmin)
+    #     masked_xdata = numpy.ma.masked_less(xdata, xmin)
+    #     masked_ydata = numpy.ma.masked_array(
+    #         data=ydata, mask=masked_xdata.mask)
+    #     ydata = masked_ydata.compressed()
+    #     xdata = masked_xdata.compressed()
+    #
+    # if xmax != '':
+    #     xmax = float(xmax)
+    #     masked_xdata = numpy.ma.masked_greater(xdata, xmax)
+    #     masked_ydata = numpy.ma.masked_array(
+    #         data=ydata, mask=masked_xdata.mask)
+    #     ydata = masked_ydata.compressed()
+    #     xdata = masked_xdata.compressed()
+    #
+    # if ymin != '':
+    #     ymin = float(ymin)
+    #     masked_ydata = numpy.ma.masked_less(ydata, ymin)
+    #     masked_xdata = numpy.ma.masked_array(
+    #         data=xdata, mask=masked_ydata.mask)
+    #     ydata = masked_ydata.compressed()
+    #     xdata = masked_xdata.compressed()
+    #
+    # if ymax != '':
+    #     ymax = float(ymax)
+    #     masked_ydata = numpy.ma.masked_greater(ydata, ymax)
+    #     masked_xdata = numpy.ma.masked_array(
+    #         data=xdata, mask=masked_ydata.mask)
+    #     ydata = masked_ydata.compressed()
+    #     xdata = masked_xdata.compressed()
+    #
+    # # Put plotdata into pandas data frame
+    # # This should be possible with xarray directly, but for freq plots we need a corner turn
+    #
+    # dists = {'plotdata': pd.DataFrame(OrderedDict([(xaxis, xdata), (yaxis, ydata)]))}
+    # df = pd.concat(dists, ignore_index=True)
+    #
     # Run datashader on the pandas df
 
     canvas = ds.Canvas(xcanvas, ycanvas)
-    agg = canvas.points(df, xaxis, yaxis)
+    agg = canvas.points(ddf, xaxis, yaxis)
     img = hd.shade(hv.Image(agg), cmap=getattr(
         colorcet, mycmap), normalization=normalize)
 
@@ -264,6 +286,7 @@ def generate_pngname(dirname, name_template, myms,col,corr,xfullname,yfullname,
                 myants,ants,myspws,spws,myfields,fields,myscans,scans,
                 iterate=None, myiter=0, dostamp=None):
 
+    col = col.replace("/", "div")   # no slashes allowed, so D/M becomes DdivM
     if not name_template:
         pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_CORR-'+str(corr)
         if myants != 'all' and iterate != 'ant':

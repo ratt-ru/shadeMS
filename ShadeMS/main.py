@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+# -*- coding: future_fstrings -*-
 # ian.heywood@physics.ox.ac.uk
 
 
@@ -50,7 +50,10 @@ def main(argv):
     data_opts.add_argument('--yaxis', dest='yaxis',
                       help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary, [v]', default='a')
     data_opts.add_argument('--col', dest='col',
-                      help='Measurement Set column to plot (default = DATA)', default='DATA')
+                      help="""Measurement Set column to plot (default=%(default)s), but also recognizes 
+                      D-M, C-M, D/M, C/M for various combinations of data, corrected and model.
+                      """,
+                      default='DATA')
     data_opts.add_argument('--antenna', dest='myants',
                       help='Antenna(s) to plot (comma-separated list, default = all)', default='all')
     # data_opts.add_argument('--q', dest='antenna2',
@@ -152,8 +155,10 @@ def main(argv):
     if iterate not in allowed_iterators:
         raise ValueError('--iterate setting "%s" is unknown, please check inputs.' % iterate)
 
-    xfullname, xunits = sms.fullname(xaxis)
-    yfullname, yunits = sms.fullname(yaxis)
+    xmap = sms.mappers[xaxis]
+    xfullname, xunits = xmap.fullname, xmap.unit
+    ymap = sms.mappers[yaxis]
+    yfullname, yunits = ymap.fullname, ymap.unit
 
     ylabel = yfullname+' '+yunits
     xlabel = xfullname+' '+xunits
@@ -256,12 +261,12 @@ def main(argv):
 
     if iterate == 'none':
 
-        xdata,ydata,doplot = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, xaxis, yaxis,
-                        spws,fields,corr,noflags,noconj)
+        plot_df, np = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, xaxis, yaxis,
+                                      spws,fields,corr,noflags,noconj)
 
-        if doplot:
+        if np:
 
-            img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
+            img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(plot_df, xaxis, yaxis,
                             xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
 
             pngname = sms.generate_pngname(destdir, pngname, myms,col,corr,xfullname,yfullname,
@@ -343,12 +348,12 @@ def main(argv):
 
 #            log.info('TaQL             : %s' % taql_i)
 
-            xdata,ydata,doplot = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
+            plot_df, np = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
                             spws,fields,corr,noflags,noconj)
 
-            if doplot:
+            if np:
 
-                img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
+                img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(plot_df, xaxis, yaxis,
                                 xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
 
                 title = sms.generate_title(myms,col,corr,xfullname,yfullname,
