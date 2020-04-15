@@ -9,7 +9,9 @@ requirements = [
 "datashader",
 "holoviews",
 "matplotlib>2.2.3; python_version >= '3.5'",
+ "future-fstrings",
 "requests",
+"MSUtils"
 ]
 
 PACKAGE_NAME = 'shadems'

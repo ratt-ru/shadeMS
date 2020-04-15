@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+# -*- coding: future_fstrings -*-
 # ian.heywood@physics.ox.ac.uk
 
 
@@ -6,13 +6,16 @@ import matplotlib
 matplotlib.use('agg')
 
 
-import daskms as xms
 import numpy
+import datetime
 import os
 import pkg_resources
 import ShadeMS
 import time
-
+import logging
+import itertools
+import re
+from concurrent.futures import ThreadPoolExecutor
 
 from argparse import ArgumentParser
 from ShadeMS import shadeMS as sms
@@ -27,10 +30,16 @@ except pkg_resources.DistributionNotFound:
     __version__ = "dev"
 
 
+# set default number of renderers to half the available cores
+DEFAULT_NUM_RENDERS = max(1, len(os.sched_getaffinity(0))//2)
+
+
 def main(argv):
 
 
     clock_start = time.time()
+
+    # default # of CPUs
 
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -43,52 +52,77 @@ def main(argv):
                       help='Measurement set')
     parser.add_argument("-v", "--version", action='version',
                       version='{:s} version {:s}'.format(parser.prog, __version__))
-
+    parser.add_argument("-d", "--debug", action='store_true',
+                        help="Enable debugging output")
 
     data_opts = parser.add_argument_group('Data selection')
-    data_opts.add_argument('--xaxis', dest='xaxis',
-                      help='[t]ime (default), [f]requency, [c]hannels, [u], [uv]distance, [r]eal, [a]mplitude', default='t')
-    data_opts.add_argument('--yaxis', dest='yaxis',
-                      help='[a]mplitude (default), [p]hase, [r]eal, [i]maginary, [v]', default='a')
-    data_opts.add_argument('--col', dest='col',
-                      help='Measurement Set column to plot (default = DATA)', default='DATA')
+    data_opts.add_argument('-x', '--xaxis', dest='xaxis', action="append",
+                      help="""X axis of plot. Use [t]ime, [f]requency, [c]hannels, [u], [v], [uv]distance, [r]eal, [i]mag,
+                      [a]mplitude, [p]hase. For multiple plots, use comma-separated list, or
+                      specify multiple times for multiple plots.""")
+                      
+    data_opts.add_argument('-y', '--yaxis', dest='yaxis', action="append",
+                      help='Y axis to plot. Must be given the same number of times as --xaxis.')
+
+    data_opts.add_argument('-c', '--col', dest='col', action="append", default=[],
+                      help="""Name of visibility column (default is DATA), if needed. You can also employ
+                      'D-M', 'C-M', 'D/M', 'C/M' for various combinations of data, corrected and model. Can use multiple
+                      times, or use comma-separated list, for multiple plots (or else specify it just once).
+                      """)
+
     data_opts.add_argument('--antenna', dest='myants',
                       help='Antenna(s) to plot (comma-separated list, default = all)', default='all')
+
     # data_opts.add_argument('--q', dest='antenna2',
     #                   help='Antenna 2 (comma-separated list, default = all)', default='all')
     data_opts.add_argument('--spw', dest='myspws',
                       help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)', default='all')
+
     data_opts.add_argument('--field', dest='myfields',
                       help='Field ID(s) to plot (comma-separated list, default = all)', default='all')
+
     data_opts.add_argument('--scan', dest='myscans',
                       help='Scans to plot (comma-separated list, default = all)', default='all')    
+
     data_opts.add_argument('--corr', dest='corr',
-                      help='Correlation index to plot (default = 0)', default=0)
+                      help='Correlations to plot, use indices or labels (comma-separated list, default is 0)',
+                      default="0")
 
 
     figure_opts = parser.add_argument_group('Plot settings')
-    figure_opts.add_argument('--iterate', dest='iterate',
-                      help='Set to antenna, spw, field or scan to produce a plot per selection or MS content (default = do not iterate)', default='none')
-    figure_opts.add_argument('--noflags', dest='noflags',
-                      help='Enable to include flagged data', action='store_true', default=False)
-    figure_opts.add_argument('--noconj', dest='noconj',
-                      help='Do not show conjugate points in u,v plots (default = plot conjugates)', action='store_true', default=False)
-    figure_opts.add_argument('--xmin', dest='xmin',
-                      help='Minimum x-axis value (default = data min)', default='')
-    figure_opts.add_argument('--xmax', dest='xmax',
-                      help='Maximum x-axis value (default = data max)', default='')
-    figure_opts.add_argument('--ymin', dest='ymin',
-                      help='Minimum y-axis value (default = data min)', default='')
-    figure_opts.add_argument('--ymax', dest='ymax',
-                      help='Maximum y-axis value (default = data max)', default='')
-    figure_opts.add_argument('--xcanvas', dest='xcanvas',
-                      help='Canvas x-size in pixels (default = 1280)', default=1280)
-    figure_opts.add_argument('--ycanvas', dest='ycanvas',
-                      help='Canvas y-size in pixels (default = 800)', default=900)
-    figure_opts.add_argument('--norm', dest='normalize',
-                      help='Pixel scale normalization: eq_hist (default), cbrt, log, linear', default='eq_hist')
+    figure_opts.add_argument('--iter-field', action="store_true",
+                      help='Separate plots per field (default is to combine in one plot)')
+    figure_opts.add_argument('--iter-antenna', action="store_true",
+                      help='Separate plots per antenna (default is to combine in one plot)')
+    figure_opts.add_argument('--iter-spw', action="store_true",
+                      help='Separate plots per spw (default is to combine in one plot)')
+    figure_opts.add_argument('--iter-scan', action="store_true",
+                      help='Separate plots per scan (default is to combine in one plot)')
+    figure_opts.add_argument('--iter-corr', action="store_true",
+                      help='Separate plots per correlation (default is to combine in one plot)')
+    figure_opts.add_argument('--noflags',
+                      help='Enable to include flagged data', action='store_true')
+    figure_opts.add_argument('--noconj',
+                      help='Do not show conjugate points in u,v plots (default = plot conjugates)', action='store_true')
+    figure_opts.add_argument('--xmin', action='append',
+                      help="""Minimum x-axis value (default = data min). Use multiple times for multiple plots, but 
+                      note that the clipping is the same per axis across all plots, so only the last applicable
+                      setting will be used.""")
+    figure_opts.add_argument('--xmax', action='append',
+                      help='Maximum x-axis value (default = data max)')
+    figure_opts.add_argument('--ymin', action='append',
+                      help='Minimum y-axis value (default = data min)')
+    figure_opts.add_argument('--ymax', action='append',
+                      help='Maximum y-axis value (default = data max)')
+
+    figure_opts.add_argument('--xcanvas', type=int,
+                      help='Canvas x-size in pixels (default = %(default)s)', default=1280)
+    figure_opts.add_argument('--ycanvas', type=int,
+                      help='Canvas y-size in pixels (default = %(default)s)', default=900)
+    figure_opts.add_argument('--norm', dest='normalize', choices=['eq_hist', 'cbrt', 'log', 'linear'],
+                      help='Pixel scale normalization (default = %(default)s)', default='eq_hist')
     figure_opts.add_argument('--cmap', dest='mycmap',
-                      help='Colorcet map to use (default = bkr)', default='bkr')
+                      help='Colorcet map to use (default = %(default)s)', default='bkr')
     figure_opts.add_argument('--bgcol', dest='bgcol',
                       help='RGB hex code for background colour (default = FFFFFF)', default='FFFFFF')
     figure_opts.add_argument('--fontsize', dest='fontsize',
@@ -96,141 +130,149 @@ def main(argv):
 
 
     output_opts = parser.add_argument_group('Output')
+    # can also use "plot-{msbase}-{column}-{corr}-{xfullname}-vs-{yfullname}", let's expand on this later
     output_opts.add_argument('--png', dest='pngname',
-                      help='PNG name, without extension, iterations will be added (default = something verbose)', default='')
-    output_opts.add_argument('--dest', dest='destdir',
-                      help='Destination path for output PNGs (will be created if not present, default = CWD)', default='')
-    output_opts.add_argument('--stamp', dest='dostamp',
-                      help='Enable to add timestamp to default PNG name', action='store_true', default=False)
-
+                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}{_corr}-{yname}_vs_{xname}.png",
+                      help='template for output png files, default "%(default)s"')
+    output_opts.add_argument('--title',
+                             default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_corr}",
+                      help='template for plot titles, default "%(default)s"')
+    output_opts.add_argument('--xlabel',
+                             default="{xname}{_xunit}",
+                      help='template for X axis labels, default "%(default)s"')
+    output_opts.add_argument('--ylabel',
+                             default="{yname}{_yunit}",
+                             help='template for X axis labels, default "%(default)s"')
+    output_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=DEFAULT_NUM_RENDERS,
+                             help="""run up to N renderers in parallel (default = %(default)s). This is not necessarily 
+                             faster, as they might all end up contending for disk I/O. This might also work against 
+                             dask-ms's own intrinsic parallelism. You have been advised.""")
 
     options = parser.parse_args(argv)
 
-    xaxis = options.xaxis.lower()
-    yaxis = options.yaxis.lower()
-    col = options.col.upper()
     myants = options.myants
 #    q = options.antenna2
     myspws = options.myspws
     myfields = options.myfields
     myscans = options.myscans
-    corr = int(options.corr)
+    mycorrs = options.corr
 
-    iterate = options.iterate.lower()
     noflags = options.noflags
     noconj = options.noconj
     xmin = options.xmin
     xmax = options.xmax
     ymin = options.ymin
     ymax = options.ymax
-    xcanvas = int(options.xcanvas)
-    ycanvas = int(options.ycanvas)
+    xcanvas = options.xcanvas
+    ycanvas = options.ycanvas
     normalize = options.normalize
     mycmap = options.mycmap
     bgcol = '#'+options.bgcol.lstrip('#')
     fontsize = options.fontsize
 
-    pngname = options.pngname
-    destdir = options.destdir
-    dostamp = options.dostamp
-
     myms = options.ms.rstrip('/')
 
+    if options.debug:
+        ShadeMS.log_console_handler.setLevel(logging.DEBUG)
 
-    # ---------------------------------------------------------------------------------------------------------------------------------------------
+    # figure our list of plots to make
 
+    xaxes = list(itertools.chain(*[opt.split(",") for opt in options.xaxis]))
+    yaxes = list(itertools.chain(*[opt.split(",") for opt in options.yaxis]))
+    log.debug(f"plot axes are {xaxes} {yaxes}")
+    if len(xaxes) != len(yaxes):
+        parser.error("--xaxis and --yaxis must be given the same number of times")
 
-    allowed_axes = ['a', 'p', 'r', 'i', 't', 'c', 'f', 'uv', 'u', 'v']
-    allowed_iterators = ['none','antenna','spw','field','scan']
+    def get_conformal_list(name, force_type=None):
+        """
+        For all other settings, returns list same length as xaxes, or throws error if no conformance.
+        Can also impose a type such as float (returning None for an empty string)
+        """
+        optlist = getattr(options, name, None)
+        if not optlist:
+            return [None]*len(xaxes)
+        # stick all lists together
+        elems = list(itertools.chain(*[opt.split(",") for opt in optlist]))
+        if len(elems) > 1 and len(elems) != len(xaxes):
+            parser.error(f"--{name} must be given the same number of times as --xaxis, or else just once")
+        # convert type
+        if force_type:
+            elems = [force_type(x) if x else None for x in elems]
+        if len(elems) != len(xaxes):
+            elems = [elems[0]]*len(xaxes)
+        return elems
 
-    if xaxis not in allowed_axes:
-        raise ValueError('--xaxis setting "%s" is unknown, please check inputs.' % xaxis)
+    # get list of columns and plot limites of the same length
+    if not options.col:
+        options.col = ["DATA"]
+    columns = get_conformal_list('col')
+    xmin = get_conformal_list('xmin', float)
+    xmax = get_conformal_list('xmax', float)
+    ymin = get_conformal_list('ymin', float)
+    ymax = get_conformal_list('ymax', float)
 
-    if yaxis not in allowed_axes:
-        raise ValueError('--yaxis setting "%s" is unknown, please check inputs.' % yaxis)
+    all_plots = list(zip(xaxes, yaxes, columns))
 
-    if iterate not in allowed_iterators:
-        raise ValueError('--iterate setting "%s" is unknown, please check inputs.' % iterate)
+    all_axes = set(xaxes) | set(yaxes)
 
-    xfullname, xunits = sms.fullname(xaxis)
-    yfullname, yunits = sms.fullname(yaxis)
+    # form dicts of min/max per axis
+    axis_min = { axis:value for axis, value in zip(xaxes, xmin) if value is not None}
+    axis_max = { axis:value for axis, value in zip(xaxes, xmax) if value is not None}
+    axis_min.update({ axis:value for axis, value in zip(yaxes, ymin) if value is not None})
+    axis_max.update({ axis:value for axis, value in zip(yaxes, ymax) if value is not None})
 
-    ylabel = yfullname+' '+yunits
-    xlabel = xfullname+' '+xunits
-
-
-    # ---------------------------------------------------------------------------------------------------------------------------------------------
-
+    log.debug(f"all plots are {all_plots}")
 
     sms.blank()
     log.info('Measurement Set  : %s' % myms)
 
-    
-    # ---------------------------------------------------------------------------------------------------------------------------------------------
-
-
-    if destdir != '':
-        destdir = destdir.rstrip('/')+'/'
-        log.info('Output directory : %s' % destdir)
-        if not os.path.isdir(destdir):
-            os.mkdir(destdir)
-            log.info('                 : Created')
-        else:
-            log.info('                 : Found')
-
-
-    # ---------------------------------------------------------------------------------------------------------------------------------------------
-
-
-    sms.blank()
-    log.info('Plotting         : %s vs %s' % (yfullname, xfullname))
-    log.info('MS column        : %s ' % col)
-    log.info('Correlation      : %d' % corr)
+    # log.info('Plotting         : %s vs %s' % (yfullname, xfullname))
+    # log.info('MS column        : %s ' % col)
+    # log.info('Correlation      : %d' % corr)
 
     group_cols = ['FIELD_ID', 'DATA_DESC_ID']
     chan_freqs = sms.get_chan_freqs(myms)
 
-    
     mytaql = []
 
     if myants != 'all': 
         ant_taql = []
-        group_cols.append('ANTENNA1')
+        # group_cols.append('ANTENNA1')
         ants = list(map(int, myants.split(',')))
         log.info('Antenna(s)       : %s' % ants)
-        if iterate != 'antenna':
-            for ant in ants:
-                ant_taql.append('(ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant)+')')
-            mytaql.append(('('+' || '.join(ant_taql)+')'))
+        if options.iter_antenna:
+            raise NotImplementedError("iteration over antennas not currently supported")
+            # for ant in ants:
+            #     ant_taql.append('(ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant)+')')
+            # mytaql.append(('('+' || '.join(ant_taql)+')'))
     else:
         ants = sms.get_antennas(myms)
         log.info('Antenna(s)       : all')
-
 
     fields, field_names = sms.get_field_names(myms)
     if myfields != 'all': 
         field_taql = []
         fields = list(map(int, myfields.split(',')))
         log.info('Field(s)         : %s' % fields)
-        if iterate != 'field':
+        if options.iter_field:
             for fld in fields:
                 field_taql.append('FIELD_ID=='+str(fld))
             mytaql.append(('('+' || '.join(field_taql)+')'))
     else:
-        log.info('Field(s)         : all')
+        log.info('Field(s)         : all {}'.format(" ".join(field_names)))
 
 
     if myspws != 'all': 
         spw_taql = []
         spws = list(map(int, myspws.split(',')))    
         log.info('SPW(s)           : %s' % spws)
-        if iterate != 'spw':
+        if options.iter_spws:
             for spw in spws:
                 spw_taql.append('DATA_DESC_ID=='+str(spw))
             mytaql.append(('('+' || '.join(spw_taql)+')'))
     else:
         spws = numpy.arange(len(chan_freqs))
-        log.info('SPW(s)           : all')
+        log.info(f'SPW(s)           : all {spws}')
 
 
     if myscans != 'all':
@@ -238,161 +280,157 @@ def main(argv):
         group_cols.append('SCAN_NUMBER')
         scans = list(map(int, myscans.split(',')))
         log.info('Scan(s)          : %s' % scans)
-        if iterate != 'scan':
+        if options.iter_scan:
             for scan in scans:
                 scan_taql.append('SCAN_NUMBER=='+str(scan))
             mytaql.append(('('+' || '.join(scan_taql)+')'))
     else:
+        if options.iter_scan:
+            group_cols.append('SCAN_NUMBER')
         scans = sms.get_scan_numbers(myms)
         log.info('Scan(s)          : all')
-
 
     if mytaql:
         mytaql = ' && '.join(mytaql)
     else:
         mytaql = ''
 
+    ms_corr_list = sms.get_correlations(myms)
+    log.debug(f"correlations in MS are {ms_corr_list}")
+    corr_map = { corr:i for i, corr in enumerate(ms_corr_list)}
+    corrs = []
+    for corr in mycorrs.upper().split(','):
+        if re.fullmatch("\d+", corr):
+            corrs.append(int(corr))
+        elif corr in corr_map:
+            corrs.append(corr_map[corr])
+        else:
+            parser.error("unknown corrrelation --corr {corr}")
+
     sms.blank()
 
-    if iterate == 'none':
+    log.debug(f"taql is {mytaql}, group_cols is {group_cols}")
 
-        xdata,ydata,doplot = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, xaxis, yaxis,
-                        spws,fields,corr,noflags,noconj)
+    dataframes, axis_col_labels, np = \
+        sms.getxydata(myms, group_cols, mytaql, chan_freqs, all_plots,
+                      spws=spws, fields=fields, corrs=corrs, noflags=noflags, noconj=noconj,
+                      iter_field=options.iter_field, iter_spw=options.iter_spw,
+                      iter_scan=options.iter_scan, iter_corr=options.iter_corr,
+                      axis_min=axis_min, axis_max=axis_max)
 
-        if doplot:
+    log.info("                 : rendering {} dataframes with {:.3g} points into {} plot types".format(
+                len(dataframes), np, len(all_plots)))
 
-            img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
-                            xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
+    ## each dataframe is an instance of the axes being iterated over -- on top of that, we need to iterate over plot types
 
-            if pngname == '':
-                pngname = sms.generate_pngname(myms,col,corr,xfullname,yfullname,
-                            myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                            iterate,-1,dostamp)
+    # dictionary of substitutions for filename and title
+    keys = {}
+    keys['ms'] = os.path.basename(os.path.splitext(myms.rstrip("/"))[0])
+    keys['timestamp'] = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    # dictionary of titles for these identifiers
+    titles = dict(field="", field_num="field", scan="scan", corr="", spw="spw", antenna="ant", icorr="corr")
+
+    keys['field_num'] = list(fields) if myfields != 'all' else ''
+    keys['field'] = [field_names[fld] for fld in fields] if myfields != 'all' else ''
+    keys['scan'] = list(scans) if myscans != 'all' else ''
+    keys['ant'] = list(ants) if myants != 'all' else ''
+    keys['spw'] = list(spws) if myspws != 'all' else ''
+    keys['icorr'] = list(corrs) if mycorrs != 'all' else ''
+    keys['corr'] = [ms_corr_list[i] for i in corrs] if mycorrs != 'all' else ''
+
+    def generate_string_from_keys(template, keys, listsep=" ", titlesep=" ", prefix=" "):
+        """Converts list of keys into a string suitable for plot titles or filenames.
+        listsep is used to separate list elements: " " for plot titles, "_" for filenames.
+        titlesep is used to separate names from values: " " for plot titles, "_" for filenames
+        prefix is used to prefix {_key} substitutions: ", " for titles, "-" for filenames
+        """
+        full_keys = keys.copy()
+        # convert lists to strings, add Capitalized keys with titles
+        for key, value in keys.items():
+            capkey = key.title()
+            if value is '':
+                full_keys[capkey] = ''
             else:
-                pngname = pngname+'.png'
-                
-            if destdir != '':
-                pngname = destdir+pngname
-
-            title = sms.generate_title(myms,col,corr,xfullname,yfullname,
-                            myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                            iterate,-1)
-
-#            title = myms+' '+col+' (correlation '+str(corr)+')'
-
-            sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
-                            xmax,ymin,ymax,xlabel,ylabel,title,pngname,bgcol,fontsize,
-                            figx=xcanvas/60,figy=ycanvas/60)
-
-            log.info('                 : %s' % pngname)
-
-        else:
-
-            log.info('                 : No data returned for this selection')
-
-        sms.blank()
-
-    else:
-
-        iters = []
-
-        if iterate == 'antenna':
-            iterate_over = ants
-            if 'ANTENNA1' not in group_cols:
-                group_cols.append('ANTENNA1')
-            if 'ANTENNA2' not in group_cols:
-                group_cols.append('ANTENNA2')
-            for i in iterate_over:
-                iter_taql = 'ANTENNA1=='+str(i)+' || ANTENNA2=='+str(i)
-                iter_info = '(Antenna '+str(i)+')'
-                iters.append((iter_taql,iter_info,i))
-            log.info('Iterating over   : antennas (%d in total)' % len(ants))
-
-        elif iterate == 'field':
-            iterate_over = fields
-            for i in iterate_over:
-                iter_taql = 'FIELD_ID=='+str(i)
-                iter_info = '(Field '+str(i)+', '+field_names[i]+')'
-                iters.append((iter_taql,iter_info,i))
-            log.info('Iterating over   : fields (%d in total)' % len(fields))
-
-        elif iterate == 'spw':
-            iterate_over = spws
-            for i in iterate_over:
-                iter_taql = 'DATA_DESC_ID=='+str(i)
-                iter_info = '(SPW '+str(i)+')'
-                iters.append((iter_taql,iter_info,i))
-            log.info('Iterating over   : SPWs (%d in total)' % len(spws))
-
-        elif iterate == 'scan':
-            iterate_over = scans
-            if 'SCAN_NUMBER' not in group_cols:
-                group_cols.append('SCAN_NUMBER')
-            for i in iterate_over:
-                iter_taql = 'SCAN_NUMBER=='+str(i)
-                iter_info = '(Scan '+str(i)+')'
-                iters.append((iter_taql,iter_info,i))
-            log.info('Iterating over   : scans (%d in total)' % len(scans))
-
-        sms.blank()
-
-        count = 1
-
-        for ii in iters:
-
-            clock_start_iter = time.time()
-
-            taql_i = ii[0]
-            info_i = ii[1]
-            i = ii[2]
-
-            log.info('Iteration        : %d / %d %s' % (count,len(iterate_over),info_i))
-
-            if mytaql != '':
-                taql_i = mytaql+' && '+taql_i
-
-#            log.info('TaQL             : %s' % taql_i)
-
-            xdata,ydata,doplot = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
-                            spws,fields,corr,noflags,noconj)
-
-            if doplot:
-
-                img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
-                                xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
-
-                title = sms.generate_title(myms,col,corr,xfullname,yfullname,
-                                myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                                iterate,i)
-
-                if pngname == '':
-                    pngname_i = sms.generate_pngname(myms,col,corr,xfullname,yfullname,
-                                myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                                iterate,i,dostamp)
+                if type(value) is list:                               # e.g. scan=[1,2] becomes scan="1 2"
+                    full_keys[key] = value = listsep.join(map(str, value))
+                if key in titles:                                     # e.g. Scan="scan 1 2"
+                    full_keys[capkey] = f"{titles[key]}{titlesep}{value}"
                 else:
-                    pngname_i = pngname+'_'+iterate.upper()+'-'+str(i)+'.png'
+                    full_keys[capkey] = value
+        # add _keys which supply prefixes
+        full_keys.update({f"_{key}": (f"{prefix}{value}" if value else '') for key, value in full_keys.items()})
+        # finally, format
+        return template.format(**full_keys)
 
-                if destdir != '':
-                    pngname_i = destdir+pngname_i
-                
-                sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
-                                xmax,ymin,ymax,xlabel,ylabel,title,pngname_i,bgcol,fontsize,
-                                figx=xcanvas/60,figy=ycanvas/60)
+    jobs = []
+    if options.num_parallel > 1:
+        executor = ThreadPoolExecutor(options.num_parallel)
+    else:
+        executor = None
 
-                log.info('                 : %s' % pngname_i)
+    def render_single_plot(df, xaxis, yaxis, col, pngname, title, xlabel, ylabel):
+        """Renders a single plot. Make this a function since we might call it in parallel"""
+        log.debug(f"rendering DS canvas  for {keys}")
 
+        img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(df,
+                                                                                  axis_col_labels[xaxis, col],
+                                                                                  axis_col_labels[yaxis, col],
+                                                                                  xcanvas, ycanvas, mycmap, normalize)
+
+
+        log.debug(f"rendering plot")
+
+        sms.make_plot(img_data, data_xmin, data_xmax, data_ymin, data_ymax,
+                      axis_min.get(xaxis), axis_max.get(xaxis),
+                      axis_min.get(yaxis), axis_max.get(yaxis),
+                      xlabel, ylabel, title,
+                      pngname, bgcol, fontsize,
+                      figx=xcanvas / 60, figy=ycanvas / 60)
+
+        log.info(f'                 : wrote {pngname}')
+
+    for (fld, spw, scan, antenna, corr), df in dataframes.items():
+        # update keys to be substituted into title and filename
+        if fld is not None:
+            keys['field_num'] = fld
+            keys['field'] = field_names[fld]
+        if spw is not None:
+            keys['spw'] = spw
+        if scan is not None:
+            keys['scan'] = scan
+        if antenna is not None:
+            keys['ant'] = antenna
+        if corr is not None:
+            keys['icorr'] = corr
+            keys['corr'] = ms_corr_list[corr]
+
+        # now loop over plot types
+        for xaxis, yaxis, col in all_plots:
+            keys.update(column=col, xaxis=xaxis, yaxis=yaxis,
+                        xname=sms.mappers[xaxis].fullname, yname=sms.mappers[yaxis].fullname,
+                        xunit=sms.mappers[xaxis].unit, yunit=sms.mappers[yaxis].unit)
+            pngname = generate_string_from_keys(options.pngname, keys, "_", "_", "-")
+            title   = generate_string_from_keys(options.title, keys, " ", " ", ", ")
+            xlabel  = generate_string_from_keys(options.xlabel, keys, " ", " ", ", ")
+            ylabel  = generate_string_from_keys(options.ylabel, keys, " ", " ", ", ")
+
+            # make output directory, if needed
+            dirname = os.path.dirname(pngname)
+            if dirname and not os.path.exists(dirname):
+                os.mkdir(dirname)
+                log.info(f'                 : created output directory {dirname}')
+
+            if executor is None:
+                render_single_plot(df, xaxis, yaxis, col, pngname, title, xlabel, ylabel)
             else:
+                log.info(f'                 : submitting job for {pngname}')
+                jobs.append(executor.submit(render_single_plot, df, xaxis, yaxis, col, pngname, title, xlabel, ylabel))
 
-                log.info('                 : No data returned for this selection')
-
-
-
-            clock_stop_iter = time.time()
-            elapsed_iter = str(round((clock_stop_iter-clock_start_iter), 2))
-            log.info('Time             : %s seconds' % (elapsed_iter))
-            sms.blank()
-
-            count += 1
+    # wait for jobs to finish
+    if executor:
+        log.info('                 : waiting for {} jobs to complete'.format(len(jobs)))
+        for job in jobs:
+            job.result()
 
     clock_stop = time.time()
     elapsed = str(round((clock_stop-clock_start), 2))
