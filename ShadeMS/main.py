@@ -144,7 +144,9 @@ def main(argv):
                              default="{yname}{_yunit}",
                              help='template for X axis labels, default "%(default)s"')
     output_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=DEFAULT_NUM_RENDERS,
-                             help='run up to N renderers in parallel (default = %(default)s)')
+                             help="""run up to N renderers in parallel (default = %(default)s). This is not necessarily 
+                             faster, as they might all end up contending for disk I/O. This might also work against 
+                             dask-ms's own intrinsic parallelism. You have been advised.""")
 
     options = parser.parse_args(argv)
 
@@ -421,7 +423,7 @@ def main(argv):
             if executor is None:
                 render_single_plot(df, xaxis, yaxis, col, pngname, title, xlabel, ylabel)
             else:
-                log.info(f'                 : submitting job for {title}')
+                log.info(f'                 : submitting job for {pngname}')
                 jobs.append(executor.submit(render_single_plot, df, xaxis, yaxis, col, pngname, title, xlabel, ylabel))
 
     # wait for jobs to finish
