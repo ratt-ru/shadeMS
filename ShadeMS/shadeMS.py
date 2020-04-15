@@ -281,46 +281,6 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,
 def run_datashader(ddf,xaxis,yaxis,xcanvas,ycanvas,
             xmin,xmax,ymin,ymax,mycmap,normalize):
 
-    # if xmin != '':
-    #     xmin = float(xmin)
-    #     masked_xdata = numpy.ma.masked_less(xdata, xmin)
-    #     masked_ydata = numpy.ma.masked_array(
-    #         data=ydata, mask=masked_xdata.mask)
-    #     ydata = masked_ydata.compressed()
-    #     xdata = masked_xdata.compressed()
-    #
-    # if xmax != '':
-    #     xmax = float(xmax)
-    #     masked_xdata = numpy.ma.masked_greater(xdata, xmax)
-    #     masked_ydata = numpy.ma.masked_array(
-    #         data=ydata, mask=masked_xdata.mask)
-    #     ydata = masked_ydata.compressed()
-    #     xdata = masked_xdata.compressed()
-    #
-    # if ymin != '':
-    #     ymin = float(ymin)
-    #     masked_ydata = numpy.ma.masked_less(ydata, ymin)
-    #     masked_xdata = numpy.ma.masked_array(
-    #         data=xdata, mask=masked_ydata.mask)
-    #     ydata = masked_ydata.compressed()
-    #     xdata = masked_xdata.compressed()
-    #
-    # if ymax != '':
-    #     ymax = float(ymax)
-    #     masked_ydata = numpy.ma.masked_greater(ydata, ymax)
-    #     masked_xdata = numpy.ma.masked_array(
-    #         data=xdata, mask=masked_ydata.mask)
-    #     ydata = masked_ydata.compressed()
-    #     xdata = masked_xdata.compressed()
-    #
-    # # Put plotdata into pandas data frame
-    # # This should be possible with xarray directly, but for freq plots we need a corner turn
-    #
-    # dists = {'plotdata': pd.DataFrame(OrderedDict([(xaxis, xdata), (yaxis, ydata)]))}
-    # df = pd.concat(dists, ignore_index=True)
-    #
-    # Run datashader on the pandas df
-
     canvas = ds.Canvas(xcanvas, ycanvas)
     agg = canvas.points(ddf, xaxis, yaxis)
     img = hd.shade(hv.Image(agg), cmap=getattr(
