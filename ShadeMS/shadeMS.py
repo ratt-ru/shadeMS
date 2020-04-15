@@ -86,10 +86,19 @@ def blank():
 
 class DataMapper(object):
     """This class defines a mapping from a dask group to an array of real values to be plotted"""
-    def __init__(self, fullname, unit, mapper=None, column=None, extras=None, conjugate=False, corr_axis=True):
+    def __init__(self, fullname, unit, mapper=None, column=None, extras=None, conjugate=False, axis=None):
+        """
+        :param fullname:    full name of parameter (real, amplitude, etc.)
+        :param unit:        unit string
+        :param mapper:      function that maps column data to parameter
+        :param column:      fix a column name (e.g. TIME, UVW. Not for visibility columns.)
+        :param extras:      extra arguments needed by mapper (e.g. ["freqs", "wavel"])
+        :param conjugate:   sets conjugation flag
+        :param axis:        which axis the parameter represets (0 time, 1 freq), if 1-dimensional
+        """
         self.fullname, self.unit, self.mapper, self.column, self.extras = fullname, unit, mapper, column, extras
         self.conjugate = conjugate
-        self.corr_axis = corr_axis
+        self.axis = axis
 
     @staticmethod
     def get_column(group, colname):
@@ -123,23 +132,31 @@ class DataMapper(object):
         else:
             return [colname]
 
-    def map_value(self, group, colname, corr, extras, flag, flag_row):
+    def map_value(self, group, colname, corr, extras, flag, flag_row, vmin, vmax):
         """
         """
         # preset column in constructor (UVBW and such) overrides dynamic column name (e.g. for vis columns)
         coldata = self.get_column(group, self.column or colname)
-        if self.corr_axis:
+        if coldata.ndim == 3:
             coldata = coldata[..., corr]
         if self.extras:
             coldata = self.mapper(coldata, **{name:extras[name] for name in self.extras })
         elif self.mapper:
             coldata = self.mapper(coldata)
-        # apply flags
-        if flag is not None and coldata.shape == flag.shape:
-            coldata = dama.masked_array(coldata, flag)
-        elif flag_row is not None and coldata.shape == flag_row.shape:
-            coldata = dama.masked_array(coldata, flag_row)
-        return coldata
+        # determine flags -- start with original flags
+        if self.axis is None:
+            flag = flag[..., corr]
+        elif self.axis == 0:
+            flag = flag_row
+        elif self.axis == 1:
+            flag = da.zeros_like(coldata, bool)
+        # apply clipping
+        if vmin is not None:
+            flag = da.logical_or(flag, coldata<vmin)
+        if vmax is not None:
+            flag = da.logical_or(flag, coldata>vmax)
+        # return masked array
+        return dama.masked_array(coldata, flag)
 
 
 
@@ -150,32 +167,41 @@ mappers = OrderedDict(
     p=DataMapper("Phase", "[deg]", lambda x:da.arctan2(da.imag(x), da.real(x))*180/math.pi),
     r=DataMapper("Real", "", da.real),
     i=DataMapper("Imag", "", da.imag),
-    t=DataMapper("Time", "[s]", column="TIME"),
-    c=DataMapper("Channel", "", column=None, corr_axis=False, extras=["chans"], mapper=lambda x,chans: chans),
-    f=DataMapper("Frequency", "[Hz]", column=None, corr_axis=False, extras=["freqs"], mapper=lambda x, freqs: freqs),
-    uv=DataMapper("uv-distance", "[wavelengths]", column="UVW", corr_axis=False, extras=["wavel"],
+    t=DataMapper("Time", "[s]", axis=0, column="TIME"),
+    c=DataMapper("Channel", "", column=None, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
+    f=DataMapper("Frequency", "[Hz]", column=None, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
+    uv=DataMapper("uv-distance", "[wavelengths]", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel),
-    u=DataMapper("u", "[wavelengths]", column="UVW", corr_axis=False, extras=["wavel"],
+    u=DataMapper("u", "[wavelengths]", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: uvw[:, 0] / wavel,
                  conjugate=True),
-    v=DataMapper("v", "[wavelengths]", column="UVW", corr_axis=False, extras=["wavel"],
+    v=DataMapper("v", "[wavelengths]", column="UVW", extras=["wavel"],
                  mapper=lambda uvw, wavel: uvw[:, 1] / wavel,
                  conjugate=True),
 )
 
 
-def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr,noflags,noconj):
+def getxydata(myms,col,group_cols,mytaql,chan_freqs,
+              axes,
+              spws,fields,corr,noflags,noconj,
+              axis_min_max):
 
+    # get visibility columns
     ms_cols = set(DataMapper.get_involved_columns(col))
 
     if not noflags:
         ms_cols.add('FLAG')
         ms_cols.add('FLAG_ROW')
 
-    for axis in xaxis, yaxis:
-        if mappers[axis].column:
-            ms_cols.add(mappers[axis].column)
+    # setup a mapper object per each plot axis
+    axismap = [mappers[axis] for axis in axes]
 
+    # get columns from axis mappers
+    for map in axismap:
+        if map.column:
+            ms_cols.add(map.column)
+
+    # get MS data
     msdata = daskms.xds_from_ms(
         myms, columns=list(ms_cols),# 'FIELD_ID', 'UVW'],
         group_cols=group_cols,
@@ -186,16 +212,16 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr
     output_df = None
     np = 0  # number of points to plot
 
-    xmap = mappers[xaxis]
-    ymap = mappers[yaxis]
-    # Get plot data into a pair of numpy arrays
-
+    # iterate over groups
     for group in msdata:
+
+        # always read flags -- easier that way
+        flag = group.FLAG
+        flag_row = group.FLAG_ROW
+
         if noflags:
-            flag = flag_row = None
-        else:
-            flag = group.FLAG
-            flag_row = group.FLAG_ROW
+            flag = da.zeros_like(flag)
+            flag_row = da.zeros_like(flag_row)
 
         fld = group.FIELD_ID
         ddid = group.DATA_DESC_ID
@@ -207,28 +233,42 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr
             # make dictionary of extra values for DataMappers
             extras = dict(corr=corr, chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
 
-            # get x and y values
-            xdata = xmap.map_value(group, col, corr, extras, flag, flag_row)
-            ydata = ymap.map_value(group, col, corr, extras, flag, flag_row)
+            # get data values per axis
+            datums = []
+            shapes = []
+            # overall shape is NTIME x NFREQ
+            shape = flag.shape[:-1]
+            # determine overall shape
+            for iaxis, map in enumerate(axismap):
+                vmin, vmax = axis_min_max[iaxis]
+                value = map.map_value(group, col, corr, extras, flag, flag_row, vmin, vmax)
+                # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ)
+                if map.axis is not None:
+                    assert value.ndim == 1
+                    assert value.shape[0] == shape[map.axis], f"{map.fullname}: size {value.shape[0]}, expected {shape[map.axis]}"
+                    shape1 = [1,1]
+                    shape1[map.axis] = value.shape[0]
+                    value = value.reshape(shape1)
+                # else 2D value better match expected shape
+                else:
+                    assert value.shape == shape, f"{map.fullname}: shape {value.shape}, expected {shape}"
+                datums.append(value)
+                log.debug(f"axis {map.fullname} has shape {value.shape}")
 
-            # broadcast them to same shape (expanding missing axes as appropriate) and unravel to linear
-            xdata, ydata = [arr.ravel() for arr in da.broadcast_arrays(xdata, ydata)]
+            # broadcast and unravel
+            datums = [arr.ravel() for arr in da.broadcast_arrays(*datums)]
 
-            # conjugate either axis as appropriatre
-            if xmap.conjugate:
-                xdata = da.concatenate([xdata,-xdata])
-                if not ymap.conjugate:
-                    ydata = da.concatenate([ydata,ydata])
-            if ymap.conjugate:
-                ydata = da.concatenate([ydata,-ydata])
-                if not xmap.conjugate:
-                    xdata = da.concatenate([xdata,ydata])
+            np += datums[0].size
 
+            # if any axis needs to be conjugated, double up all of them
+            if not noconj and any([map.conjugate for map in axismap]):
+                for i, map in enumerate(axismap):
+                    if map.conjugate:
+                        datums[i] = da.concatenate([datums[i], -datums[i]])
+                    else:
+                        datums[i] = da.concatenate([datums[i], datums[i]])
 
-
-            np += xdata.size
-
-            ddf = dask_df.from_array(da.stack([xdata, ydata], axis=1), columns=(xaxis, yaxis))
+            ddf = dask_df.from_array(da.stack(datums, axis=1), columns=axes)
 
             if output_df is None:
                 output_df = ddf
@@ -350,19 +390,19 @@ def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin
     def match(artist):
         return artist.__module__ == 'matplotlib.text'
 
-    if ymin == '':
+    if ymin == None:
         ymin = data_ymin
     else:
         ymin = float(ymin)
-    if ymax == '':
+    if ymax is None:
         ymax = data_ymax
     else:
         ymax = float(ymax)
-    if xmin == '':
+    if xmin is None:
         xmin = data_xmin
     else:
         xmin = float(xmin)
-    if xmax == '':
+    if xmax is None:
         xmax = data_xmax
     else:
         xmax = float(xmax)

@@ -11,6 +11,7 @@ import os
 import pkg_resources
 import ShadeMS
 import time
+import logging
 
 
 from argparse import ArgumentParser
@@ -42,7 +43,8 @@ def main(argv):
                       help='Measurement set')
     parser.add_argument("-v", "--version", action='version',
                       version='{:s} version {:s}'.format(parser.prog, __version__))
-
+    parser.add_argument("-d", "--debug", action='store_true',
+                        help="Enable debugging output")
 
     data_opts = parser.add_argument_group('Data selection')
     data_opts.add_argument('--xaxis', dest='xaxis',
@@ -75,14 +77,14 @@ def main(argv):
                       help='Enable to include flagged data', action='store_true', default=False)
     figure_opts.add_argument('--noconj', dest='noconj',
                       help='Do not show conjugate points in u,v plots (default = plot conjugates)', action='store_true', default=False)
-    figure_opts.add_argument('--xmin', dest='xmin',
-                      help='Minimum x-axis value (default = data min)', default='')
-    figure_opts.add_argument('--xmax', dest='xmax',
-                      help='Maximum x-axis value (default = data max)', default='')
-    figure_opts.add_argument('--ymin', dest='ymin',
-                      help='Minimum y-axis value (default = data min)', default='')
-    figure_opts.add_argument('--ymax', dest='ymax',
-                      help='Maximum y-axis value (default = data max)', default='')
+    figure_opts.add_argument('--xmin', dest='xmin', type=float,
+                      help='Minimum x-axis value (default = data min)', default=None)
+    figure_opts.add_argument('--xmax', dest='xmax', type=float,
+                      help='Maximum x-axis value (default = data max)', default=None)
+    figure_opts.add_argument('--ymin', dest='ymin', type=float,
+                      help='Minimum y-axis value (default = data min)', default=None)
+    figure_opts.add_argument('--ymax', dest='ymax', type=float,
+                      help='Maximum y-axis value (default = data max)', default=None)
     figure_opts.add_argument('--xcanvas', dest='xcanvas',
                       help='Canvas x-size in pixels (default = 1280)', default=1280)
     figure_opts.add_argument('--ycanvas', dest='ycanvas',
@@ -139,6 +141,8 @@ def main(argv):
 
     myms = options.ms.rstrip('/')
 
+    if options.debug:
+        ShadeMS.log_console_handler.setLevel(logging.DEBUG)
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -261,11 +265,11 @@ def main(argv):
 
     if iterate == 'none':
 
-        plot_df, np = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, xaxis, yaxis,
-                                      spws,fields,corr,noflags,noconj)
+        plot_df, np = sms.getxydata(myms, col,group_cols, mytaql, chan_freqs, [xaxis, yaxis],
+                                      spws,fields,corr,noflags,noconj, [(xmin,xmax), (ymin, ymax)])
 
 
-        log.info(f"rendering {np:.3g} points")
+        log.info(f"                 : rendering {np:.3g} points")
         if np:
 
             img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(plot_df, xaxis, yaxis,
@@ -350,8 +354,8 @@ def main(argv):
 
 #            log.info('TaQL             : %s' % taql_i)
 
-            plot_df, np = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
-                            spws,fields,corr,noflags,noconj)
+            plot_df, np = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, [xaxis, yaxis],
+                            spws,fields,corr,noflags,noconj,  [(xmin,xmax), (ymin, ymax)])
 
             log.info(f"rendering {np:.3g} points")
             if np:
