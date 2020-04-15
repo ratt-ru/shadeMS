@@ -25,6 +25,8 @@ import os.path
 import re
 from collections import OrderedDict
 
+from MSUtils.msutils import STOKES_TYPES
+
 log = ShadeMS.log
 
 def get_chan_freqs(myms):
@@ -61,6 +63,11 @@ def get_antennas(myms):
     # stations = ant_tab[0].STATION.values
     return ants.tolist()
 
+def get_correlations(myms):
+    pol_tab = daskms.xds_from_table(
+        myms+'::POLARIZATION', columns=['CORR_TYPE'])
+    return [STOKES_TYPES[icorr] for icorr in pol_tab[0].CORR_TYPE.values[0]]
+
 
 def freq_to_wavel(ff):
     c = 299792458.0  # m/s
@@ -73,11 +80,6 @@ def now():
     stamp = time.strftime(' [%H:%M:%S] ')
     msg = stamp+' '
     return msg
-
-
-def stamp():
-    now = str(datetime.datetime.now()).replace(' ','-').replace(':','-').split('.')[0]
-    return now
 
 
 def blank():
@@ -167,53 +169,75 @@ mappers = OrderedDict(
     p=DataMapper("Phase", "[deg]", lambda x:da.arctan2(da.imag(x), da.real(x))*180/math.pi),
     r=DataMapper("Real", "", da.real),
     i=DataMapper("Imag", "", da.imag),
-    t=DataMapper("Time", "[s]", axis=0, column="TIME"),
+    t=DataMapper("Time", "s", axis=0, column="TIME"),
     c=DataMapper("Channel", "", column=None, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
-    f=DataMapper("Frequency", "[Hz]", column=None, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
-    uv=DataMapper("uv-distance", "[wavelengths]", column="UVW", extras=["wavel"],
+    f=DataMapper("Frequency", "Hz", column=None, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
+    uv=DataMapper("uv-distance", "wavelengths", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel),
-    u=DataMapper("u", "[wavelengths]", column="UVW", extras=["wavel"],
+    u=DataMapper("u", "wavelengths", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: uvw[:, 0] / wavel,
                  conjugate=True),
-    v=DataMapper("v", "[wavelengths]", column="UVW", extras=["wavel"],
+    v=DataMapper("v", "wavelengths", column="UVW", extras=["wavel"],
                  mapper=lambda uvw, wavel: uvw[:, 1] / wavel,
                  conjugate=True),
 )
 
 
-def getxydata(myms,col,group_cols,mytaql,chan_freqs,
-              axes,
-              spws,fields,corr,noflags,noconj,
-              axis_min_max):
+def col_to_label(col):
+    """Replaces '-' and "/" in column names with palatable characters acceptable in filenames"""
+    return col.replace("-", "min").replace("/", "div")
+
+
+def getxydata(myms, group_cols, mytaql, chan_freqs, all_plots,
+              spws, fields, corrs, noflags, noconj,
+              iter_field, iter_spw, iter_scan, iter_corr,
+              axis_min, axis_max):
+
+    ms_cols = {'FLAG', 'FLAG_ROW'}
 
     # get visibility columns
-    ms_cols = set(DataMapper.get_involved_columns(col))
+    for _, _, col in all_plots:
+        ms_cols.update(DataMapper.get_involved_columns(col))
 
-    if not noflags:
-        ms_cols.add('FLAG')
-        ms_cols.add('FLAG_ROW')
-
-    # setup a mapper object per each plot axis
-    axismap = [mappers[axis] for axis in axes]
-
-    # get columns from axis mappers
-    for map in axismap:
-        if map.column:
-            ms_cols.add(map.column)
+    # get other columns associated with plot axes
+    for xaxis, yaxis, col in all_plots:
+        for axis in xaxis, yaxis:
+            if mappers[axis].column:
+                ms_cols.add(mappers[axis].column)
 
     # get MS data
-    msdata = daskms.xds_from_ms(
-        myms, columns=list(ms_cols),# 'FIELD_ID', 'UVW'],
-        group_cols=group_cols,
-        taql_where=mytaql)
+    msdata = daskms.xds_from_ms(myms, columns=list(ms_cols), group_cols=group_cols, taql_where=mytaql)
 
-    log.info('                 : Reading MS, please wait')
+    log.info('                 : Indexing MS, please wait')
 
-    output_df = None
     np = 0  # number of points to plot
+
+    # sort out which combinations of axes/columns are necessary
+    all_axes_cols = set()
+    for xaxis, yaxis, col in all_plots:
+        all_axes_cols.add((xaxis, col))
+        all_axes_cols.add((yaxis, col))
+
+    axis_col_labels = {}
+    for axis, col in all_axes_cols:
+        axis_col_labels[axis, col] = "{}_{}".format(axis, col_to_label(col))
+
+    # output dataframes, indexed by (field, spw, scan, antenna, correlation)
+    # If any of these axes is not being iterated over, then the index is None
+    output_dataframes = OrderedDict()
 
     # iterate over groups
     for group in msdata:
+        ddid     =  group.DATA_DESC_ID  # always present
+        fld      =  group.FIELD_ID # always present
+        if fld not in fields or ddid not in spws:
+            log.debug(f"field {fld} ddid {ddid} not in selection, skipping")
+            continue
+
+        scan    = getattr(group, 'SCAN_NUMBER', None)  # will be present if iterating over scans
+
+        # TODO: antenna iteration. None force no iteration for now
+        antenna = None
 
         # always read flags -- easier that way
         flag = group.FLAG
@@ -223,13 +247,10 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,
             flag = da.zeros_like(flag)
             flag_row = da.zeros_like(flag_row)
 
-        fld = group.FIELD_ID
-        ddid = group.DATA_DESC_ID
+        freqs = chan_freqs[ddid]
+        nchan = len(freqs)
 
-        if fld in fields and ddid in spws:
-            freqs = chan_freqs[ddid]
-            nchan = len(freqs)
-
+        for corr in corrs:
             # make dictionary of extra values for DataMappers
             extras = dict(corr=corr, chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
 
@@ -239,8 +260,9 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,
             # overall shape is NTIME x NFREQ
             shape = flag.shape[:-1]
             # determine overall shape
-            for iaxis, map in enumerate(axismap):
-                vmin, vmax = axis_min_max[iaxis]
+            for axis, col in all_axes_cols:
+                map = mappers[axis]
+                vmin, vmax = axis_min.get(axis), axis_max.get(axis)
                 value = map.map_value(group, col, corr, extras, flag, flag_row, vmin, vmax)
                 # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ)
                 if map.axis is not None:
@@ -261,25 +283,36 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,
             np += datums[0].size
 
             # if any axis needs to be conjugated, double up all of them
-            if not noconj and any([map.conjugate for map in axismap]):
-                for i, map in enumerate(axismap):
-                    if map.conjugate:
+            if not noconj and any([mappers[axis].conjugate for axis, _ in all_axes_cols]):
+                for i, (axis, _) in enumerate(all_axes_cols):
+                    if mappers[axis].conjugate:
                         datums[i] = da.concatenate([datums[i], -datums[i]])
                     else:
                         datums[i] = da.concatenate([datums[i], datums[i]])
 
-            ddf = dask_df.from_array(da.stack(datums, axis=1), columns=axes)
+            # now stack them all into a big dataframe
+            ddf = dask_df.from_array(da.stack(datums, axis=1), columns=[axis_col_labels[x] for x in all_axes_cols])
 
-            if output_df is None:
-                output_df = ddf
+            # now, are we iterating or concatenating? Make frame key accordingly
+            dataframe_key = (fld if iter_field else None,
+                             ddid if iter_spw else None,
+                             scan if iter_scan else None,
+                             antenna,
+                             corr if iter_corr else None)
+
+            # do we already have a frame for this key
+            ddf0 = output_dataframes.get(dataframe_key)
+
+            if ddf0 is None:
+                log.debug(f"first frame for {dataframe_key}")
+                output_dataframes[dataframe_key] = ddf
             else:
-                output_df = output_df.append(ddf)
+                log.debug(f"appending to frame for {dataframe_key}")
+                output_dataframes[dataframe_key] = ddf0.append(ddf)
 
-    return output_df, np
+    return output_dataframes, axis_col_labels, np
 
-
-def run_datashader(ddf,xaxis,yaxis,xcanvas,ycanvas,
-            xmin,xmax,ymin,ymax,mycmap,normalize):
+def run_datashader(ddf,xaxis,yaxis,xcanvas,ycanvas,mycmap,normalize):
 
     canvas = ds.Canvas(xcanvas, ycanvas)
     agg = canvas.points(ddf, xaxis, yaxis)
@@ -350,22 +383,10 @@ def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin
     def match(artist):
         return artist.__module__ == 'matplotlib.text'
 
-    if ymin == None:
-        ymin = data_ymin
-    else:
-        ymin = float(ymin)
-    if ymax is None:
-        ymax = data_ymax
-    else:
-        ymax = float(ymax)
-    if xmin is None:
-        xmin = data_xmin
-    else:
-        xmin = float(xmin)
-    if xmax is None:
-        xmax = data_xmax
-    else:
-        xmax = float(xmax)
+    xmin = data_xmin if xmin is None else xmin
+    xmax = data_xmax if xmax is None else xmax
+    ymin = data_ymin if ymin is None else ymin
+    ymax = data_ymax if ymax is None else ymax
 
     fig = pylab.figure(figsize=(figx, figy))
     ax = fig.add_subplot(111, facecolor=bgcol)
