@@ -16,6 +16,7 @@ import pylab
 import ShadeMS
 import sys
 import time
+import os.path
 
 from collections import OrderedDict as odict
 
@@ -259,25 +260,30 @@ def run_datashader(xdata,ydata,xaxis,yaxis,xcanvas,ycanvas,
     return img.data,data_xmin,data_xmax,data_ymin,data_ymax
 
 
-def generate_pngname(myms,col,corr,xfullname,yfullname,
+def generate_pngname(dirname, name_template, myms,col,corr,xfullname,yfullname,
                 myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                iterate,myiter,dostamp):
+                iterate=None, myiter=0, dostamp=None):
 
-    pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_CORR-'+str(corr)
-    if myants != 'all' and iterate != 'ant':
-        pngname += '_ANT-'+myants.replace(',','-')
-    if myspws != 'all' and iterate != 'spw':
-        pngname += '_SPW-'+myspws.replace(',', '-')
-    if myfields != 'all' and iterate != 'field':
-        pngname += '_FIELD-'+myfields.replace(',','-')
-    if myscans != 'all' and iterate != 'scan':
-        pngname += '_SCAN-'+myscans.replace(',','-')
-    if myiter != -1:
-        pngname += '_'+iterate.upper()+'-'+str(myiter)
-    pngname += '_'+yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
-    if dostamp:
-        pngname += '_'+stamp()
-    pngname += '.png'
+    if not name_template:
+        pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_CORR-'+str(corr)
+        if myants != 'all' and iterate != 'ant':
+            pngname += '_ANT-'+myants.replace(',','-')
+        if myspws != 'all' and iterate != 'spw':
+            pngname += '_SPW-'+myspws.replace(',', '-')
+        if myfields != 'all' and iterate != 'field':
+            pngname += '_FIELD-'+myfields.replace(',','-')
+        if myscans != 'all' and iterate != 'scan':
+            pngname += '_SCAN-'+myscans.replace(',','-')
+        if iterate is not None and myiter != -1:
+            pngname += "_{}-{}".format(iterate.upper(), myiter)
+        pngname += '_'+yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
+        if dostamp:
+            pngname += '_'+stamp()
+        pngname += '.png'
+    else:
+        pngname = name_template.format(**locals())
+    if dirname:
+        pngname = os.path.join(dirname, pngname)
     return pngname
 
 

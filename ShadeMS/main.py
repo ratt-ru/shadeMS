@@ -6,7 +6,6 @@ import matplotlib
 matplotlib.use('agg')
 
 
-import daskms as xms
 import numpy
 import os
 import pkg_resources
@@ -96,8 +95,9 @@ def main(argv):
 
 
     output_opts = parser.add_argument_group('Output')
-    output_opts.add_argument('--png', dest='pngname',
-                      help='PNG name, without extension, iterations will be added (default = something verbose)', default='')
+    # can also use "plot-{msbase}-{column}-{corr}-{xfullname}-vs-{yfullname}", let's expand on this later
+    output_opts.add_argument('--png', dest='pngname', default="",
+                      help='PNG name, without extension, iterations will be added (default = something verbose)')
     output_opts.add_argument('--dest', dest='destdir',
                       help='Destination path for output PNGs (will be created if not present, default = CWD)', default='')
     output_opts.add_argument('--stamp', dest='dostamp',
@@ -264,15 +264,9 @@ def main(argv):
             img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(xdata, ydata, xaxis, yaxis,
                             xcanvas, ycanvas, xmin, xmax, ymin, ymax, mycmap, normalize) 
 
-            if pngname == '':
-                pngname = sms.generate_pngname(myms,col,corr,xfullname,yfullname,
-                            myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                            iterate,-1,dostamp)
-            else:
-                pngname = pngname+'.png'
-                
-            if destdir != '':
-                pngname = destdir+pngname
+            pngname = sms.generate_pngname(destdir, pngname, myms,col,corr,xfullname,yfullname,
+                        myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                        None,0,dostamp)
 
             title = sms.generate_title(myms,col,corr,xfullname,yfullname,
                             myants,ants,myspws,spws,myfields,fields,myscans,scans,
@@ -338,13 +332,9 @@ def main(argv):
 
         count = 1
 
-        for ii in iters:
+        for taql_i, info_i, i in iters:
 
             clock_start_iter = time.time()
-
-            taql_i = ii[0]
-            info_i = ii[1]
-            i = ii[2]
 
             log.info('Iteration        : %d / %d %s' % (count,len(iterate_over),info_i))
 
@@ -365,16 +355,11 @@ def main(argv):
                                 myants,ants,myspws,spws,myfields,fields,myscans,scans,
                                 iterate,i)
 
-                if pngname == '':
-                    pngname_i = sms.generate_pngname(myms,col,corr,xfullname,yfullname,
-                                myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                                iterate,i,dostamp)
-                else:
-                    pngname_i = pngname+'_'+iterate.upper()+'-'+str(i)+'.png'
+                pngname_i = sms.generate_pngname(destdir, pngname, myms,col,corr,xfullname,yfullname,
+                            myants,ants,myspws,spws,myfields,fields,myscans,scans,
+                            iterate,i,dostamp)
 
-                if destdir != '':
-                    pngname_i = destdir+pngname_i
-                
+
                 sms.make_plot(img_data,data_xmin,data_xmax,data_ymin,data_ymax,xmin,
                                 xmax,ymin,ymax,xlabel,ylabel,title,pngname_i,bgcol,fontsize,
                                 figx=xcanvas/60,figy=ycanvas/60)
