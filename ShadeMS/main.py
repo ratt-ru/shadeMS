@@ -353,6 +353,7 @@ def main(argv):
             plot_df, np = sms.getxydata(myms, col,group_cols, taql_i, chan_freqs, xaxis, yaxis,
                             spws,fields,corr,noflags,noconj)
 
+            log.info(f"rendering {np:.3g} points")
             if np:
 
                 img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(plot_df, xaxis, yaxis,
