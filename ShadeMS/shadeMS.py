@@ -98,15 +98,15 @@ class DataMapper(object):
         if colname is None:
             return None
         elif hasattr(group, colname):
-            return getattr(group, colname).data
+            return getattr(group, colname)
         elif colname == "D-M":
-            return group.DATA.data - group.MODEL_DATA.data
+            return group.DATA - group.MODEL_DATA
         elif colname == "C-M":
-            return group.CORRECTED_DATA.data - group.MODEL_DATA.data
+            return group.CORRECTED_DATA - group.MODEL_DATA
         elif colname == "D/M":
-            return group.DATA.data / group.MODEL_DATA.data
+            return group.DATA / group.MODEL_DATA
         elif colname == "C/M":
-            return group.CORRECTED_DATA.data / group.MODEL_DATA.data
+            return group.CORRECTED_DATA / group.MODEL_DATA
         else:
             raise ValueError(f"unknown column name {colname}")
 
@@ -123,6 +123,8 @@ class DataMapper(object):
             return [colname]
 
     def map_value(self, group, colname, corr, extras, flag, flag_row):
+        """
+        """
         # preset column in constructor (UVBW and such) overrides dynamic column name (e.g. for vis columns)
         coldata = self.get_column(group, self.column or colname)
         if self.corr_axis:
@@ -136,11 +138,6 @@ class DataMapper(object):
             coldata = dama.masked_array(coldata, flag)
         elif flag_row is not None and coldata.shape == flag_row.shape:
             coldata = dama.masked_array(coldata, flag_row)
-        # unravel
-        coldata = coldata.ravel()
-        # conjugate
-        if self.conjugate:
-            coldata = da.concatenate([coldata, -coldata])
         return coldata
 
 
@@ -156,12 +153,12 @@ mappers = OrderedDict(
     c=DataMapper("Channel", "", column=None, corr_axis=False, extras=["chans"], mapper=lambda x,chans: chans),
     f=DataMapper("Frequency", "[Hz]", column=None, corr_axis=False, extras=["freqs"], mapper=lambda x, freqs: freqs),
     uv=DataMapper("uv-distance", "[wavelengths]", column="UVW", corr_axis=False, extras=["wavel"],
-                  mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel[:,numpy.newaxis]),
+                  mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel),
     u=DataMapper("u", "[wavelengths]", column="UVW", corr_axis=False, extras=["wavel"],
-                  mapper=lambda uvw, wavel: uvw[:, 0] / wavel[:, numpy.newaxis],
+                  mapper=lambda uvw, wavel: uvw[:, 0] / wavel,
                  conjugate=True),
     v=DataMapper("v", "[wavelengths]", column="UVW", corr_axis=False, extras=["wavel"],
-                 mapper=lambda uvw, wavel: uvw[:, 1] / wavel[:, numpy.newaxis],
+                 mapper=lambda uvw, wavel: uvw[:, 1] / wavel,
                  conjugate=True),
 )
 
@@ -203,16 +200,32 @@ def getxydata(myms,col,group_cols,mytaql,chan_freqs,xaxis,yaxis,spws,fields,corr
         ddid = group.DATA_DESC_ID
 
         if fld in fields and ddid in spws:
-            freqs = chan_freqs.values[ddid]
+            freqs = chan_freqs[ddid]
             nchan = len(freqs)
 
             # make dictionary of extra values for DataMappers
             extras = dict(corr=corr, chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
 
+            # get x and y values
             xdata = xmap.map_value(group, col, corr, extras, flag, flag_row)
             ydata = ymap.map_value(group, col, corr, extras, flag, flag_row)
 
-            np += xdata.shape[0]
+            # broadcast them to same shape (expanding missing axes as appropriate) and unravel to linear
+            xdata, ydata = [arr.ravel() for arr in da.broadcast_arrays(xdata, ydata)]
+
+            # conjugate either axis as appropriatre
+            if xmap.conjugate:
+                xdata = da.concatenate([xdata,-xdata])
+                if not ymap.conjugate:
+                    ydata = da.concatenate([ydata,ydata])
+            if ymap.conjugate:
+                ydata = da.concatenate([ydata,-ydata])
+                if not xmap.conjugate:
+                    xdata = da.concatenate([xdata,ydata])
+
+
+
+            np += xdata.size
 
             ddf = dask_df.from_array(da.stack([xdata, ydata], axis=1), columns=(xaxis, yaxis))
 
