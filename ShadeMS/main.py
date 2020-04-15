@@ -58,7 +58,7 @@ def main(argv):
     data_opts.add_argument('-y', '--yaxis', dest='yaxis', action="append",
                       help='Y axis to plot. Must be given the same number of times as --xaxis.')
 
-    data_opts.add_argument('-c', '--col', dest='col', action="append", default=["DATA"],
+    data_opts.add_argument('-c', '--col', dest='col', action="append", default=[],
                       help="""Name of visibility column (default is DATA), if needed. You can also employ
                       'D-M', 'C-M', 'D/M', 'C/M' for various combinations of data, corrected and model. Can use multiple
                       times, or use comma-separated list, for multiple plots (or else specify it just once).
@@ -193,6 +193,8 @@ def main(argv):
         return elems
 
     # get list of columns and plot limites of the same length
+    if not options.col:
+        options.col = ["DATA"]
     columns = get_conformal_list('col')
     xmin = get_conformal_list('xmin', float)
     xmax = get_conformal_list('xmax', float)
