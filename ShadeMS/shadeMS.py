@@ -15,6 +15,7 @@ import datashader as ds
 import holoviews as hv
 import holoviews.operation.datashader as hd
 import numpy
+import math
 import pandas as pd
 import pylab
 import ShadeMS
@@ -146,7 +147,7 @@ class DataMapper(object):
 # this dict maps short axis names into full DataMapper objects
 mappers = OrderedDict(
     a=DataMapper("Amplitude", "", abs),
-    p=DataMapper("Phase", "[deg]", lambda x:da.rad2deg(da.angle(x))),
+    p=DataMapper("Phase", "[deg]", lambda x:da.arctan2(da.imag(x), da.real(x))*180/math.pi),
     r=DataMapper("Real", "", da.real),
     i=DataMapper("Imag", "", da.imag),
     t=DataMapper("Time", "[s]", column="TIME"),
