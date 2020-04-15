@@ -15,7 +15,7 @@ import time
 import logging
 import itertools
 import re
-
+from concurrent.futures import ThreadPoolExecutor
 
 from argparse import ArgumentParser
 from ShadeMS import shadeMS as sms
@@ -30,10 +30,16 @@ except pkg_resources.DistributionNotFound:
     __version__ = "dev"
 
 
+# set default number of renderers to half the available cores
+DEFAULT_NUM_RENDERS = max(1, len(os.sched_getaffinity(0))//2)
+
+
 def main(argv):
 
 
     clock_start = time.time()
+
+    # default # of CPUs
 
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
@@ -137,6 +143,8 @@ def main(argv):
     output_opts.add_argument('--ylabel',
                              default="{yname}{_yunit}",
                              help='template for X axis labels, default "%(default)s"')
+    output_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=DEFAULT_NUM_RENDERS,
+                             help='run up to N renderers in parallel (default = %(default)s)')
 
     options = parser.parse_args(argv)
 
@@ -308,7 +316,8 @@ def main(argv):
                       iter_scan=options.iter_scan, iter_corr=options.iter_corr,
                       axis_min=axis_min, axis_max=axis_max)
 
-    log.info("                 : rendering {} dataframes with {:.3g} points".format(len(dataframes), np))
+    log.info("                 : rendering {} dataframes with {:.3g} points into {} plot types".format(
+                len(dataframes), np, len(all_plots)))
 
     ## each dataframe is an instance of the axes being iterated over -- on top of that, we need to iterate over plot types
 
@@ -351,6 +360,33 @@ def main(argv):
         # finally, format
         return template.format(**full_keys)
 
+    jobs = []
+    if options.num_parallel > 1:
+        executor = ThreadPoolExecutor(options.num_parallel)
+    else:
+        executor = None
+
+    def render_single_plot(df, xaxis, yaxis, col, pngname, title, xlabel, ylabel):
+        """Renders a single plot. Make this a function since we might call it in parallel"""
+        log.debug(f"rendering DS canvas  for {keys}")
+
+        img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(df,
+                                                                                  axis_col_labels[xaxis, col],
+                                                                                  axis_col_labels[yaxis, col],
+                                                                                  xcanvas, ycanvas, mycmap, normalize)
+
+
+        log.debug(f"rendering plot")
+
+        sms.make_plot(img_data, data_xmin, data_xmax, data_ymin, data_ymax,
+                      axis_min.get(xaxis), axis_max.get(xaxis),
+                      axis_min.get(yaxis), axis_max.get(yaxis),
+                      xlabel, ylabel, title,
+                      pngname, bgcol, fontsize,
+                      figx=xcanvas / 60, figy=ycanvas / 60)
+
+        log.info(f'                 : wrote {pngname}')
+
     for (fld, spw, scan, antenna, corr), df in dataframes.items():
         # update keys to be substituted into title and filename
         if fld is not None:
@@ -371,19 +407,10 @@ def main(argv):
             keys.update(column=col, xaxis=xaxis, yaxis=yaxis,
                         xname=sms.mappers[xaxis].fullname, yname=sms.mappers[yaxis].fullname,
                         xunit=sms.mappers[xaxis].unit, yunit=sms.mappers[yaxis].unit)
-
-            log.debug(f"rendering DS canvas  for {keys}")
-
-            img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(df,
-                axis_col_labels[xaxis, col], axis_col_labels[yaxis, col],
-                xcanvas, ycanvas, mycmap, normalize)
-
             pngname = generate_string_from_keys(options.pngname, keys, "_", "_", "-")
             title   = generate_string_from_keys(options.title, keys, " ", " ", ", ")
             xlabel  = generate_string_from_keys(options.xlabel, keys, " ", " ", ", ")
             ylabel  = generate_string_from_keys(options.ylabel, keys, " ", " ", ", ")
-
-            log.debug(f"rendering plot")
 
             # make output directory, if needed
             dirname = os.path.dirname(pngname)
@@ -391,14 +418,17 @@ def main(argv):
                 os.mkdir(dirname)
                 log.info(f'                 : created output directory {dirname}')
 
-            sms.make_plot(img_data, data_xmin, data_xmax, data_ymin, data_ymax,
-                          axis_min.get(xaxis), axis_max.get(xaxis),
-                          axis_min.get(yaxis), axis_max.get(yaxis),
-                          xlabel, ylabel, title,
-                          pngname, bgcol, fontsize,
-                          figx=xcanvas/60, figy=ycanvas/60)
+            if executor is None:
+                render_single_plot(df, xaxis, yaxis, col, pngname, title, xlabel, ylabel)
+            else:
+                log.info(f'                 : submitting job for {title}')
+                jobs.append(executor.submit(render_single_plot, df, xaxis, yaxis, col, pngname, title, xlabel, ylabel))
 
-            log.info(f'                 : wrote {pngname}')
+    # wait for jobs to finish
+    if executor:
+        log.info('                 : waiting for {} jobs to complete'.format(len(jobs)))
+        for job in jobs:
+            job.result()
 
     clock_stop = time.time()
     elapsed = str(round((clock_stop-clock_start), 2))
