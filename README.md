@@ -1,6 +1,6 @@
 # shadeMS
 
-Rapid Measurement Set plotting with xarray-ms and datashader.
+Rapid Measurement Set plotting with dask-ms and datashader.
 
 ```
 Rapid Measurement Set plotting with dask-ms and datashader. Version 0.1.0
