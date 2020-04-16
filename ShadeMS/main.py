@@ -348,7 +348,7 @@ def main(argv):
         # convert lists to strings, add Capitalized keys with titles
         for key, value in keys.items():
             capkey = key.title()
-            if value is '':
+            if value == '':
                 full_keys[capkey] = ''
             else:
                 if type(value) is list:                               # e.g. scan=[1,2] becomes scan="1 2"
