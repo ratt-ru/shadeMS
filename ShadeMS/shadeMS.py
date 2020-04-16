@@ -74,21 +74,31 @@ def freq_to_wavel(ff):
     return c/ff
 
 
-def now():
-    # stamp = time.strftime('[%Y-%m-%d %H:%M:%S]: ')
-    # msg = '\033[92m'+stamp+'\033[0m' # time in green
-    stamp = time.strftime(' [%H:%M:%S] ')
-    msg = stamp+' '
-    return msg
-
-
 def blank():
     log.info('------------------------------------------------------')
 
 
+def col_to_label(col):
+    """Replaces '-' and "/" in column names with palatable characters acceptable in filenames and identifiers"""
+    return col.replace("-", "min").replace("/", "div")
+
+
+# set of valid MS columns
+valid_ms_columns = set()
+
+# Maps correlation -> callable that extracts that correlation from visibility data
+# By default, populated with slicing functions for 0...3,
+# but can also be extended with "I", "Q", etx.
+corr_data_mappers = OrderedDict({i: lambda x:x[...,i] for i in range(4)})
+
+# Maps correlation -> callable that extracts that correlation from flag data
+corr_flag_mappers = OrderedDict({i: lambda x:x[...,i] for i in range(4)})
+
+
+
 class DataMapper(object):
     """This class defines a mapping from a dask group to an array of real values to be plotted"""
-    def __init__(self, fullname, unit, mapper=None, column=None, extras=None, conjugate=False, axis=None):
+    def __init__(self, fullname, unit, mapper=None, column=None, extras=[], conjugate=False, axis=None):
         """
         :param fullname:    full name of parameter (real, amplitude, etc.)
         :param unit:        unit string
@@ -102,71 +112,11 @@ class DataMapper(object):
         self.conjugate = conjugate
         self.axis = axis
 
-    @staticmethod
-    def get_column(group, colname):
-        """
-        Given a DASK group and a column name, returns corresponding dask array
-        """
-        if colname is None:
-            return None
-        elif hasattr(group, colname):
-            return getattr(group, colname)
-        elif colname == "D-M":
-            return group.DATA - group.MODEL_DATA
-        elif colname == "C-M":
-            return group.CORRECTED_DATA - group.MODEL_DATA
-        elif colname == "D/M":
-            return group.DATA / group.MODEL_DATA
-        elif colname == "C/M":
-            return group.CORRECTED_DATA / group.MODEL_DATA
-        else:
-            raise ValueError(f"unknown column name {colname}")
-
-    @staticmethod
-    def get_involved_columns(colname):
-        """Given a column name, returns list of columns involved"""
-        if colname is None:
-            return []
-        elif colname in ("D-M", "D/M"):
-            return ["DATA", "MODEL_DATA"]
-        elif colname == "C-M":
-            return ["CORRECTED_DATA", "MODEL_DATA"]
-        else:
-            return [colname]
-
-    def map_value(self, group, colname, corr, extras, flag, flag_row, vmin, vmax):
-        """
-        """
-        # preset column in constructor (UVBW and such) overrides dynamic column name (e.g. for vis columns)
-        coldata = self.get_column(group, self.column or colname)
-        if coldata.ndim == 3:
-            coldata = coldata[..., corr]
-        if self.extras:
-            coldata = self.mapper(coldata, **{name:extras[name] for name in self.extras })
-        elif self.mapper:
-            coldata = self.mapper(coldata)
-        # determine flags -- start with original flags
-        if self.axis is None:
-            flag = flag[..., corr]
-        elif self.axis == 0:
-            flag = flag_row
-        elif self.axis == 1:
-            flag = da.zeros_like(coldata, bool)
-        # apply clipping
-        if vmin is not None:
-            flag = da.logical_or(flag, coldata<vmin)
-        if vmax is not None:
-            flag = da.logical_or(flag, coldata>vmax)
-        # return masked array
-        return dama.masked_array(coldata, flag)
-
-
-
-#
 # this dict maps short axis names into full DataMapper objects
-mappers = OrderedDict(
+data_mappers = OrderedDict(
+    _=DataMapper("", "", lambda x:x),
     a=DataMapper("Amplitude", "", abs),
-    p=DataMapper("Phase", "[deg]", lambda x:da.arctan2(da.imag(x), da.real(x))*180/math.pi),
+    p=DataMapper("Phase", "deg", lambda x:da.arctan2(da.imag(x), da.real(x))*180/math.pi),
     r=DataMapper("Real", "", da.real),
     i=DataMapper("Imag", "", da.imag),
     t=DataMapper("Time", "s", axis=0, column="TIME"),
@@ -183,27 +133,169 @@ mappers = OrderedDict(
 )
 
 
-def col_to_label(col):
-    """Replaces '-' and "/" in column names with palatable characters acceptable in filenames"""
-    return col.replace("-", "min").replace("/", "div")
+class DataAxis(object):
+    """
+    Represents a data axis that can be plotted: a combination of column, function and correlation
+    """
+    # dict of all registered axes
+    all_axes = OrderedDict()
+    # set of labels (used to make unique labels)
+    all_labels = set()
+
+    @classmethod
+    def parse_datum_spec(cls, axis_spec, default_column=None):
+        # figure out the axis specification
+        function = column = corr = None
+        specs = axis_spec.split(":", 2)
+        if len(specs) == 1:
+            if specs[0] in valid_ms_columns:    # single column name, identity mapping
+                function = '_'
+                column = specs[0]
+            elif specs[0] in data_mappers:      # single function name ('a', 'p', etc.), default column
+                function = specs[0]
+                column = data_mappers[function].column or default_column
+        elif len(specs) == 2:                   # function:column
+            if specs[0] in data_mappers and specs[1] in valid_ms_columns:
+                function = specs[0]
+                column = specs[1]
+        elif len(specs) == 3:
+            if specs[0] in data_mappers and specs[1] in valid_ms_columns:
+                function = specs[0]
+                column = specs[1]
+                corr = specs[2]
+        # better be set now!
+        if function is None:
+            raise ValueError(f"invalid axis specification '{axis_spec}'")
+        has_corr_axis = column.endswith("DATA") or column.endswith("SPECTRUM")
+        if not has_corr_axis:
+            if corr is not None:
+                raise ValueError(f"'{axis_spec}': can't specify correlation when column is '{column}'")
+            corr = False  # corr=False marks a datum without a correlation axis
+        return function, column, corr, (has_corr_axis and corr is None)
+
+    @classmethod
+    def register(cls, function, column, corr, minmax=None, ncol=None):
+        """
+        Registers a data axis, which ultimately ends up as a column in the assembled dataframe.
+        For multiple plots, we want to reuse the same information (assuming the same
+        clipping limits, etc.) so we have a dictionary of axis definitions here.
+
+        Columns selects a column to operate on.
+        Function selects a mapping (see datamappers below).
+        Corr selects a correlation (or a Stokes product such as I, Q,...)
+        minmax sets axis clipping levels
+        ncol discretizes the axis into N colours between min and max
+        """
+        # form up label
+        label  = "{}_{}_{}".format(col_to_label(column or ''), function, corr)
+        minmax = tuple(minmax) or (None, None)
+        key = label, minmax, ncol
+        # see if this axis definition already exists, else create new one
+        if key in cls.all_axes:
+            return cls.all_axes[key]
+        else:
+            label0, i = label, 0
+            while label in cls.all_labels:
+                i += 1
+                label = f"{label}_{i}"
+            log.info(f'defining new plot axis: {function} of {column} corr {corr}, clip {minmax}, discretization {ncol}')
+            axis = cls.all_axes[key] = DataAxis(column, function, corr, minmax, ncol, label)
+            return axis
+
+    def __init__(self, column, function, corr, minmax=None, ncol=None, label=None):
+        """See register() class method above. Not called directly."""
+        self.name = ":".join([str(x) for x in (function, column, corr, minmax, ncol) if x is not None ])
+        self.function = function        # function to apply to column (see list of DataMappers below)
+        self.corr     = corr if corr != "all" else None
+        self.ncol     = ncol
+        self.minmax   = tuple(minmax) or (None, None)
+        self.label    = label
+        self._corr_reduce = None
+
+        # find mapper -- register() will have ensured that it is valid
+        self.mapper = data_mappers[function]
+        self.conjugate = self.mapper.conjugate
+        self.timefreq_axis = self.mapper.axis
+
+        # setup columns
+        self._ufunc = None
+        self.columns = ()
+
+        # does the mapper have no column (i.e. frequency)?
+        if self.mapper.column is False:
+            pass
+        # does the mapper have a fixed column? This better be consistent
+        elif self.mapper.column is not None:
+            # if a mapper (such as "uv") implies a fixed column name, make sure it's consistent with what the user said
+            if column and self.mapper.column != column:
+                raise ValueError(f"'{function}' not applicable with column {column}")
+            self.columns = (column,)
+        # else arbitrary column
+        else:
+            # check for column arithmetic
+            match = re.fullmatch(r"(\w+)([*/+-])(\w+)", column)
+            if match:
+                self.columns = (match.group(1), match.group(3))
+                # look up dask ufunc corresponding to arithmetic op
+                self._ufunc = {'+': da.add, '*': da.multiply, '-': da.subtract, '/': da.divide}[match.group(2)]
+            else:
+                self.columns = (column,)
+
+    def get_column_data(self, group):
+        """Given a dask group, returns dask array corresponding to column setting"""
+        if not self.columns:
+            return None
+        try:
+            data = getattr(group, self.columns[0])
+            if self._ufunc:
+                return self._ufunc(data, getattr(group, self.columns[1]))
+            return data
+        except AttributeError:
+            raise NameError("column {} not found in group".format(" or ".join(self.columns)))
+
+    def get_value(self, group, corr, extras, flag, flag_row):
+        coldata = self.get_column_data(group)
+        # correlation may be pre-set by plot type, or may be passed to us
+        corr = self.corr if self.corr is not None else corr
+        # apply correlation reduction
+        if coldata.ndim == 3:
+            assert corr is not None
+            # the mapper can't have a specific axis set
+            if self.mapper.axis is not None:
+                raise TypeError(f"{self.name}: unexpected column with ndim=3")
+            coldata = corr_data_mappers[corr](coldata)
+        # apply mapping function
+        coldata = self.mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
+        # determine flags -- start with original flags
+        if self.mapper.axis is None:
+            flag = corr_flag_mappers[corr](flag)
+        elif self.mapper.axis == 0:
+            flag = flag_row
+        elif self.mapper.axis == 1:
+            flag = da.zeros_like(coldata, bool)
+        # shapes must now match
+        if coldata.shape != flag.shape:
+            raise TypeError(f"{self.name}: unexpected column shape")
+        # apply clipping
+        if self.minmax[0] is not None:
+            flag = da.logical_or(flag, coldata<self.minmax[0])
+        if self.minmax[1] is not None:
+            flag = da.logical_or(flag, coldata>self.minmax[1])
+        # return masked array
+        return dama.masked_array(coldata, flag)
 
 
-def getxydata(myms, group_cols, mytaql, chan_freqs, all_plots,
-              spws, fields, corrs, noflags, noconj,
-              iter_field, iter_spw, iter_scan, iter_corr,
-              axis_min, axis_max, row_chunk_size=100000):
+def get_plot_data(myms, group_cols, mytaql, chan_freqs,
+                  spws, fields, corrs, noflags, noconj,
+                  iter_field, iter_spw, iter_scan,
+                  join_corrs=False,
+                  row_chunk_size=100000):
 
     ms_cols = {'FLAG', 'FLAG_ROW'}
 
     # get visibility columns
-    for _, _, col in all_plots:
-        ms_cols.update(DataMapper.get_involved_columns(col))
-
-    # get other columns associated with plot axes
-    for xaxis, yaxis, col in all_plots:
-        for axis in xaxis, yaxis:
-            if mappers[axis].column:
-                ms_cols.add(mappers[axis].column)
+    for axis in DataAxis.all_axes.values():
+        ms_cols.update(axis.columns)
 
     # get MS data
     msdata = daskms.xds_from_ms(myms, columns=list(ms_cols), group_cols=group_cols, taql_where=mytaql,
@@ -212,16 +304,6 @@ def getxydata(myms, group_cols, mytaql, chan_freqs, all_plots,
     log.info('                 : Indexing MS, please wait')
 
     np = 0  # number of points to plot
-
-    # sort out which combinations of axes/columns are necessary
-    all_axes_cols = set()
-    for xaxis, yaxis, col in all_plots:
-        all_axes_cols.add((xaxis, col))
-        all_axes_cols.add((yaxis, col))
-
-    axis_col_labels = {}
-    for axis, col in all_axes_cols:
-        axis_col_labels[axis, col] = "{}_{}".format(axis, col_to_label(col))
 
     # output dataframes, indexed by (field, spw, scan, antenna, correlation)
     # If any of these axes is not being iterated over, then the index is None
@@ -234,99 +316,113 @@ def getxydata(myms, group_cols, mytaql, chan_freqs, all_plots,
         if fld not in fields or ddid not in spws:
             log.debug(f"field {fld} ddid {ddid} not in selection, skipping")
             continue
-
         scan    = getattr(group, 'SCAN_NUMBER', None)  # will be present if iterating over scans
 
-        # TODO: antenna iteration. None force no iteration for now
+        # TODO: antenna iteration. None forces no iteration, for now
         antenna = None
 
         # always read flags -- easier that way
         flag = group.FLAG
         flag_row = group.FLAG_ROW
-
         if noflags:
             flag = da.zeros_like(flag)
             flag_row = da.zeros_like(flag_row)
 
         freqs = chan_freqs[ddid]
         nchan = len(freqs)
+        wavel = freq_to_wavel(freqs)
+        extras = dict(chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
+
+        datums = OrderedDict()
 
         for corr in corrs:
             # make dictionary of extra values for DataMappers
             extras = dict(corr=corr, chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
-
-            # get data values per axis
-            datums = []
-            shapes = []
             # overall shape is NTIME x NFREQ
             shape = flag.shape[:-1]
             # determine overall shape
-            for axis, col in all_axes_cols:
-                map = mappers[axis]
-                vmin, vmax = axis_min.get(axis), axis_max.get(axis)
-                value = map.map_value(group, col, corr, extras, flag, flag_row, vmin, vmax)
-                # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ)
-                if map.axis is not None:
-                    assert value.ndim == 1
-                    assert value.shape[0] == shape[map.axis], f"{map.fullname}: size {value.shape[0]}, expected {shape[map.axis]}"
-                    shape1 = [1,1]
-                    shape1[map.axis] = value.shape[0]
-                    value = value.reshape(shape1)
-                # else 2D value better match expected shape
+            for label, axis in DataAxis.all_axes.items():
+                # no dependence on correlation in this data? reuse
+                if axis.corr is False and label in datums:
+                    value = datums[label][-1]
+                # else compute
                 else:
-                    assert value.shape == shape, f"{map.fullname}: shape {value.shape}, expected {shape}"
-                datums.append(value)
-                log.debug(f"axis {map.fullname} has shape {value.shape}")
-
-            # broadcast and unravel
-            log.debug("chunk sizes are {}".format(" ".join([str(d.chunksize) for d in datums])))
-            datums = [arr.ravel() for arr in da.broadcast_arrays(*datums)]
-
-            np += datums[0].size
-
-            # if any axis needs to be conjugated, double up all of them
-            if not noconj and any([mappers[axis].conjugate for axis, _ in all_axes_cols]):
-                for i, (axis, _) in enumerate(all_axes_cols):
-                    if mappers[axis].conjugate:
-                        datums[i] = da.concatenate([datums[i], -datums[i]])
+                    value = axis.get_value(group, corr, extras, flag, flag_row)
+                    # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ)
+                    if axis.timefreq_axis is not None:
+                        assert value.ndim == 1
+                        assert value.shape[0] == shape[axis.timefreq_axis], \
+                               f"{axis.mapper.fullname}: size {value.shape[0]}, expected {shape[axis.timefreq_axis]}"
+                        shape1 = [1,1]
+                        shape1[axis.timefreq_axis] = value.shape[0]
+                        value = value.reshape(shape1)
+                        log.debug(f"axis {axis.mapper.fullname} has shape {value.shape}")
+                    # else 2D value better match expected shape
                     else:
-                        datums[i] = da.concatenate([datums[i], datums[i]])
+                        assert value.shape == shape, f"{axis.mapper.fullname}: shape {value.shape}, expected {shape}"
+                datums.setdefault(label, []).append(value)
 
-            # now stack them all into a big dataframe
-            ddf = dask_df.from_array(da.stack(datums, axis=1), columns=[axis_col_labels[x] for x in all_axes_cols])
+        # if joining correlations, stick all elements together. Otherwise, we'd better have one per label
+        if join_corrs:
+            datums = OrderedDict({label: da.concatenate(arrs) for label, arrs in datums.items()})
+        else:
+            assert all([len(arrs) == 1 for arrs in datums.values()])
+            datums = OrderedDict({label: arrs[0] for label, arrs in datums.items()})
 
-            # now, are we iterating or concatenating? Make frame key accordingly
-            dataframe_key = (fld if iter_field else None,
-                             ddid if iter_spw else None,
-                             scan if iter_scan else None,
-                             antenna,
-                             corr if iter_corr else None)
+        # broadcast to same shape, and unravel all datums
+        datums = OrderedDict({ key: arr.ravel() for key, arr in zip(datums.keys(),
+                                                                    da.broadcast_arrays(*datums.values()))})
 
-            # do we already have a frame for this key
-            ddf0 = output_dataframes.get(dataframe_key)
+        # if any axis needs to be conjugated, double up all of them
+        if not noconj and any([axis.conjugate for axis in DataAxis.all_axes.values()]):
+            for label, axis in DataAxis.all_axes.items():
+                if axis.conjugate:
+                    datums[label] = da.concatenate([datums[label], -datums[label]])
+                else:
+                    datums[label] = da.concatenate([datums[label], datums[label]])
 
-            if ddf0 is None:
-                log.debug(f"first frame for {dataframe_key}")
-                output_dataframes[dataframe_key] = ddf
-            else:
-                log.debug(f"appending to frame for {dataframe_key}")
-                output_dataframes[dataframe_key] = ddf0.append(ddf)
+        labels, values = list(datums.keys()), list(datums.values())
+        np += values[0].size
 
-    return output_dataframes, axis_col_labels, np
+        # now stack them all into a big dataframe
+        ddf = dask_df.from_array(da.stack(values, axis=1), columns=labels)
+
+        # now, are we iterating or concatenating? Make frame key accordingly
+        dataframe_key = (fld if iter_field else None,
+                         ddid if iter_spw else None,
+                         scan if iter_scan else None,
+                         antenna)
+
+        # do we already have a frame for this key
+        ddf0 = output_dataframes.get(dataframe_key)
+
+        if ddf0 is None:
+            log.debug(f"first frame for {dataframe_key}")
+            output_dataframes[dataframe_key] = ddf
+        else:
+            log.debug(f"appending to frame for {dataframe_key}")
+            output_dataframes[dataframe_key] = ddf0.append(ddf)
+
+    return output_dataframes, np
 
 def run_datashader(ddf,xaxis,yaxis,xcanvas,ycanvas,mycmap,normalize):
 
     canvas = ds.Canvas(xcanvas, ycanvas)
-    agg = canvas.points(ddf, xaxis, yaxis)
-    img = hd.shade(hv.Image(agg), cmap=getattr(
-        colorcet, mycmap), normalization=normalize)
+    raster = canvas.points(ddf, xaxis, yaxis)  # default aggregation just counts the points per bin
+
+    # ds.count_cat(axis) counts categories along axis
+    img = hd.shade(hv.Image(raster), cmap=getattr(colorcet, mycmap), normalization=normalize)
+
+    # points = hv.Points(ddf, xaxis, yaxis)
+    # img = hd.datashade(points, cmap=getattr(colorcet, mycmap), normalization=normalize,
+
 
     # Set plot limits based on data extent or user values for axis labels
 
-    data_xmin = numpy.min(agg.coords[xaxis].values)
-    data_ymin = numpy.min(agg.coords[yaxis].values)
-    data_xmax = numpy.max(agg.coords[xaxis].values)
-    data_ymax = numpy.max(agg.coords[yaxis].values)
+    data_xmin = numpy.min(raster.coords[xaxis].values)
+    data_ymin = numpy.min(raster.coords[yaxis].values)
+    data_xmax = numpy.max(raster.coords[xaxis].values)
+    data_ymax = numpy.max(raster.coords[yaxis].values)
 
     return img.data,data_xmin,data_xmax,data_ymin,data_ymax
 

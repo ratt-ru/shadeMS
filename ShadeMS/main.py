@@ -15,6 +15,7 @@ import time
 import logging
 import itertools
 import re
+import sys
 from concurrent.futures import ThreadPoolExecutor
 
 from argparse import ArgumentParser
@@ -62,7 +63,10 @@ def main(argv):
     data_opts.add_argument('-y', '--yaxis', dest='yaxis', action="append",
                       help='Y axis to plot. Must be given the same number of times as --xaxis.')
 
-    data_opts.add_argument('-c', '--col', dest='col', action="append", default=[],
+    data_opts.add_argument('-c', '--color-by', action="append",
+                      help='Color-by axis and/or column. Can be none, or given once, or given the same number of times as --xaxis.')
+
+    data_opts.add_argument('-C', '--col', dest='col', action="append", default=[],
                       help="""Name of visibility column (default is DATA), if needed. You can also employ
                       'D-M', 'C-M', 'D/M', 'C/M' for various combinations of data, corrected and model. Can use multiple
                       times, or use comma-separated list, for multiple plots (or else specify it just once).
@@ -103,15 +107,22 @@ def main(argv):
     figure_opts.add_argument('--noconj',
                       help='Do not show conjugate points in u,v plots (default = plot conjugates)', action='store_true')
     figure_opts.add_argument('--xmin', action='append',
-                      help="""Minimum x-axis value (default = data min). Use multiple times for multiple plots, but 
-                      note that the clipping is the same per axis across all plots, so only the last applicable
-                      setting will be used.""")
+                      help="""Minimum x-axis value (default = data min). For multiple plots, you can give this 
+                      multiple times, or use a comma-separated list, but note that the clipping is the same per axis 
+                      across all plots, so only the last applicable setting will be used. The list may include empty
+                      elements (or 'None') to not apply a clip.""")
     figure_opts.add_argument('--xmax', action='append',
                       help='Maximum x-axis value (default = data max)')
     figure_opts.add_argument('--ymin', action='append',
                       help='Minimum y-axis value (default = data min)')
     figure_opts.add_argument('--ymax', action='append',
                       help='Maximum y-axis value (default = data max)')
+    figure_opts.add_argument('--cmin', action='append',
+                      help='Minimum colouring value. Must be supplied for every non-discrete axis to be coloured by')
+    figure_opts.add_argument('--cmax', action='append',
+                      help='Maximum colouring value. Must be supplied for every non-discrete axis to be coloured by')
+    figure_opts.add_argument('--cnum', action='append',
+                      help='Number of colour steps. Default is same as the size of the discrete color map.')
 
     figure_opts.add_argument('--xcanvas', type=int,
                       help='Canvas x-size in pixels (default = %(default)s)', default=1280)
@@ -185,25 +196,26 @@ def main(argv):
 
     xaxes = list(itertools.chain(*[opt.split(",") for opt in options.xaxis]))
     yaxes = list(itertools.chain(*[opt.split(",") for opt in options.yaxis]))
+
     log.debug(f"plot axes are {xaxes} {yaxes}")
     if len(xaxes) != len(yaxes):
         parser.error("--xaxis and --yaxis must be given the same number of times")
 
-    def get_conformal_list(name, force_type=None):
+    def get_conformal_list(name, force_type=None, default=None):
         """
         For all other settings, returns list same length as xaxes, or throws error if no conformance.
         Can also impose a type such as float (returning None for an empty string)
         """
         optlist = getattr(options, name, None)
         if not optlist:
-            return [None]*len(xaxes)
+            return [default]*len(xaxes)
         # stick all lists together
         elems = list(itertools.chain(*[opt.split(",") for opt in optlist]))
         if len(elems) > 1 and len(elems) != len(xaxes):
             parser.error(f"--{name} must be given the same number of times as --xaxis, or else just once")
         # convert type
         if force_type:
-            elems = [force_type(x) if x else None for x in elems]
+            elems = [force_type(x) if x and x.lower() != "none" else None for x in elems]
         if len(elems) != len(xaxes):
             elems = [elems[0]]*len(xaxes)
         return elems
@@ -212,22 +224,14 @@ def main(argv):
     if not options.col:
         options.col = ["DATA"]
     columns = get_conformal_list('col')
-    xmin = get_conformal_list('xmin', float)
-    xmax = get_conformal_list('xmax', float)
-    ymin = get_conformal_list('ymin', float)
-    ymax = get_conformal_list('ymax', float)
-
-    all_plots = list(zip(xaxes, yaxes, columns))
-
-    all_axes = set(xaxes) | set(yaxes)
-
-    # form dicts of min/max per axis
-    axis_min = { axis:value for axis, value in zip(xaxes, xmin) if value is not None}
-    axis_max = { axis:value for axis, value in zip(xaxes, xmax) if value is not None}
-    axis_min.update({ axis:value for axis, value in zip(yaxes, ymin) if value is not None})
-    axis_max.update({ axis:value for axis, value in zip(yaxes, ymax) if value is not None})
-
-    log.debug(f"all plots are {all_plots}")
+    xmins = get_conformal_list('xmin', float)
+    xmaxs = get_conformal_list('xmax', float)
+    ymins = get_conformal_list('ymin', float)
+    ymaxs = get_conformal_list('ymax', float)
+    caxes = get_conformal_list('caxes')
+    cmins = get_conformal_list('cmin', float)
+    cmaxs = get_conformal_list('cmax', float)
+    cnums = get_conformal_list('cmax', float)
 
     sms.blank()
     log.info('Measurement Set  : %s' % myms)
@@ -315,14 +319,57 @@ def main(argv):
 
     sms.blank()
 
-    log.debug(f"taql is {mytaql}, group_cols is {group_cols}")
+    # figure out list of plots to make
+    all_plots = []
+
+    # This will be True if any of the specified axes change with correlation
+    have_corr_dependence = False
+
+    # now go create definitions
+    for xaxis, yaxis, default_column, caxis, xmin, xmax, ymin, ymax, cmin, cmax, cnum in \
+            zip(xaxes, yaxes, columns, caxes, xmins, xmaxs, ymins, ymaxs, cmins, cmaxs, cnums):
+        # get axis specs
+        xspecs = sms.DataAxis.parse_datum_spec(xaxis, default_column)
+        yspecs = sms.DataAxis.parse_datum_spec(yaxis, default_column)
+        cspecs = sms.DataAxis.parse_datum_spec(caxis, default_column) if caxis else [None] * 4
+        # parse axis specifications
+        xfunction, xcolumn, xcorr, xitercorr = xspecs
+        yfunction, ycolumn, ycorr, yitercorr = yspecs
+        cfunction, ccolumn, ccorr, citercorr = cspecs
+        # does anything here depend on correlation?
+        datum_itercorr = (xitercorr or yitercorr or citercorr)
+        if datum_itercorr:
+            have_corr_dependence = True
+
+        # do we iterate over correlations to make separate plots now?
+        if datum_itercorr and options.iter_corr:
+            corr_list = corrs
+        else:
+            corr_list = [None]
+
+        for corr in corr_list:
+            xmap = sms.DataAxis.register(xfunction, xcolumn, corr if xcorr is None else xcorr, (xmin, xmax))
+            ymap = sms.DataAxis.register(yfunction, ycolumn, corr if ycorr is None else ycorr, (ymin, ymax))
+            cmap = cfunction and sms.DataAxis.register(cfunction, ccolumn, corr if ccorr is None else ccorr, (cmin, cmax), cnum)
+            props = dict(name="{} {} color by {}".format(xmap.name, ymap.name, cmap and cmap.name))
+            all_plots.append((props, xmap, ymap, cmap))
+            log.debug(f"adding plot for {props['name']}")
+
+    join_corrs = not options.iter_corr and len(corrs) > 1 and have_corr_dependence
+
+    log.info('                 : you have asked for {} plots employing {} unique datums'.format(len(all_plots),
+                                                                                                len(sms.DataAxis.all_axes)))
+    if not len(all_plots):
+        sys.exit(0)
+
+    log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join corrs is {join_corrs}")
 
     dataframes, axis_col_labels, np = \
-        sms.getxydata(myms, group_cols, mytaql, chan_freqs, all_plots,
+        sms.get_plot_data(myms, group_cols, mytaql, chan_freqs,
                       spws=spws, fields=fields, corrs=corrs, noflags=noflags, noconj=noconj,
                       iter_field=options.iter_field, iter_spw=options.iter_spw,
-                      iter_scan=options.iter_scan, iter_corr=options.iter_corr,
-                      axis_min=axis_min, axis_max=axis_max,
+                      iter_scan=options.iter_scan,
+                      join_corrs=join_corrs,
                       row_chunk_size=options.row_chunk_size)
 
     log.info("                 : rendering {} dataframes with {:.3g} points into {} plot types".format(
@@ -355,7 +402,7 @@ def main(argv):
         # convert lists to strings, add Capitalized keys with titles
         for key, value in keys.items():
             capkey = key.title()
-            if value is '':
+            if value == '':
                 full_keys[capkey] = ''
             else:
                 if type(value) is list:                               # e.g. scan=[1,2] becomes scan="1 2"
