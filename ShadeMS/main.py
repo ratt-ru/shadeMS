@@ -141,10 +141,10 @@ def main(argv):
     output_opts = parser.add_argument_group('Output')
     # can also use "plot-{msbase}-{column}-{corr}-{xfullname}-vs-{yfullname}", let's expand on this later
     output_opts.add_argument('--png', dest='pngname',
-                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}{_corr}-{yname}_vs_{xname}.png",
+                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}-{label}{_colorlabel}.png",
                       help='template for output png files, default "%(default)s"')
     output_opts.add_argument('--title',
-                             default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_corr}",
+                             default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_title}{_Colortitle}",
                       help='template for plot titles, default "%(default)s"')
     output_opts.add_argument('--xlabel',
                              default="{xname}{_xunit}",
@@ -228,7 +228,7 @@ def main(argv):
     xmaxs = get_conformal_list('xmax', float)
     ymins = get_conformal_list('ymin', float)
     ymaxs = get_conformal_list('ymax', float)
-    caxes = get_conformal_list('caxes')
+    caxes = get_conformal_list('color_by')
     cmins = get_conformal_list('cmin', float)
     cmaxs = get_conformal_list('cmax', float)
     cnums = get_conformal_list('cmax', float)
@@ -340,6 +340,7 @@ def main(argv):
         datum_itercorr = (xitercorr or yitercorr or citercorr)
         if datum_itercorr:
             have_corr_dependence = True
+        join_corr = datum_itercorr and not options.iter_corr
 
         # do we iterate over correlations to make separate plots now?
         if datum_itercorr and options.iter_corr:
@@ -347,13 +348,69 @@ def main(argv):
         else:
             corr_list = [None]
 
+        def describe_corr(corrvalue):
+            """Returns list of correlation labels corresponding to this corr setting"""
+            if corrvalue is None:
+                return [ms_corr_list[c] for c in corrs]
+            elif corrvalue is False:
+                return []
+            else:
+                return [ms_corr_list[corrvalue]]
+
         for corr in corr_list:
-            xmap = sms.DataAxis.register(xfunction, xcolumn, corr if xcorr is None else xcorr, (xmin, xmax))
-            ymap = sms.DataAxis.register(yfunction, ycolumn, corr if ycorr is None else ycorr, (ymin, ymax))
-            cmap = cfunction and sms.DataAxis.register(cfunction, ccolumn, corr if ccorr is None else ccorr, (cmin, cmax), cnum)
-            props = dict(name="{} {} color by {}".format(xmap.name, ymap.name, cmap and cmap.name))
+            plot_xcorr = corr if xcorr is None else xcorr  # False if no corr in datum, None if all, else set to iterant or to fixed value
+            plot_ycorr = corr if ycorr is None else ycorr
+            plot_ccorr = corr if ccorr is None else ccorr
+            xmap = sms.DataAxis.register(xfunction, xcolumn, plot_xcorr, (xmin, xmax))
+            ymap = sms.DataAxis.register(yfunction, ycolumn, plot_ycorr, (ymin, ymax))
+            cmap = cfunction and sms.DataAxis.register(cfunction, ccolumn, plot_ccorr, (cmin, cmax),
+                                                       cnum or len(sms.DISCRETE_COLORS))
+
+            # figure out plot properties -- basically construct a descriptive name and label
+            # looks complicated, but we're just trying to figure out what to put in the plot title...
+            props = dict()
+            titles = []
+            labels = []
+            # start with column and correlation(s)
+            if ycolumn and not ymap.mapper.column:   # only put column if not fixed by mapper
+                titles.append(ycolumn)
+                labels.append(sms.col_to_label(ycolumn))
+            titles += describe_corr(plot_ycorr)
+            labels += describe_corr(plot_ycorr)
+            titles += [ymap.mapper.fullname, "vs"]
+            if ymap.function:
+                labels.append(ymap.function)
+            # add x column/corrs, if different
+            if xcolumn and (xcolumn != ycolumn or not xmap.function) and not xmap.mapper.column:
+                titles.append(xcolumn)
+                labels.append(sms.col_to_label(xcolumn))
+            if plot_xcorr != plot_ycorr:
+                titles += describe_corr(plot_xcorr)
+                labels += describe_corr(plot_xcorr)
+            titles += [xmap.mapper.fullname]
+            if xmap.function:
+                labels.append(xmap.function)
+            props['title'] = " ".join(titles)
+            props['label'] = "_".join(labels)
+            # build up color-by label
+            if cfunction:
+                titles, labels = [], []
+                if ccolumn and (ccolumn != xcolumn or ccolumn != ycolumn) and not cmap.mapper.column:
+                    titles.append(ccolumn)
+                    labels.append(sms.col_to_label(ccolumn))
+                if plot_ccorr and (plot_ccorr != plot_xcorr or plot_ccorr != plot_ycorr):
+                    titles += describe_corr(plot_ccorr)
+                    labels += describe_corr(plot_ccorr)
+                titles += [cmap.mapper.fullname]
+                if cmap.function:
+                    labels.append(cmap.function)
+                props['color_title'] = " ".join(titles)
+                props['color_label'] = "_".join(labels)
+            else:
+                props['color_title'] = props['color_label'] = ''
+
             all_plots.append((props, xmap, ymap, cmap))
-            log.debug(f"adding plot for {props['name']}")
+            log.debug(f"adding plot for {props['title']}")
 
     join_corrs = not options.iter_corr and len(corrs) > 1 and have_corr_dependence
 
@@ -364,7 +421,7 @@ def main(argv):
 
     log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join corrs is {join_corrs}")
 
-    dataframes, axis_col_labels, np = \
+    dataframes, np = \
         sms.get_plot_data(myms, group_cols, mytaql, chan_freqs,
                       spws=spws, fields=fields, corrs=corrs, noflags=noflags, noconj=noconj,
                       iter_field=options.iter_field, iter_spw=options.iter_spw,
@@ -382,15 +439,13 @@ def main(argv):
     keys['ms'] = os.path.basename(os.path.splitext(myms.rstrip("/"))[0])
     keys['timestamp'] = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     # dictionary of titles for these identifiers
-    titles = dict(field="", field_num="field", scan="scan", corr="", spw="spw", antenna="ant", icorr="corr")
+    titles = dict(field="", field_num="field", scan="scan", spw="spw", antenna="ant", color="coloured by ")
 
     keys['field_num'] = list(fields) if myfields != 'all' else ''
     keys['field'] = [field_names[fld] for fld in fields] if myfields != 'all' else ''
     keys['scan'] = list(scans) if myscans != 'all' else ''
     keys['ant'] = list(ants) if myants != 'all' else ''
     keys['spw'] = list(spws) if myspws != 'all' else ''
-    keys['icorr'] = list(corrs) if mycorrs != 'all' else ''
-    keys['corr'] = [ms_corr_list[i] for i in corrs] if mycorrs != 'all' else ''
 
     def generate_string_from_keys(template, keys, listsep=" ", titlesep=" ", prefix=" "):
         """Converts list of keys into a string suitable for plot titles or filenames.
@@ -422,28 +477,26 @@ def main(argv):
     else:
         executor = None
 
-    def render_single_plot(df, xaxis, yaxis, col, pngname, title, xlabel, ylabel):
+    def render_single_plot(df, xmap, ymap, cmap, pngname, title, xlabel, ylabel):
         """Renders a single plot. Make this a function since we might call it in parallel"""
         log.debug(f"rendering DS canvas  for {keys}")
 
-        img_data, data_xmin, data_xmax, data_ymin, data_ymax = sms.run_datashader(df,
-                                                                                  axis_col_labels[xaxis, col],
-                                                                                  axis_col_labels[yaxis, col],
-                                                                                  xcanvas, ycanvas, mycmap, normalize)
+        img_data, data_xmin, data_xmax, data_ymin, data_ymax = \
+            sms.run_datashader(df, xmap.label, ymap.label, cmap and cmap.label, xcanvas, ycanvas, mycmap, normalize)
 
 
         log.debug(f"rendering plot")
 
         sms.make_plot(img_data, data_xmin, data_xmax, data_ymin, data_ymax,
-                      axis_min.get(xaxis), axis_max.get(xaxis),
-                      axis_min.get(yaxis), axis_max.get(yaxis),
+                      xmap.minmax[0], xmap.minmax[1],
+                      ymap.minmax[0], ymap.minmax[1],
                       xlabel, ylabel, title,
                       pngname, bgcol, fontsize,
                       figx=xcanvas / 60, figy=ycanvas / 60)
 
         log.info(f'                 : wrote {pngname}')
 
-    for (fld, spw, scan, antenna, corr), df in dataframes.items():
+    for (fld, spw, scan, antenna), df in dataframes.items():
         # update keys to be substituted into title and filename
         if fld is not None:
             keys['field_num'] = fld
@@ -454,15 +507,14 @@ def main(argv):
             keys['scan'] = scan
         if antenna is not None:
             keys['ant'] = antenna
-        if corr is not None:
-            keys['icorr'] = corr
-            keys['corr'] = ms_corr_list[corr]
 
         # now loop over plot types
-        for xaxis, yaxis, col in all_plots:
-            keys.update(column=col, xaxis=xaxis, yaxis=yaxis,
-                        xname=sms.mappers[xaxis].fullname, yname=sms.mappers[yaxis].fullname,
-                        xunit=sms.mappers[xaxis].unit, yunit=sms.mappers[yaxis].unit)
+        for props, xmap, ymap, cmap in all_plots:
+            keys.update(title=props['title'], label=props['label'],
+                        colortitle=props['color_title'], colorlabel=props['color_label'],
+                        xname=xmap.mapper.fullname, yname=ymap.mapper.fullname,
+                        xunit=xmap.mapper.unit, yunit=ymap.mapper.unit)
+
             pngname = generate_string_from_keys(options.pngname, keys, "_", "_", "-")
             title   = generate_string_from_keys(options.title, keys, " ", " ", ", ")
             xlabel  = generate_string_from_keys(options.xlabel, keys, " ", " ", ", ")
@@ -475,10 +527,10 @@ def main(argv):
                 log.info(f'                 : created output directory {dirname}')
 
             if executor is None:
-                render_single_plot(df, xaxis, yaxis, col, pngname, title, xlabel, ylabel)
+                render_single_plot(df, xmap, ymap, cmap, pngname, title, xlabel, ylabel)
             else:
                 log.info(f'                 : submitting job for {pngname}')
-                jobs.append(executor.submit(render_single_plot, df, xaxis, yaxis, col, pngname, title, xlabel, ylabel))
+                jobs.append(executor.submit(render_single_plot, df, xmap, ymap, cmap, pngname, title, xlabel, ylabel))
 
     # wait for jobs to finish
     if executor:

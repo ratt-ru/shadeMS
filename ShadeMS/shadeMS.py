@@ -120,8 +120,9 @@ data_mappers = OrderedDict(
     r=DataMapper("Real", "", da.real),
     i=DataMapper("Imag", "", da.imag),
     t=DataMapper("Time", "s", axis=0, column="TIME"),
-    c=DataMapper("Channel", "", column=None, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
-    f=DataMapper("Frequency", "Hz", column=None, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
+    corr=DataMapper("Correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr),
+    chan=DataMapper("Channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
+    freq=DataMapper("Frequency", "Hz", column=None, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
     uv=DataMapper("uv-distance", "wavelengths", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel),
     u=DataMapper("u", "wavelengths", column="UVW", extras=["wavel"],
@@ -166,7 +167,7 @@ class DataAxis(object):
         # better be set now!
         if function is None:
             raise ValueError(f"invalid axis specification '{axis_spec}'")
-        has_corr_axis = column.endswith("DATA") or column.endswith("SPECTRUM")
+        has_corr_axis = column.endswith("DATA") or column.endswith("SPECTRUM") or function == "corr"
         if not has_corr_axis:
             if corr is not None:
                 raise ValueError(f"'{axis_spec}': can't specify correlation when column is '{column}'")
@@ -212,8 +213,15 @@ class DataAxis(object):
         self.label    = label
         self._corr_reduce = None
 
-        # find mapper -- register() will have ensured that it is valid
-        self.mapper = data_mappers[function]
+        # special case of "corr" if corr is fixed: return constant value
+        if function == 'corr' and corr is not None:
+            self.mapper = DataMapper("Correlation", "", column=False, axis=-1, mapper=lambda x: corr)
+        # else find mapper -- register() will have ensured that it is valid
+        else:
+            self.mapper = data_mappers[function]
+
+        if self.function == "_":
+            self.function = ""
         self.conjugate = self.mapper.conjugate
         self.timefreq_axis = self.mapper.axis
 
@@ -258,7 +266,7 @@ class DataAxis(object):
         # correlation may be pre-set by plot type, or may be passed to us
         corr = self.corr if self.corr is not None else corr
         # apply correlation reduction
-        if coldata.ndim == 3:
+        if coldata is not None and coldata.ndim == 3:
             assert corr is not None
             # the mapper can't have a specific axis set
             if self.mapper.axis is not None:
@@ -266,21 +274,37 @@ class DataAxis(object):
             coldata = corr_data_mappers[corr](coldata)
         # apply mapping function
         coldata = self.mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
-        # determine flags -- start with original flags
-        if self.mapper.axis is None:
-            flag = corr_flag_mappers[corr](flag)
-        elif self.mapper.axis == 0:
+        # scalar expanded to row vector
+        if numpy.isscalar(coldata):
+            coldata = da.full_like(flag_row, fill_value=coldata, dtype=type(coldata))
             flag = flag_row
-        elif self.mapper.axis == 1:
-            flag = da.zeros_like(coldata, bool)
-        # shapes must now match
-        if coldata.shape != flag.shape:
-            raise TypeError(f"{self.name}: unexpected column shape")
+        else:
+            # determine flags -- start with original flags
+            if self.mapper.axis is None:
+                flag = corr_flag_mappers[corr](flag)
+            elif self.mapper.axis == 0:
+                flag = flag_row
+            elif self.mapper.axis == 1:
+                flag = da.zeros_like(coldata, bool)
+            # shapes must now match
+            if coldata.shape != flag.shape:
+                raise TypeError(f"{self.name}: unexpected column shape")
+        x0, x1 = self.minmax
         # apply clipping
-        if self.minmax[0] is not None:
+        if x0 is not None:
             flag = da.logical_or(flag, coldata<self.minmax[0])
-        if self.minmax[1] is not None:
+        if x1 is not None:
             flag = da.logical_or(flag, coldata>self.minmax[1])
+        # discretize
+        if self.ncol:
+            # integer type?
+            if numpy.issubdtype(coldata.dtype, numpy.integer):
+                coldata = da.remainder(coldata, self.ncol)
+            else:
+                if x0 is None or x1 is None:
+                    raise TypeError(f"{self.name}: min/max must be set to colour by this column")
+                delta = (x1 - x0) / self.ncol
+                coldata = da.floor((coldata-x0)/delta)
         # return masked array
         return dama.masked_array(coldata, flag)
 
@@ -332,25 +356,30 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
         nchan = len(freqs)
         wavel = freq_to_wavel(freqs)
         extras = dict(chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
+        shape = flag.shape[:-1]
+        nrow = flag.shape[0]
 
         datums = OrderedDict()
 
         for corr in corrs:
             # make dictionary of extra values for DataMappers
-            extras = dict(corr=corr, chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
-            # overall shape is NTIME x NFREQ
-            shape = flag.shape[:-1]
-            # determine overall shape
-            for label, axis in DataAxis.all_axes.items():
-                # no dependence on correlation in this data? reuse
-                if axis.corr is False and label in datums:
-                    value = datums[label][-1]
-                # else compute
-                else:
+            extras = dict(corr=corr, chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs), nrow=nrow)
+            # loop over datums to be computed
+            for axis in DataAxis.all_axes.values():
+                value = datums[axis.label][-1] if axis.label in datums else None
+                # a datum was already computed?
+                if value is not None:
+                    # if not joining correlations, then that's the only one we'll need, so continue
+                    if not join_corrs:
+                        continue
+                    # joining correlations, and datum has a correlation dependence: compute another one
+                    if axis.corr is None:
+                        value = None
+                if value is None:
                     value = axis.get_value(group, corr, extras, flag, flag_row)
-                    # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ)
-                    if axis.timefreq_axis is not None:
-                        assert value.ndim == 1
+                    # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ), and scalar to (NTIME,1)
+                    if value.ndim == 1:
+                        assert axis.timefreq_axis is not None
                         assert value.shape[0] == shape[axis.timefreq_axis], \
                                f"{axis.mapper.fullname}: size {value.shape[0]}, expected {shape[axis.timefreq_axis]}"
                         shape1 = [1,1]
@@ -360,7 +389,7 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
                     # else 2D value better match expected shape
                     else:
                         assert value.shape == shape, f"{axis.mapper.fullname}: shape {value.shape}, expected {shape}"
-                datums.setdefault(label, []).append(value)
+                datums.setdefault(axis.label, []).append(value)
 
         # if joining correlations, stick all elements together. Otherwise, we'd better have one per label
         if join_corrs:
@@ -375,11 +404,11 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
 
         # if any axis needs to be conjugated, double up all of them
         if not noconj and any([axis.conjugate for axis in DataAxis.all_axes.values()]):
-            for label, axis in DataAxis.all_axes.items():
+            for axis in DataAxis.all_axes.values():
                 if axis.conjugate:
-                    datums[label] = da.concatenate([datums[label], -datums[label]])
+                    datums[axis.label] = da.concatenate([datums[axis.label], -datums[axis.label]])
                 else:
-                    datums[label] = da.concatenate([datums[label], datums[label]])
+                    datums[axis.label] = da.concatenate([datums[axis.label], datums[axis.label]])
 
         labels, values = list(datums.keys()), list(datums.values())
         np += values[0].size
@@ -405,12 +434,22 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
 
     return output_dataframes, np
 
-def run_datashader(ddf,xaxis,yaxis,xcanvas,ycanvas,mycmap,normalize):
+DISCRETE_COLORS = ["#FF0000","#FF3F00","#FF7F00","#FFBF00","#FFFF00","#BFFF00","#7FFF00","#3FFF00",
+          "#00FF00","#00FF3F","#00FF7F","#00FFBF","#00FFFF","#00BFFF","#007FFF","#003FFF",
+          "#0000FF","#3F00FF","#7F00FF","#BF00FF","#FF00FF","#FF00BF","#FF007F","#FF003F"]
+
+def run_datashader(ddf,xaxis,yaxis,caxis,xcanvas,ycanvas,mycmap,normalize):
 
     canvas = ds.Canvas(xcanvas, ycanvas)
-    raster = canvas.points(ddf, xaxis, yaxis)  # default aggregation just counts the points per bin
+    if caxis is not None:
+        ddf.categorize([caxis])
+        agg = ds.count_cat(caxis)
+    else:
+        agg = ds.count
+    raster = canvas.points(ddf, xaxis, yaxis, agg=agg)  # default aggregation just counts the points per bin
 
     # ds.count_cat(axis) counts categories along axis
+
     img = hd.shade(hv.Image(raster), cmap=getattr(colorcet, mycmap), normalization=normalize)
 
     # points = hv.Points(ddf, xaxis, yaxis)
