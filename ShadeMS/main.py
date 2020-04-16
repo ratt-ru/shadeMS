@@ -52,8 +52,6 @@ def main(argv):
                       help='Measurement set')
     parser.add_argument("-v", "--version", action='version',
                       version='{:s} version {:s}'.format(parser.prog, __version__))
-    parser.add_argument("-d", "--debug", action='store_true',
-                        help="Enable debugging output")
 
     data_opts = parser.add_argument_group('Data selection')
     data_opts.add_argument('-x', '--xaxis', dest='xaxis', action="append",
@@ -143,7 +141,15 @@ def main(argv):
     output_opts.add_argument('--ylabel',
                              default="{yname}{_yunit}",
                              help='template for X axis labels, default "%(default)s"')
-    output_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=DEFAULT_NUM_RENDERS,
+
+    perf_opts = parser.add_argument_group('Performance & tweaking')
+
+    perf_opts.add_argument("-d", "--debug", action='store_true',
+                            help="Enable debugging output")
+    perf_opts.add_argument('-z', '--row-chunk-size', type=int, metavar="N", default=100000,
+                           help="""row chunk size for dask-ms. Larger chunks may or may not be faster, but will
+                            certainly use more RAM.""")
+    perf_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=DEFAULT_NUM_RENDERS,
                              help="""run up to N renderers in parallel (default = %(default)s). This is not necessarily 
                              faster, as they might all end up contending for disk I/O. This might also work against 
                              dask-ms's own intrinsic parallelism. You have been advised.""")
@@ -316,7 +322,8 @@ def main(argv):
                       spws=spws, fields=fields, corrs=corrs, noflags=noflags, noconj=noconj,
                       iter_field=options.iter_field, iter_spw=options.iter_spw,
                       iter_scan=options.iter_scan, iter_corr=options.iter_corr,
-                      axis_min=axis_min, axis_max=axis_max)
+                      axis_min=axis_min, axis_max=axis_max,
+                      row_chunk_size=options.row_chunk_size)
 
     log.info("                 : rendering {} dataframes with {:.3g} points into {} plot types".format(
                 len(dataframes), np, len(all_plots)))

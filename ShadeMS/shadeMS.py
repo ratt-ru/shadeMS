@@ -191,7 +191,7 @@ def col_to_label(col):
 def getxydata(myms, group_cols, mytaql, chan_freqs, all_plots,
               spws, fields, corrs, noflags, noconj,
               iter_field, iter_spw, iter_scan, iter_corr,
-              axis_min, axis_max):
+              axis_min, axis_max, row_chunk_size=100000):
 
     ms_cols = {'FLAG', 'FLAG_ROW'}
 
@@ -206,7 +206,8 @@ def getxydata(myms, group_cols, mytaql, chan_freqs, all_plots,
                 ms_cols.add(mappers[axis].column)
 
     # get MS data
-    msdata = daskms.xds_from_ms(myms, columns=list(ms_cols), group_cols=group_cols, taql_where=mytaql)
+    msdata = daskms.xds_from_ms(myms, columns=list(ms_cols), group_cols=group_cols, taql_where=mytaql,
+                                chunks=dict(row=row_chunk_size))
 
     log.info('                 : Indexing MS, please wait')
 
@@ -278,6 +279,7 @@ def getxydata(myms, group_cols, mytaql, chan_freqs, all_plots,
                 log.debug(f"axis {map.fullname} has shape {value.shape}")
 
             # broadcast and unravel
+            log.debug("chunk sizes are {}".format(" ".join([str(d.chunksize) for d in datums])))
             datums = [arr.ravel() for arr in da.broadcast_arrays(*datums)]
 
             np += datums[0].size
