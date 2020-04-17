@@ -86,29 +86,46 @@ class DataAxis(object):
     all_labels = set()
 
     @classmethod
+    def is_legit_colspec(cls, colspec):
+        match = re.fullmatch(r"(\w+)([*/+-])(\w+)", colspec)
+        if match:
+            return match.group(1) in ms.valid_columns and match.group(2) in ms.valid_columns
+        else:
+            return colspec in ms.valid_columns
+
+    @classmethod
     def parse_datum_spec(cls, axis_spec, default_column=None):
         # figure out the axis specification
         function = column = corr = None
         specs = axis_spec.split(":", 2)
-        if len(specs) == 1:
-            if specs[0] in ms.valid_columns:    # single column name, identity mapping
-                function = '_'
-                column = specs[0]
-            elif specs[0] in data_mappers:      # single function name ('a', 'p', etc.), default column
-                function = specs[0]
-                column = data_mappers[function].column or default_column
-        elif len(specs) == 2:                   # function:column
-            if specs[0] in data_mappers and specs[1] in ms.valid_columns:
-                function = specs[0]
-                column = specs[1]
-        elif len(specs) == 3:
-            if specs[0] in data_mappers and specs[1] in ms.valid_columns:
-                function = specs[0]
-                column = specs[1]
-                corr = int(specs[2])
-        # better be set now!
+        for spec in specs:
+            if spec is None:
+                raise ValueError(f"invalid axis specification '{axis_spec}'")
+            if DataAxis.is_legit_colspec(spec):
+                if column is not None:
+                    raise ValueError(f"column specified twice in '{axis_spec}'")
+                column = spec
+            elif spec in data_mappers:
+                if function is not None:
+                    raise ValueError(f"function specified twice in '{axis_spec}'")
+                function = spec
+            else:
+                if re.fullmatch(r"\d+", spec):
+                    corr1 = int(spec)
+                else:
+                    corr1 = ms.corr[spec]
+                    if corr1 is None:
+                        raise ValueError(f"invalid axis specification '{axis_spec}'")
+                if corr is not None:
+                    raise ValueError(f"correlation specified twice in '{axis_spec}'")
+                corr = corr1
+        # defaults?
         if function is None:
-            raise ValueError(f"invalid axis specification '{axis_spec}'")
+            if column or corr:
+                function = "_"
+            else:
+                raise ValueError(f"invalid axis specification '{axis_spec}'")
+        column = column or data_mappers[function].column or default_column
         has_corr_axis = column.endswith("DATA") or column.endswith("SPECTRUM") or function == "corr"
         if not has_corr_axis:
             if corr is not None:

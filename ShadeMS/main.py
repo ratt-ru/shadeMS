@@ -495,15 +495,16 @@ def main(argv):
                 os.mkdir(dirname)
                 log.info(f'                 : created output directory {dirname}')
 
-            if executor is None or len(all_plots) < 2:
+            if options.num_parallel < 2 or len(all_plots) < 2:
                 render_single_plot(df, xmap, ymap, cmap, pngname, title, xlabel, ylabel)
             else:
+                executor = ThreadPoolExecutor(options.num_parallel)
                 log.info(f'                 : submitting job for {pngname}')
                 jobs.append(executor.submit(render_single_plot, df, xmap, ymap, cmap, pngname, title, xlabel, ylabel))
 
     # wait for jobs to finish
-    if executor:
-        log.info('                 : waiting for {} jobs to complete'.format(len(jobs)))
+    if executor is not None:
+        log.info(f'                 : waiting for {len(jobs)} jobs to complete')
         for job in jobs:
             job.result()
 
