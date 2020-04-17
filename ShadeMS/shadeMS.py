@@ -89,7 +89,7 @@ class DataAxis(object):
     def is_legit_colspec(cls, colspec):
         match = re.fullmatch(r"(\w+)([*/+-])(\w+)", colspec)
         if match:
-            return match.group(1) in ms.valid_columns and match.group(2) in ms.valid_columns
+            return match.group(1) in ms.valid_columns and match.group(3) in ms.valid_columns
         else:
             return colspec in ms.valid_columns
 
