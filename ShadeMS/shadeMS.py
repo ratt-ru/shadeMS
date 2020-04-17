@@ -5,7 +5,6 @@
 import matplotlib
 matplotlib.use('agg')
 
-import colorcet
 import daskms
 import dask.array as da
 import dask.array.ma as dama
@@ -16,15 +15,23 @@ import holoviews.operation.datashader
 import datashader.transfer_functions
 import numpy
 import math
-import pylab
-import ShadeMS
 import re
+import pylab
+import matplotlib.cm
+import ShadeMS
 from collections import OrderedDict
 from casacore.tables import table
 
 from MSUtils.msutils import STOKES_TYPES
 
 log = ShadeMS.log
+
+def log_info(message, prefix=''):
+    log.info(f'{prefix:16} : {message}')
+
+def blank():
+    log.info('------------------------------------------------------')
+
 
 def get_chan_freqs(myms):
     spw_tab = daskms.xds_from_table(
@@ -69,10 +76,6 @@ def get_correlations(myms):
 def freq_to_wavel(ff):
     c = 299792458.0  # m/s
     return c/ff
-
-
-def blank():
-    log.info('------------------------------------------------------')
 
 
 def col_to_label(col):
@@ -300,14 +303,14 @@ class DataAxis(object):
             flag = da.logical_or(flag, coldata>self.minmax[1])
         # discretize
         if self.nlevels:
-            # integer type?
-            if numpy.issubdtype(coldata.dtype, numpy.integer):
-                coldata = da.remainder(coldata, self.nlevels)
-            else:
-                if x0 is None or x1 is None:
-                    raise TypeError(f"{self.name}: min/max must be set to colour by this column")
+            # minmax set? discretize over that
+            if x0 is not None or x1 is not None:
                 delta = (x1 - x0) / self.nlevels
-                coldata = da.minimum(da.floor((coldata-x0)/delta), self.nlevels-1)
+                coldata = da.minimum(da.floor((coldata - x0) / delta), self.nlevels - 1)
+            else:
+                if not numpy.issubdtype(coldata.dtype, numpy.integer):
+                    raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
+                coldata = da.remainder(coldata, self.nlevels)
         # return masked array
         return dama.masked_array(coldata, flag)
 
@@ -328,7 +331,7 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
     msdata = daskms.xds_from_ms(myms, columns=list(ms_cols), group_cols=group_cols, taql_where=mytaql,
                                 chunks=dict(row=row_chunk_size))
 
-    log.info('                 : Indexing MS, please wait')
+    log.info('                 : Indexing MS and building dataframes')
 
     np = 0  # number of points to plot
 
@@ -423,9 +426,6 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
         for label, value in zip(labels, values):
             ddf[label] = value
 
-        # convert discrete axes into categoricals
-        ddf = ddf.categorize([axis.label for axis in DataAxis.all_axes.values() if axis.nlevels])
-
         # ddf = dask_df.from_array(da.stack(values, axis=1), columns=labels)
 
         # now, are we iterating or concatenating? Make frame key accordingly
@@ -444,98 +444,69 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
             log.debug(f"appending to frame for {dataframe_key}")
             output_dataframes[dataframe_key] = ddf0.append(ddf)
 
+    # convert discrete axes into categoricals
+    categorical_axes = [axis.label for axis in DataAxis.all_axes.values() if axis.nlevels]
+    if categorical_axes:
+        log.info(": counting colours")
+        for key, ddf in list(output_dataframes.items()):
+            output_dataframes[key] = ddf.categorize(categorical_axes)
+
+    log.info(": complete")
     return output_dataframes, np
 
-# DISCRETE_COLORS = ["#FF0000","#FF3F00","#FF7F00","#FFBF00","#FFFF00","#BFFF00","#7FFF00","#3FFF00",
-#                    "#00FF00","#00FF3F","#00FF7F","#00FFBF","#00FFFF","#00BFFF","#007FFF","#003FFF",
-#                    "#0000FF","#3F00FF","#7F00FF","#BF00FF","#FF00FF","#FF00BF","#FF007F","#FF003F"]
+def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, normalize,
+                xlabel, ylabel, title, pngname, bgcol, fontsize, figx=24, figy=12):
 
-DISCRETE_COLORS = [ "#2D53D6", "#333020", "#A601BF", "#D56805", "#8DED6D", "#1B9071", "#08FC20", "#329D15", "#CBB694", "#0384BA", "#09C3BE", "#9FDCE9", "#281DDE", "#CF8E9D", "#D5898B", "#7FC85A", "#6B64D7", "#D199D1", "#A5A2C8", "#8624BF" ]
+    xaxis = xdatum.label
+    yaxis = ydatum.label
+    caxis = cdatum and cdatum.label
+    discretized = color_key = ncolors = None
 
-def run_datashader(ddf,xaxis,yaxis,caxis,xcanvas,ycanvas,mycmap,normalize, use_hv=False):
-
-    if use_hv:
-        if caxis is not None:
-            agg = datashader.count_cat(caxis)
-            # raster = canvas.points(ddf, xaxis, yaxis, agg=agg)  # default aggregation just counts the points per bin
-            log.debug('creating points')
-            points = holoviews.Points(ddf, [xaxis, yaxis])
-            log.debug('aggregating')
-            #aggregation = hd.aggregate(points, agg=ds.count_cat(caxis))
-            #img = hd.shade(aggregation, color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), normalization=normalize)
-            img = holoviews.operation.datashader.datashade(points, agg=agg, color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap),
-                              normalization=normalize)
-            log.debug('computing image')
-            data = img.data
-            log.debug('done')
+    if cdatum is not None:
+        log.debug('making raster with color-by')
+        canvas = datashader.Canvas(xcanvas, ycanvas)
+        raster = canvas.points(ddf, xaxis, yaxis, agg=datashader.count_cat(caxis))
+        ncolors = raster.shape[2]
+        log.info(f': shading using {ncolors} colors')
+        # true if axis is discretized and continuous
+        discretized = cdatum.minmax[0] is not None and cdatum.minmax[1] is not None
+        if discretized:
+            colorstep = 256 // ncolors
+            color_key = bmap[::colorstep]
         else:
-            agg = datashader.count_cat(caxis)
-            # raster = canvas.points(ddf, xaxis, yaxis, agg=agg)  # default aggregation just counts the points per bin
-            log.debug('creating points')
-            points = holoviews.Points(ddf, [xaxis, yaxis])
-            log.debug('aggregating')
-            # aggregation = hd.aggregate(points, agg=ds.count_cat(caxis))
-            # img = hd.shade(aggregation, color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), normalization=normalize)
-            img = holoviews.operation.datashader.datashade(points, cmap=getattr(colorcet, mycmap), normalization=normalize)
-            log.debug('computing image')
-            data = img.data
-            log.debug('done')
+            color_key = dmap[:ncolors]
+        img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize)
+        rgb = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img))
     else:
+        log.debug('making raster')
+        canvas = datashader.Canvas(xcanvas, ycanvas)
+        raster = canvas.points(ddf, xaxis, yaxis)
+        log.debug('shading')
+        img = datashader.transfer_functions.shade(raster, cmap=cmap, how=normalize)
+        rgb = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img))
 
-        if caxis is not None:
-            log.debug('making raster')
-            canvas = datashader.Canvas(xcanvas, ycanvas)
-            raster = canvas.points(ddf, xaxis, yaxis, agg=datashader.count_cat(caxis))
-            log.debug('shading')
-            #img1 = hd.shade(hv.Image(raster), color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), normalization=normalize)
-            #img1 = hd.shade(raster, color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), normalization=normalize)
-            img1 = datashader.transfer_functions.shade(raster,
-                                        color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), how=normalize)
-            img3 = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img1))
-        else:
-            log.debug('making raster')
-            canvas = datashader.Canvas(xcanvas, ycanvas)
-            raster = canvas.points(ddf, xaxis, yaxis)
-            log.debug('shading')
-            #img1 = hd.shade(raster, color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), normalization=normalize)
-            img1 = datashader.transfer_functions.shade(raster, cmap=getattr(colorcet, mycmap), how=normalize)
-            img2 = holoviews.operation.datashader.shade(holoviews.Image(raster), cmap=getattr(colorcet, mycmap), normalization=normalize)
-            img3 = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img1))
-
-    log.debug('computing image')
-    data1 = img3.data
     log.debug('done')
-
-    # points = hv.Points(ddf, xaxis, yaxis)
-    # img = hd.datashade(points, cmap=getattr(colorcet, mycmap), normalization=normalize,
-
 
     # Set plot limits based on data extent or user values for axis labels
 
     data_xmin = numpy.min(raster.coords[xaxis].values)
-    data_ymin = numpy.min(raster.coords[yaxis].values)
     data_xmax = numpy.max(raster.coords[xaxis].values)
+    data_ymin = numpy.min(raster.coords[yaxis].values)
     data_ymax = numpy.max(raster.coords[yaxis].values)
 
-    return data1,data_xmin,data_xmax,data_ymin,data_ymax
+    xmin = data_xmin if xdatum.minmax[0] is None else xdatum.minmax[0]
+    xmax = data_xmax if xdatum.minmax[1] is None else xdatum.minmax[1]
+    ymin = data_ymin if ydatum.minmax[0] is None else ydatum.minmax[0]
+    ymax = data_ymax if ydatum.minmax[1] is None else ydatum.minmax[1]
 
-
-def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin, ymax,
-                xlabel, ylabel, title, pngname, bgcol, fontsize, figx=24, figy=12):
-
-    log.info('                 : Rendering image')
+    log.debug('rendering image')
 
     def match(artist):
         return artist.__module__ == 'matplotlib.text'
 
-    xmin = data_xmin if xmin is None else xmin
-    xmax = data_xmax if xmax is None else xmax
-    ymin = data_ymin if ymin is None else ymin
-    ymax = data_ymax if ymax is None else ymax
-
     fig = pylab.figure(figsize=(figx, figy))
     ax = fig.add_subplot(111, facecolor=bgcol)
-    ax.imshow(X=data, extent=[data_xmin, data_xmax, data_ymin, data_ymax],
+    ax.imshow(X=rgb.data, extent=[data_xmin, data_xmax, data_ymin, data_ymax],
               aspect='auto', origin='lower')
     ax.set_title(title,loc='left')
     ax.set_xlabel(xlabel)
@@ -548,6 +519,16 @@ def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin
 
     ax.set_ylim([numpy.min((data_ymin,ymin)),
         numpy.max((data_ymax,ymax))])
+
+    # colorbar?
+    if color_key:
+        import matplotlib.colors
+        norm = matplotlib.colors.Normalize(-0.5, ncolors-0.5)
+        colormap = matplotlib.colors.ListedColormap(color_key)
+        fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=colormap), ax=ax,
+                     ticks=numpy.arange(ncolors))
+
+        # mat, ticks=np.arange(np.min(data),np.max(data)+1))
 
     for textobj in fig.findobj(match=match):
         textobj.set_fontsize(fontsize)

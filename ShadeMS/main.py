@@ -16,6 +16,7 @@ import logging
 import itertools
 import re
 import sys
+import colorcet
 from concurrent.futures import ThreadPoolExecutor
 
 from argparse import ArgumentParser
@@ -34,6 +35,7 @@ except pkg_resources.DistributionNotFound:
 # set default number of renderers to half the available cores
 DEFAULT_NUM_RENDERS = max(1, len(os.sched_getaffinity(0))//2)
 
+DEFAULT_CNUM = 16
 
 def main(argv):
 
@@ -91,7 +93,7 @@ def main(argv):
                       default="0")
 
 
-    figure_opts = parser.add_argument_group('Plot settings')
+    figure_opts = parser.add_argument_group('Plot selection')
     figure_opts.add_argument('--iter-field', action="store_true",
                       help='Separate plots per field (default is to combine in one plot)')
     figure_opts.add_argument('--iter-antenna', action="store_true",
@@ -121,17 +123,22 @@ def main(argv):
                       help='Minimum colouring value. Must be supplied for every non-discrete axis to be coloured by')
     figure_opts.add_argument('--cmax', action='append',
                       help='Maximum colouring value. Must be supplied for every non-discrete axis to be coloured by')
-    figure_opts.add_argument('--cnum', action='append',
-                      help='Number of colour steps. Default is same as the size of the discrete color map.')
+    figure_opts.add_argument('--cnum', action='append', type=int,
+                      help=f'Number of steps used to discretize a continuous axis. Default is {DEFAULT_CNUM}.')
 
+    figure_opts = parser.add_argument_group('Rendering settings')
     figure_opts.add_argument('--xcanvas', type=int,
                       help='Canvas x-size in pixels (default = %(default)s)', default=1280)
     figure_opts.add_argument('--ycanvas', type=int,
                       help='Canvas y-size in pixels (default = %(default)s)', default=900)
     figure_opts.add_argument('--norm', dest='normalize', choices=['eq_hist', 'cbrt', 'log', 'linear'],
                       help='Pixel scale normalization (default = %(default)s)', default='eq_hist')
-    figure_opts.add_argument('--cmap', dest='mycmap',
-                      help='Colorcet map to use (default = %(default)s)', default='bkr')
+    figure_opts.add_argument('--cmap',
+                      help='Colorcet map used without --color-by  (default = %(default)s)', default='bkr')
+    figure_opts.add_argument('--bmap',
+                      help='Colorcet map used when coloring by a continuous axis (default = %(default)s)', default='bkr')
+    figure_opts.add_argument('--dmap',
+                      help='Colorcet map used when coloring by a discrete axis (default = %(default)s)', default='glasbey_dark')
     figure_opts.add_argument('--bgcol', dest='bgcol',
                       help='RGB hex code for background colour (default = FFFFFF)', default='FFFFFF')
     figure_opts.add_argument('--fontsize', dest='fontsize',
@@ -176,16 +183,15 @@ def main(argv):
 
     noflags = options.noflags
     noconj = options.noconj
-    xmin = options.xmin
-    xmax = options.xmax
-    ymin = options.ymin
-    ymax = options.ymax
     xcanvas = options.xcanvas
     ycanvas = options.ycanvas
     normalize = options.normalize
-    mycmap = options.mycmap
     bgcol = '#'+options.bgcol.lstrip('#')
     fontsize = options.fontsize
+
+    cmap = getattr(colorcet, options.cmap)
+    bmap = getattr(colorcet, options.bmap)
+    dmap = getattr(colorcet, options.dmap)
 
     myms = options.ms.rstrip('/')
 
@@ -231,7 +237,7 @@ def main(argv):
     caxes = get_conformal_list('color_by')
     cmins = get_conformal_list('cmin', float)
     cmaxs = get_conformal_list('cmax', float)
-    cnums = get_conformal_list('cmax', float)
+    cnums = get_conformal_list('cnum', int, default=DEFAULT_CNUM)
 
     sms.blank()
     log.info('Measurement Set  : %s' % myms)
@@ -443,7 +449,7 @@ def main(argv):
     keys['ms'] = os.path.basename(os.path.splitext(myms.rstrip("/"))[0])
     keys['timestamp'] = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     # dictionary of titles for these identifiers
-    titles = dict(field="", field_num="field", scan="scan", spw="spw", antenna="ant", colortitle="coloured by ")
+    titles = dict(field="", field_num="field", scan="scan", spw="spw", antenna="ant", colortitle="coloured by")
 
     keys['field_num'] = list(fields) if myfields != 'all' else ''
     keys['field'] = [field_names[fld] for fld in fields] if myfields != 'all' else ''
@@ -481,22 +487,15 @@ def main(argv):
     else:
         executor = None
 
-    def render_single_plot(df, xmap, ymap, cmap, pngname, title, xlabel, ylabel):
+    def render_single_plot(df, xdatum, ydatum, cdatum, pngname, title, xlabel, ylabel):
         """Renders a single plot. Make this a function since we might call it in parallel"""
-        log.debug(f"rendering DS canvas  for {keys}")
+        log.info(f": rendering {pngname}")
 
-        img_data, data_xmin, data_xmax, data_ymin, data_ymax = \
-            sms.run_datashader(df, xmap.label, ymap.label, cmap and cmap.label, xcanvas, ycanvas, mycmap, normalize)
-
-
-        log.debug(f"rendering plot")
-
-        sms.make_plot(img_data, data_xmin, data_xmax, data_ymin, data_ymax,
-                      xmap.minmax[0], xmap.minmax[1],
-                      ymap.minmax[0], ymap.minmax[1],
-                      xlabel, ylabel, title,
-                      pngname, bgcol, fontsize,
-                      figx=xcanvas / 60, figy=ycanvas / 60)
+        sms.create_plot(df, xdatum, ydatum, cdatum, xcanvas, ycanvas,
+                        cmap, bmap, dmap, normalize,
+                        xlabel, ylabel, title,
+                        pngname, bgcol, fontsize,
+                        figx=xcanvas / 60, figy=ycanvas / 60)
 
         log.info(f'                 : wrote {pngname}')
 
@@ -530,7 +529,7 @@ def main(argv):
                 os.mkdir(dirname)
                 log.info(f'                 : created output directory {dirname}')
 
-            if executor is None:
+            if executor is None or len(all_plots) < 2:
                 render_single_plot(df, xmap, ymap, cmap, pngname, title, xlabel, ylabel)
             else:
                 log.info(f'                 : submitting job for {pngname}')
