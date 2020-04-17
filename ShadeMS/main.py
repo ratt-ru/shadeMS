@@ -373,8 +373,7 @@ def main(argv):
             plot_ccorr = corr if ccorr is None else ccorr
             xmap = sms.DataAxis.register(xfunction, xcolumn, plot_xcorr, (xmin, xmax))
             ymap = sms.DataAxis.register(yfunction, ycolumn, plot_ycorr, (ymin, ymax))
-            cmap = cfunction and sms.DataAxis.register(cfunction, ccolumn, plot_ccorr, (cmin, cmax),
-                                                       cnum or len(sms.DISCRETE_COLORS))
+            cmap = cfunction and sms.DataAxis.register(cfunction, ccolumn, plot_ccorr, (cmin, cmax), cnum)
 
             # figure out plot properties -- basically construct a descriptive name and label
             # looks complicated, but we're just trying to figure out what to put in the plot title...
@@ -414,6 +413,8 @@ def main(argv):
                 titles += [cmap.mapper.fullname]
                 if cmap.function:
                     labels.append(cmap.function)
+                if not cmap.discretized_delta:
+                    titles.append(f"(modulo {cmap.nlevels})")
                 props['color_title'] = " ".join(titles)
                 props['color_label'] = "_".join(labels)
             else:

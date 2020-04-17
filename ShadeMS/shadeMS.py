@@ -214,9 +214,16 @@ class DataAxis(object):
         self.function = function        # function to apply to column (see list of DataMappers below)
         self.corr     = corr if corr != "all" else None
         self.nlevels  = ncol
-        self.minmax   = tuple(minmax) or (None, None)
+        self.minmax   = vmin, vmax = tuple(minmax) or (None, None)
         self.label    = label
         self._corr_reduce = None
+
+        # set up discretized continuous axis
+        if self.nlevels and vmin is not None and vmax is not None:
+            self.discretized_delta = delta = (vmax - vmin) / self.nlevels
+            self.discretized_bin_centers = numpy.arange(vmin + delta/2, vmax, delta)
+        else:
+            self.discretized_delta = self.discretized_bin_centers = None
 
         # special case of "corr" if corr is fixed: return constant value
         if function == 'corr' and corr is not None:
@@ -304,9 +311,8 @@ class DataAxis(object):
         # discretize
         if self.nlevels:
             # minmax set? discretize over that
-            if x0 is not None or x1 is not None:
-                delta = (x1 - x0) / self.nlevels
-                coldata = da.minimum(da.floor((coldata - x0) / delta), self.nlevels - 1)
+            if self.discretized_delta is not None:
+                coldata = da.minimum(da.floor((coldata - self.minmax[0])/self.discretized_delta), self.nlevels-1)
             else:
                 if not numpy.issubdtype(coldata.dtype, numpy.integer):
                     raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
@@ -460,21 +466,31 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
     xaxis = xdatum.label
     yaxis = ydatum.label
     caxis = cdatum and cdatum.label
-    discretized = color_key = ncolors = None
+    color_key = ncolors = color_mapping = color_labels = None
 
     if cdatum is not None:
         log.debug('making raster with color-by')
         canvas = datashader.Canvas(xcanvas, ycanvas)
         raster = canvas.points(ddf, xaxis, yaxis, agg=datashader.count_cat(caxis))
-        ncolors = raster.shape[2]
-        log.info(f': shading using {ncolors} colors')
+        color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
+        ncolors = len(color_bins)
         # true if axis is discretized and continuous
-        discretized = cdatum.minmax[0] is not None and cdatum.minmax[1] is not None
-        if discretized:
-            colorstep = 256 // ncolors
-            color_key = bmap[::colorstep]
+        if cdatum.discretized_delta is not None:
+            # color labels are bin centres
+            color_labels = [cdatum.discretized_bin_centers[i] for i in color_bins]
+            # map to colors pulled from 256 color map
+            color_key = [bmap[(i*256)//cdatum.nlevels] for i in color_bins]
+            color_labels = list(map(str, sorted(color_labels)))
+            log.info(f": shading using {ncolors} colors (bin centres are {' '.join(color_labels)})")
+        # for a discrete axis, just pick the
         else:
-            color_key = dmap[:ncolors]
+            # just use bin numbers to look up a color directly
+            color_key = [dmap[i] for i in color_bins]
+            # the numbers may be out of order -- reorder for color bar purposes
+            bin_color = sorted(zip(color_bins, color_key))
+            color_labels = [str(bin) for bin, _ in bin_color]
+            color_mapping = [col for _, col in bin_color]
+            log.info(f": shading using {ncolors} colors (values {' '.join(color_labels)})")
         img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize)
         rgb = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img))
     else:
@@ -523,10 +539,22 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
     # colorbar?
     if color_key:
         import matplotlib.colors
-        norm = matplotlib.colors.Normalize(-0.5, ncolors-0.5)
-        colormap = matplotlib.colors.ListedColormap(color_key)
-        fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=colormap), ax=ax,
-                     ticks=numpy.arange(ncolors))
+        # int axis
+        if color_mapping is not None:
+            norm = matplotlib.colors.Normalize(-0.5, ncolors-0.5)
+            ticks = numpy.arange(ncolors)
+            colormap = matplotlib.colors.ListedColormap(color_mapping)
+        # discretized axis
+        else:
+            norm = matplotlib.colors.Normalize(cdatum.minmax[0], cdatum.minmax[1])
+            colormap = matplotlib.colors.ListedColormap(bmap)
+            # auto-mark colorbar, since it represents a continuous range of values
+            ticks = None
+
+        cb = fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=colormap), ax=ax, ticks=ticks)
+
+        if color_mapping is not None:
+            cb.ax.set_yticklabels(color_labels)
 
         # mat, ticks=np.arange(np.min(data),np.max(data)+1))
 
