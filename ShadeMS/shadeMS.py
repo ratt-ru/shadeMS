@@ -20,76 +20,21 @@ import pylab
 import matplotlib.cm
 import ShadeMS
 from collections import OrderedDict
-from casacore.tables import table
-
-from MSUtils.msutils import STOKES_TYPES
 
 log = ShadeMS.log
-
-def log_info(message, prefix=''):
-    log.info(f'{prefix:16} : {message}')
+ms = None
 
 def blank():
     log.info('------------------------------------------------------')
-
-
-def get_chan_freqs(myms):
-    spw_tab = daskms.xds_from_table(
-        myms+'::SPECTRAL_WINDOW', columns=['CHAN_FREQ'])
-    chan_freqs = spw_tab[0].CHAN_FREQ
-    return chan_freqs
-
-
-def get_field_names(myms):
-    field_tab = daskms.xds_from_table(
-        myms+'::FIELD', columns=['NAME','SOURCE_ID'])
-    field_ids = field_tab[0].SOURCE_ID.values
-    field_names = field_tab[0].NAME.values
-    return field_ids, field_names
-
-
-def get_scan_numbers(myms):
-    tab = daskms.xds_from_table(
-        myms, columns=['SCAN_NUMBER'])
-    scan_numbers = numpy.unique(tab[0].SCAN_NUMBER.values)
-    return scan_numbers.tolist()
-
-
-def get_antennas(myms):
-    tab = daskms.xds_from_table(
-        myms, columns=['ANTENNA1','ANTENNA2'])
-    ant1 = numpy.unique(tab[0].ANTENNA1.values)
-    ant2 = numpy.unique(tab[0].ANTENNA2.values)
-    ants = numpy.unique(numpy.concatenate((ant1,ant2)))
-    # ant_tab = xmd.xds_from_table(
-    #     myms+'::ANTENNA', columns=['NAME','STATION'])
-    # names = ant_tab[0].NAME.values
-    # stations = ant_tab[0].STATION.values
-    return ants.tolist()
-
-def get_correlations(myms):
-    pol_tab = daskms.xds_from_table(
-        myms+'::POLARIZATION', columns=['CORR_TYPE'])
-    return [STOKES_TYPES[icorr] for icorr in pol_tab[0].CORR_TYPE.values[0]]
-
 
 def freq_to_wavel(ff):
     c = 299792458.0  # m/s
     return c/ff
 
-
 def col_to_label(col):
     """Replaces '-' and "/" in column names with palatable characters acceptable in filenames and identifiers"""
     return col.replace("-", "min").replace("/", "div")
 
-
-def init_ms(msname):
-    tab = table(msname, ack=False)
-    global valid_ms_columns
-    valid_ms_columns = set(tab.colnames())
-
-# set of valid MS columns
-valid_ms_columns = set()
 
 # Maps correlation -> callable that extracts that correlation from visibility data
 # By default, populated with slicing functions for 0...3,
@@ -154,18 +99,18 @@ class DataAxis(object):
         function = column = corr = None
         specs = axis_spec.split(":", 2)
         if len(specs) == 1:
-            if specs[0] in valid_ms_columns:    # single column name, identity mapping
+            if specs[0] in ms.valid_columns:    # single column name, identity mapping
                 function = '_'
                 column = specs[0]
             elif specs[0] in data_mappers:      # single function name ('a', 'p', etc.), default column
                 function = specs[0]
                 column = data_mappers[function].column or default_column
         elif len(specs) == 2:                   # function:column
-            if specs[0] in data_mappers and specs[1] in valid_ms_columns:
+            if specs[0] in data_mappers and specs[1] in ms.valid_columns:
                 function = specs[0]
                 column = specs[1]
         elif len(specs) == 3:
-            if specs[0] in data_mappers and specs[1] in valid_ms_columns:
+            if specs[0] in data_mappers and specs[1] in ms.valid_columns:
                 function = specs[0]
                 column = specs[1]
                 corr = int(specs[2])

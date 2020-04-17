@@ -203,7 +203,6 @@ def main(argv):
     xaxes = list(itertools.chain(*[opt.split(",") for opt in options.xaxis]))
     yaxes = list(itertools.chain(*[opt.split(",") for opt in options.yaxis]))
 
-    log.debug(f"plot axes are {xaxes} {yaxes}")
     if len(xaxes) != len(yaxes):
         parser.error("--xaxis and --yaxis must be given the same number of times")
 
@@ -240,92 +239,58 @@ def main(argv):
     cnums = get_conformal_list('cnum', int, default=DEFAULT_CNUM)
 
     sms.blank()
-    log.info('Measurement Set  : %s' % myms)
-    sms.init_ms(myms)
 
-    # log.info('Plotting         : %s vs %s' % (yfullname, xfullname))
-    # log.info('MS column        : %s ' % col)
-    # log.info('Correlation      : %d' % corr)
+    from .ms_info import MSInfo
+    ms = sms.ms = MSInfo(myms, log=log)
+
+    sms.blank()
 
     group_cols = ['FIELD_ID', 'DATA_DESC_ID']
-    chan_freqs = sms.get_chan_freqs(myms)
 
     mytaql = []
 
-    if myants != 'all': 
-        ant_taql = []
+    if myants != 'all':
+        ants = ms.antennas.get_subset(myants)
         # group_cols.append('ANTENNA1')
-        ants = list(map(int, myants.split(',')))
-        log.info('Antenna(s)       : %s' % ants)
+        log.info(f"Antenna name(s)  : {' '.join(ants.names)}")
         if options.iter_antenna:
             raise NotImplementedError("iteration over antennas not currently supported")
-            # for ant in ants:
-            #     ant_taql.append('(ANTENNA1=='+str(ant)+' || ANTENNA2=='+str(ant)+')')
-            # mytaql.append(('('+' || '.join(ant_taql)+')'))
+        mytaql.append("||".join([f'ANTENNA1=={ant}||ANTENNA2=={ant}' for ant in ants.numbers]))
     else:
-        ants = sms.get_antennas(myms)
+        ants = ms.antennas
         log.info('Antenna(s)       : all')
 
-    fields, field_names = sms.get_field_names(myms)
-    if myfields != 'all': 
-        field_taql = []
-        fields = list(map(int, myfields.split(',')))
-        log.info('Field(s)         : %s' % fields)
-        if options.iter_field:
-            for fld in fields:
-                field_taql.append('FIELD_ID=='+str(fld))
-            mytaql.append(('('+' || '.join(field_taql)+')'))
+    if myfields != 'all':
+        fields = ms.field.get_subset(myfields)
+        log.info(f"Field(s)         : {' '.join(fields.names)}")
     else:
-        log.info('Field(s)         : all {}'.format(" ".join(field_names)))
+        fields = ms.field
+        log.info('Field(s)         : all')
+    # here for now, workaround for https://github.com/ska-sa/dask-ms/issues/100, should be inside if clause
+    mytaql.append("||".join([f'FIELD_ID=={fld}' for fld in fields.numbers]))
 
-
-    if myspws != 'all': 
-        spw_taql = []
-        spws = list(map(int, myspws.split(',')))    
-        log.info('SPW(s)           : %s' % spws)
-        if options.iter_spws:
-            for spw in spws:
-                spw_taql.append('DATA_DESC_ID=='+str(spw))
-            mytaql.append(('('+' || '.join(spw_taql)+')'))
+    if myspws != 'all':
+        spws = ms.spws.get_subset(myspws)
+        log.info(f"SPW(s)           : {' '.join(spws.names)}")
     else:
-        spws = numpy.arange(len(chan_freqs))
-        log.info(f'SPW(s)           : all {spws}')
-
+        spws = ms.spws
+        log.info(f'SPW(s)           : all')
+    mytaql.append("||".join([f'DATA_DESC_ID=={ddid}' for ddid in spws.numbers]))
 
     if myscans != 'all':
-        scan_taql = []
-        group_cols.append('SCAN_NUMBER')
-        scans = list(map(int, myscans.split(',')))
-        log.info('Scan(s)          : %s' % scans)
-        if options.iter_scan:
-            for scan in scans:
-                scan_taql.append('SCAN_NUMBER=='+str(scan))
-            mytaql.append(('('+' || '.join(scan_taql)+')'))
+        scans = ms.scan.get_subset(myscans)
+        log.info(f"Scan(s)          : {' '.join(scans.names)}")
     else:
-        if options.iter_scan:
-            group_cols.append('SCAN_NUMBER')
-        scans = sms.get_scan_numbers(myms)
+        scans = ms.scan
         log.info('Scan(s)          : all')
+    mytaql.append("||".join([f'SCAN_NUMBER=={n}' for n in scans.numbers]))
 
-    if mytaql:
-        mytaql = ' && '.join(mytaql)
-    else:
-        mytaql = ''
+    if options.iter_scan:
+        group_cols.append('SCAN_NUMBER')
 
-    ms_corr_list = sms.get_correlations(myms)
-    log.debug(f"correlations in MS are {ms_corr_list}")
-    corr_map = { corr:i for i, corr in enumerate(ms_corr_list)}
-    if mycorrs == "all":
-        corrs = list(range(len(ms_corr_list)))
-    else:
-        corrs = []
-        for corr in mycorrs.upper().split(','):
-            if re.fullmatch("\d+", corr):
-                corrs.append(int(corr))
-            elif corr in corr_map:
-                corrs.append(corr_map[corr])
-            else:
-                parser.error(f"unknown corrrelation --corr {corr}")
+    mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else None
+
+    corrs = ms.corr.get_subset(mycorrs)
 
     sms.blank()
 
@@ -361,11 +326,11 @@ def main(argv):
         def describe_corr(corrvalue):
             """Returns list of correlation labels corresponding to this corr setting"""
             if corrvalue is None:
-                return [ms_corr_list[c] for c in corrs]
+                return ms.corr.names
             elif corrvalue is False:
                 return []
             else:
-                return [ms_corr_list[corrvalue]]
+                return [ms.corr.names[corrvalue]]
 
         for corr in corr_list:
             plot_xcorr = corr if xcorr is None else xcorr  # False if no corr in datum, None if all, else set to iterant or to fixed value
@@ -433,7 +398,7 @@ def main(argv):
     log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join corrs is {join_corrs}")
 
     dataframes, np = \
-        sms.get_plot_data(myms, group_cols, mytaql, chan_freqs,
+        sms.get_plot_data(myms, group_cols, mytaql, ms.chan_freqs,
                       spws=spws, fields=fields, corrs=corrs, noflags=noflags, noconj=noconj,
                       iter_field=options.iter_field, iter_spw=options.iter_spw,
                       iter_scan=options.iter_scan,
