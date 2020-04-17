@@ -235,6 +235,7 @@ def main(argv):
 
     sms.blank()
     log.info('Measurement Set  : %s' % myms)
+    sms.init_ms(myms)
 
     # log.info('Plotting         : %s vs %s' % (yfullname, xfullname))
     # log.info('MS column        : %s ' % col)
@@ -308,14 +309,17 @@ def main(argv):
     ms_corr_list = sms.get_correlations(myms)
     log.debug(f"correlations in MS are {ms_corr_list}")
     corr_map = { corr:i for i, corr in enumerate(ms_corr_list)}
-    corrs = []
-    for corr in mycorrs.upper().split(','):
-        if re.fullmatch("\d+", corr):
-            corrs.append(int(corr))
-        elif corr in corr_map:
-            corrs.append(corr_map[corr])
-        else:
-            parser.error("unknown corrrelation --corr {corr}")
+    if mycorrs == "all":
+        corrs = list(range(len(ms_corr_list)))
+    else:
+        corrs = []
+        for corr in mycorrs.upper().split(','):
+            if re.fullmatch("\d+", corr):
+                corrs.append(int(corr))
+            elif corr in corr_map:
+                corrs.append(corr_map[corr])
+            else:
+                parser.error(f"unknown corrrelation --corr {corr}")
 
     sms.blank()
 
@@ -439,7 +443,7 @@ def main(argv):
     keys['ms'] = os.path.basename(os.path.splitext(myms.rstrip("/"))[0])
     keys['timestamp'] = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     # dictionary of titles for these identifiers
-    titles = dict(field="", field_num="field", scan="scan", spw="spw", antenna="ant", color="coloured by ")
+    titles = dict(field="", field_num="field", scan="scan", spw="spw", antenna="ant", colortitle="coloured by ")
 
     keys['field_num'] = list(fields) if myfields != 'all' else ''
     keys['field'] = [field_names[fld] for fld in fields] if myfields != 'all' else ''

@@ -10,20 +10,17 @@ import daskms
 import dask.array as da
 import dask.array.ma as dama
 import dask.dataframe as dask_df
-import datetime
-import datashader as ds
-import holoviews as hv
-import holoviews.operation.datashader as hd
+import datashader
+import holoviews as holoviews
+import holoviews.operation.datashader
+import datashader.transfer_functions
 import numpy
 import math
-import pandas as pd
 import pylab
 import ShadeMS
-import sys
-import time
-import os.path
 import re
 from collections import OrderedDict
+from casacore.tables import table
 
 from MSUtils.msutils import STOKES_TYPES
 
@@ -83,16 +80,21 @@ def col_to_label(col):
     return col.replace("-", "min").replace("/", "div")
 
 
+def init_ms(msname):
+    tab = table(msname, ack=False)
+    global valid_ms_columns
+    valid_ms_columns = set(tab.colnames())
+
 # set of valid MS columns
 valid_ms_columns = set()
 
 # Maps correlation -> callable that extracts that correlation from visibility data
 # By default, populated with slicing functions for 0...3,
 # but can also be extended with "I", "Q", etx.
-corr_data_mappers = OrderedDict({i: lambda x:x[...,i] for i in range(4)})
+corr_data_mappers = OrderedDict({i: lambda x,icorr=i:x[...,icorr] for i in range(4)})
 
 # Maps correlation -> callable that extracts that correlation from flag data
-corr_flag_mappers = OrderedDict({i: lambda x:x[...,i] for i in range(4)})
+corr_flag_mappers = OrderedDict({i: lambda x,icorr=i:x[...,icorr] for i in range(4)})
 
 
 
@@ -163,7 +165,7 @@ class DataAxis(object):
             if specs[0] in data_mappers and specs[1] in valid_ms_columns:
                 function = specs[0]
                 column = specs[1]
-                corr = specs[2]
+                corr = int(specs[2])
         # better be set now!
         if function is None:
             raise ValueError(f"invalid axis specification '{axis_spec}'")
@@ -208,7 +210,7 @@ class DataAxis(object):
         self.name = ":".join([str(x) for x in (function, column, corr, minmax, ncol) if x is not None ])
         self.function = function        # function to apply to column (see list of DataMappers below)
         self.corr     = corr if corr != "all" else None
-        self.ncol     = ncol
+        self.nlevels  = ncol
         self.minmax   = tuple(minmax) or (None, None)
         self.label    = label
         self._corr_reduce = None
@@ -280,12 +282,13 @@ class DataAxis(object):
             flag = flag_row
         else:
             # determine flags -- start with original flags
-            if self.mapper.axis is None:
+            if coldata.ndim == 2:
                 flag = corr_flag_mappers[corr](flag)
-            elif self.mapper.axis == 0:
-                flag = flag_row
-            elif self.mapper.axis == 1:
-                flag = da.zeros_like(coldata, bool)
+            elif coldata.ndim == 1:
+                if not self.mapper.axis:
+                    flag = flag_row
+                elif self.mapper.axis == 1:
+                    flag = da.zeros_like(coldata, bool)
             # shapes must now match
             if coldata.shape != flag.shape:
                 raise TypeError(f"{self.name}: unexpected column shape")
@@ -296,15 +299,15 @@ class DataAxis(object):
         if x1 is not None:
             flag = da.logical_or(flag, coldata>self.minmax[1])
         # discretize
-        if self.ncol:
+        if self.nlevels:
             # integer type?
             if numpy.issubdtype(coldata.dtype, numpy.integer):
-                coldata = da.remainder(coldata, self.ncol)
+                coldata = da.remainder(coldata, self.nlevels)
             else:
                 if x0 is None or x1 is None:
                     raise TypeError(f"{self.name}: min/max must be set to colour by this column")
-                delta = (x1 - x0) / self.ncol
-                coldata = da.floor((coldata-x0)/delta)
+                delta = (x1 - x0) / self.nlevels
+                coldata = da.minimum(da.floor((coldata-x0)/delta), self.nlevels-1)
         # return masked array
         return dama.masked_array(coldata, flag)
 
@@ -379,11 +382,11 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
                     value = axis.get_value(group, corr, extras, flag, flag_row)
                     # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ), and scalar to (NTIME,1)
                     if value.ndim == 1:
-                        assert axis.timefreq_axis is not None
-                        assert value.shape[0] == shape[axis.timefreq_axis], \
-                               f"{axis.mapper.fullname}: size {value.shape[0]}, expected {shape[axis.timefreq_axis]}"
+                        timefreq_axis = axis.mapper.axis or 0
+                        assert value.shape[0] == shape[timefreq_axis], \
+                               f"{axis.mapper.fullname}: size {value.shape[0]}, expected {shape[timefreq_axis]}"
                         shape1 = [1,1]
-                        shape1[axis.timefreq_axis] = value.shape[0]
+                        shape1[timefreq_axis] = value.shape[0]
                         value = value.reshape(shape1)
                         log.debug(f"axis {axis.mapper.fullname} has shape {value.shape}")
                     # else 2D value better match expected shape
@@ -414,7 +417,16 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
         np += values[0].size
 
         # now stack them all into a big dataframe
-        ddf = dask_df.from_array(da.stack(values, axis=1), columns=labels)
+        rectype = [(axis.label, numpy.int32 if axis.nlevels else numpy.float32) for axis in DataAxis.all_axes.values()]
+        recarr = da.empty_like(values[0], dtype=rectype)
+        ddf = dask_df.from_array(recarr)
+        for label, value in zip(labels, values):
+            ddf[label] = value
+
+        # convert discrete axes into categoricals
+        ddf = ddf.categorize([axis.label for axis in DataAxis.all_axes.values() if axis.nlevels])
+
+        # ddf = dask_df.from_array(da.stack(values, axis=1), columns=labels)
 
         # now, are we iterating or concatenating? Make frame key accordingly
         dataframe_key = (fld if iter_field else None,
@@ -434,23 +446,65 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
 
     return output_dataframes, np
 
-DISCRETE_COLORS = ["#FF0000","#FF3F00","#FF7F00","#FFBF00","#FFFF00","#BFFF00","#7FFF00","#3FFF00",
-          "#00FF00","#00FF3F","#00FF7F","#00FFBF","#00FFFF","#00BFFF","#007FFF","#003FFF",
-          "#0000FF","#3F00FF","#7F00FF","#BF00FF","#FF00FF","#FF00BF","#FF007F","#FF003F"]
+# DISCRETE_COLORS = ["#FF0000","#FF3F00","#FF7F00","#FFBF00","#FFFF00","#BFFF00","#7FFF00","#3FFF00",
+#                    "#00FF00","#00FF3F","#00FF7F","#00FFBF","#00FFFF","#00BFFF","#007FFF","#003FFF",
+#                    "#0000FF","#3F00FF","#7F00FF","#BF00FF","#FF00FF","#FF00BF","#FF007F","#FF003F"]
 
-def run_datashader(ddf,xaxis,yaxis,caxis,xcanvas,ycanvas,mycmap,normalize):
+DISCRETE_COLORS = [ "#2D53D6", "#333020", "#A601BF", "#D56805", "#8DED6D", "#1B9071", "#08FC20", "#329D15", "#CBB694", "#0384BA", "#09C3BE", "#9FDCE9", "#281DDE", "#CF8E9D", "#D5898B", "#7FC85A", "#6B64D7", "#D199D1", "#A5A2C8", "#8624BF" ]
 
-    canvas = ds.Canvas(xcanvas, ycanvas)
-    if caxis is not None:
-        ddf.categorize([caxis])
-        agg = ds.count_cat(caxis)
+def run_datashader(ddf,xaxis,yaxis,caxis,xcanvas,ycanvas,mycmap,normalize, use_hv=False):
+
+    if use_hv:
+        if caxis is not None:
+            agg = datashader.count_cat(caxis)
+            # raster = canvas.points(ddf, xaxis, yaxis, agg=agg)  # default aggregation just counts the points per bin
+            log.debug('creating points')
+            points = holoviews.Points(ddf, [xaxis, yaxis])
+            log.debug('aggregating')
+            #aggregation = hd.aggregate(points, agg=ds.count_cat(caxis))
+            #img = hd.shade(aggregation, color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), normalization=normalize)
+            img = holoviews.operation.datashader.datashade(points, agg=agg, color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap),
+                              normalization=normalize)
+            log.debug('computing image')
+            data = img.data
+            log.debug('done')
+        else:
+            agg = datashader.count_cat(caxis)
+            # raster = canvas.points(ddf, xaxis, yaxis, agg=agg)  # default aggregation just counts the points per bin
+            log.debug('creating points')
+            points = holoviews.Points(ddf, [xaxis, yaxis])
+            log.debug('aggregating')
+            # aggregation = hd.aggregate(points, agg=ds.count_cat(caxis))
+            # img = hd.shade(aggregation, color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), normalization=normalize)
+            img = holoviews.operation.datashader.datashade(points, cmap=getattr(colorcet, mycmap), normalization=normalize)
+            log.debug('computing image')
+            data = img.data
+            log.debug('done')
     else:
-        agg = ds.count
-    raster = canvas.points(ddf, xaxis, yaxis, agg=agg)  # default aggregation just counts the points per bin
 
-    # ds.count_cat(axis) counts categories along axis
+        if caxis is not None:
+            log.debug('making raster')
+            canvas = datashader.Canvas(xcanvas, ycanvas)
+            raster = canvas.points(ddf, xaxis, yaxis, agg=datashader.count_cat(caxis))
+            log.debug('shading')
+            #img1 = hd.shade(hv.Image(raster), color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), normalization=normalize)
+            #img1 = hd.shade(raster, color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), normalization=normalize)
+            img1 = datashader.transfer_functions.shade(raster,
+                                        color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), how=normalize)
+            img3 = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img1))
+        else:
+            log.debug('making raster')
+            canvas = datashader.Canvas(xcanvas, ycanvas)
+            raster = canvas.points(ddf, xaxis, yaxis)
+            log.debug('shading')
+            #img1 = hd.shade(raster, color_key=DISCRETE_COLORS, cmap=getattr(colorcet, mycmap), normalization=normalize)
+            img1 = datashader.transfer_functions.shade(raster, cmap=getattr(colorcet, mycmap), how=normalize)
+            img2 = holoviews.operation.datashader.shade(holoviews.Image(raster), cmap=getattr(colorcet, mycmap), normalization=normalize)
+            img3 = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img1))
 
-    img = hd.shade(hv.Image(raster), cmap=getattr(colorcet, mycmap), normalization=normalize)
+    log.debug('computing image')
+    data1 = img3.data
+    log.debug('done')
 
     # points = hv.Points(ddf, xaxis, yaxis)
     # img = hd.datashade(points, cmap=getattr(colorcet, mycmap), normalization=normalize,
@@ -463,56 +517,10 @@ def run_datashader(ddf,xaxis,yaxis,caxis,xcanvas,ycanvas,mycmap,normalize):
     data_xmax = numpy.max(raster.coords[xaxis].values)
     data_ymax = numpy.max(raster.coords[yaxis].values)
 
-    return img.data,data_xmin,data_xmax,data_ymin,data_ymax
+    return data1,data_xmin,data_xmax,data_ymin,data_ymax
 
 
-def generate_pngname(dirname, name_template, myms,col,corr,xfullname,yfullname,
-                myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                iterate=None, myiter=0, dostamp=None):
-
-    col = col.replace("/", "div")   # no slashes allowed, so D/M becomes DdivM
-    if not name_template:
-        pngname = 'plot_'+myms.split('/')[-1]+'_'+col+'_CORR-'+str(corr)
-        if myants != 'all' and iterate != 'ant':
-            pngname += '_ANT-'+myants.replace(',','-')
-        if myspws != 'all' and iterate != 'spw':
-            pngname += '_SPW-'+myspws.replace(',', '-')
-        if myfields != 'all' and iterate != 'field':
-            pngname += '_FIELD-'+myfields.replace(',','-')
-        if myscans != 'all' and iterate != 'scan':
-            pngname += '_SCAN-'+myscans.replace(',','-')
-        if iterate is not None and myiter != -1:
-            pngname += "_{}-{}".format(iterate.upper(), myiter)
-        pngname += '_'+yfullname+'_vs_'+xfullname+'_'+'corr'+str(corr)
-        if dostamp:
-            pngname += '_'+stamp()
-        pngname += '.png'
-    else:
-        pngname = name_template.format(**locals())
-    if dirname:
-        pngname = os.path.join(dirname, pngname)
-    return pngname
-
-
-def generate_title(myms,col,corr,xfullname,yfullname,
-                myants,ants,myspws,spws,myfields,fields,myscans,scans,
-                iterate,myiter):
-
-    title = myms+' '+col+' (CORR-'+str(corr)+')'
-    if myants != 'all' and iterate != 'ant':
-        title += ' (ANT-'+myants.replace(',','-')+')'
-    if myspws != 'all' and iterate != 'spw':
-        title += ' (SPW-'+myspws.replace(',', '-')+')'
-    if myfields != 'all' and iterate != 'field':
-        title += ' (FIELD-'+myfields.replace(',','-')+')'
-    if myscans != 'all' and iterate != 'scan':
-        title += ' (SCAN-'+myscans.replace(',','-')+')'
-    if myiter != -1:
-        title += ' ('+iterate.upper()+'-'+str(myiter)+')'
-    return title
-
-
-def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin, ymax, 
+def make_plot(data, data_xmin, data_xmax, data_ymin, data_ymax, xmin, xmax, ymin, ymax,
                 xlabel, ylabel, title, pngname, bgcol, fontsize, figx=24, figy=12):
 
     log.info('                 : Rendering image')
