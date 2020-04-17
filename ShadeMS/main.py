@@ -58,9 +58,11 @@ def main(argv):
 
     data_opts = parser.add_argument_group('Data selection')
     data_opts.add_argument('-x', '--xaxis', dest='xaxis', action="append",
-                      help="""X axis of plot. Use [t]ime, [f]requency, [c]hannels, [u], [v], [uv]distance, [r]eal, [i]mag,
-                      [a]mplitude, [p]hase. For multiple plots, use comma-separated list, or
-                      specify multiple times for multiple plots.""")
+                      help="""X axis of plot. You can use things like [t]ime, [freq]uency, [chan]nels, [corr], [u], [v], [uv]distance, [r]eal, [i]mag,
+                      [a]mplitude, [p]hase. You can also specify column names and correlations, e.g.
+                      'DATA:p:XX', or even 'DATA-MODEL_DATA:a". For multiple plots, use comma-separated list, or 
+                      specify multiple times for multiple plots.
+                      """)
                       
     data_opts.add_argument('-y', '--yaxis', dest='yaxis', action="append",
                       help='Y axis to plot. Must be given the same number of times as --xaxis.')
@@ -69,9 +71,9 @@ def main(argv):
                       help='Color-by axis and/or column. Can be none, or given once, or given the same number of times as --xaxis.')
 
     data_opts.add_argument('-C', '--col', dest='col', action="append", default=[],
-                      help="""Name of visibility column (default is DATA), if needed. You can also employ
-                      'D-M', 'C-M', 'D/M', 'C/M' for various combinations of data, corrected and model. Can use multiple
-                      times, or use comma-separated list, for multiple plots (or else specify it just once).
+                      help="""Name of visibility column (default is DATA), if needed. This is the column used if
+                      the axis specifications do not explicitly include a column. 
+                      Can use multiple times, or use comma-separated list, for multiple plots (or else specify it just once).
                       """)
 
     data_opts.add_argument('--antenna', dest='myants',
