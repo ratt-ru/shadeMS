@@ -272,11 +272,12 @@ class DataAxis(object):
         if self.nlevels:
             # minmax set? discretize over that
             if self.discretized_delta is not None:
-                coldata = da.minimum(da.floor((coldata - self.minmax[0])/self.discretized_delta), self.nlevels-1)
+                coldata = da.minimum(da.floor((coldata - self.minmax[0])/self.discretized_delta).astype(numpy.uint8),
+                                     self.nlevels-1)
             else:
                 if not numpy.issubdtype(coldata.dtype, numpy.integer):
                     raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
-                coldata = da.remainder(coldata, self.nlevels)
+                coldata = da.remainder(coldata, self.nlevels).astype(numpy.uint8)
         # return masked array
         return dama.masked_array(coldata, flag)
 
@@ -304,6 +305,11 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
     # output dataframes, indexed by (field, spw, scan, antenna, correlation)
     # If any of these axes is not being iterated over, then the index is None
     output_dataframes = OrderedDict()
+
+    # # make prototype dataframe
+    # import pandas
+    #
+    #
 
     # iterate over groups
     for group in msdata:
@@ -392,6 +398,14 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
         for label, value in zip(labels, values):
             ddf[label] = value
 
+        # from pandas.api.types import CategoricalDtype
+        # for axis in DataAxis.all_axes.values():
+        #     if axis.nlevels:
+        #         cat_type = CategoricalDtype(categories=range(axis.nlevels), ordered=True)
+        #         kw = {}
+        #         kw[axis.label+"_"] = cat_type
+        #         ddf.assign(**kw)
+        #
         # ddf = dask_df.from_array(da.stack(values, axis=1), columns=labels)
 
         # now, are we iterating or concatenating? Make frame key accordingly
