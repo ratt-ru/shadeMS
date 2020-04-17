@@ -20,9 +20,10 @@ import pylab
 import matplotlib.cm
 import ShadeMS
 from collections import OrderedDict
+from .ms_info import MSInfo
 
 log = ShadeMS.log
-ms = None
+ms = MSInfo()
 
 def blank():
     log.info('------------------------------------------------------')
@@ -34,15 +35,6 @@ def freq_to_wavel(ff):
 def col_to_label(col):
     """Replaces '-' and "/" in column names with palatable characters acceptable in filenames and identifiers"""
     return col.replace("-", "min").replace("/", "div")
-
-
-# Maps correlation -> callable that extracts that correlation from visibility data
-# By default, populated with slicing functions for 0...3,
-# but can also be extended with "I", "Q", etx.
-corr_data_mappers = OrderedDict({i: lambda x,icorr=i:x[...,icorr] for i in range(4)})
-
-# Maps correlation -> callable that extracts that correlation from flag data
-corr_flag_mappers = OrderedDict({i: lambda x,icorr=i:x[...,icorr] for i in range(4)})
 
 
 
@@ -162,6 +154,7 @@ class DataAxis(object):
         self.minmax   = vmin, vmax = tuple(minmax) or (None, None)
         self.label    = label
         self._corr_reduce = None
+        self.discretized_labels = None  # filled for corrs and fields and so
 
         # set up discretized continuous axis
         if self.nlevels and vmin is not None and vmax is not None:
@@ -170,12 +163,17 @@ class DataAxis(object):
         else:
             self.discretized_delta = self.discretized_bin_centers = None
 
-        # special case of "corr" if corr is fixed: return constant value
-        if function == 'corr' and corr is not None:
-            self.mapper = DataMapper("Correlation", "", column=False, axis=-1, mapper=lambda x: corr)
-        # else find mapper -- register() will have ensured that it is valid
-        else:
-            self.mapper = data_mappers[function]
+        self.mapper = data_mappers[function]
+
+        if function == 'corr':
+            # special case of "corr" if corr is fixed: return constant value fixed here
+            if corr is not None:
+                self.mapper = DataMapper("Correlation", "", column=False, axis=-1, mapper=lambda x: corr)
+            self.discretized_labels = ms.corr.names
+        elif column == "FIELD_ID":
+            self.discretized_labels = ms.field.names
+        elif column == "ANTENNA1" or column == "ANTENNA2":
+            self.discretized_labels = ms.all_antenna.names
 
         if self.function == "_":
             self.function = ""
@@ -228,7 +226,7 @@ class DataAxis(object):
             # the mapper can't have a specific axis set
             if self.mapper.axis is not None:
                 raise TypeError(f"{self.name}: unexpected column with ndim=3")
-            coldata = corr_data_mappers[corr](coldata)
+            coldata = ms.corr_data_mappers[corr](coldata)
         # apply mapping function
         coldata = self.mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
         # scalar expanded to row vector
@@ -238,7 +236,7 @@ class DataAxis(object):
         else:
             # determine flags -- start with original flags
             if coldata.ndim == 2:
-                flag = corr_flag_mappers[corr](flag)
+                flag = ms.corr_flag_mappers[corr](flag)
             elif coldata.ndim == 1:
                 if not self.mapper.axis:
                     flag = flag_row
@@ -318,7 +316,7 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
 
         datums = OrderedDict()
 
-        for corr in corrs:
+        for corr in corrs.numbers:
             # make dictionary of extra values for DataMappers
             extras = dict(corr=corr, chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs), nrow=nrow)
             # loop over datums to be computed
@@ -433,7 +431,10 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
             color_key = [dmap[i] for i in color_bins]
             # the numbers may be out of order -- reorder for color bar purposes
             bin_color = sorted(zip(color_bins, color_key))
-            color_labels = [str(bin) for bin, _ in bin_color]
+            if cdatum.discretized_labels and len(cdatum.discretized_labels) <= cdatum.nlevels:
+                color_labels = [cdatum.discretized_labels[bin] for bin, _ in bin_color]
+            else:
+                color_labels = [str(bin) for bin, _ in bin_color]
             color_mapping = [col for _, col in bin_color]
             log.info(f": shading using {ncolors} colors (values {' '.join(color_labels)})")
         img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize)
@@ -499,7 +500,12 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
         cb = fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=colormap), ax=ax, ticks=ticks)
 
         if color_mapping is not None:
-            cb.ax.set_yticklabels(color_labels)
+            rot = 0
+            fontdict = None
+            if max([len(lbl) for lbl in color_labels]) > 3 and len(color_labels) < 8:
+                rot = 90
+                fontdict = dict(verticalalignment='center')
+            cb.ax.set_yticklabels(color_labels, rotation=rot, fontdict=fontdict)
 
         # mat, ticks=np.arange(np.min(data),np.max(data)+1))
 

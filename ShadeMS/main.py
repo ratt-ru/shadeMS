@@ -250,45 +250,45 @@ def main(argv):
     mytaql = []
 
     if myants != 'all':
-        ants = ms.antennas.get_subset(myants)
+        ants = ms.antenna.get_subset(myants)
         # group_cols.append('ANTENNA1')
         log.info(f"Antenna name(s)  : {' '.join(ants.names)}")
         if options.iter_antenna:
             raise NotImplementedError("iteration over antennas not currently supported")
         mytaql.append("||".join([f'ANTENNA1=={ant}||ANTENNA2=={ant}' for ant in ants.numbers]))
     else:
-        ants = ms.antennas
+        ants = ms.antenna
         log.info('Antenna(s)       : all')
 
     if myfields != 'all':
         fields = ms.field.get_subset(myfields)
         log.info(f"Field(s)         : {' '.join(fields.names)}")
+        # here for now, workaround for https://github.com/ska-sa/dask-ms/issues/100, should be inside if clause
+        mytaql.append("||".join([f'FIELD_ID=={fld}' for fld in fields.numbers]))
     else:
         fields = ms.field
         log.info('Field(s)         : all')
-    # here for now, workaround for https://github.com/ska-sa/dask-ms/issues/100, should be inside if clause
-    mytaql.append("||".join([f'FIELD_ID=={fld}' for fld in fields.numbers]))
 
     if myspws != 'all':
         spws = ms.spws.get_subset(myspws)
         log.info(f"SPW(s)           : {' '.join(spws.names)}")
+        mytaql.append("||".join([f'DATA_DESC_ID=={ddid}' for ddid in spws.numbers]))
     else:
         spws = ms.spws
         log.info(f'SPW(s)           : all')
-    mytaql.append("||".join([f'DATA_DESC_ID=={ddid}' for ddid in spws.numbers]))
 
     if myscans != 'all':
         scans = ms.scan.get_subset(myscans)
         log.info(f"Scan(s)          : {' '.join(scans.names)}")
+        mytaql.append("||".join([f'SCAN_NUMBER=={n}' for n in scans.numbers]))
     else:
         scans = ms.scan
         log.info('Scan(s)          : all')
-    mytaql.append("||".join([f'SCAN_NUMBER=={n}' for n in scans.numbers]))
 
     if options.iter_scan:
         group_cols.append('SCAN_NUMBER')
 
-    mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else None
+    mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else ''
 
     corrs = ms.corr.get_subset(mycorrs)
 
@@ -319,7 +319,7 @@ def main(argv):
 
         # do we iterate over correlations to make separate plots now?
         if datum_itercorr and options.iter_corr:
-            corr_list = corrs
+            corr_list = corrs.numbers
         else:
             corr_list = [None]
 
@@ -379,7 +379,8 @@ def main(argv):
                 if cmap.function:
                     labels.append(cmap.function)
                 if not cmap.discretized_delta:
-                    titles.append(f"(modulo {cmap.nlevels})")
+                    if not cmap.discretized_labels or len(cmap.discretized_labels) > cmap.nlevels:
+                        titles.append(f"(modulo {cmap.nlevels})")
                 props['color_title'] = " ".join(titles)
                 props['color_label'] = "_".join(labels)
             else:
@@ -405,8 +406,7 @@ def main(argv):
                       join_corrs=join_corrs,
                       row_chunk_size=options.row_chunk_size)
 
-    log.info("                 : rendering {} dataframes with {:.3g} points into {} plot types".format(
-                len(dataframes), np, len(all_plots)))
+    log.info(f": rendering {len(dataframes)} dataframes with {np:.3g} points into {len(all_plots)} plot types")
 
     ## each dataframe is an instance of the axes being iterated over -- on top of that, we need to iterate over plot types
 
@@ -417,11 +417,11 @@ def main(argv):
     # dictionary of titles for these identifiers
     titles = dict(field="", field_num="field", scan="scan", spw="spw", antenna="ant", colortitle="coloured by")
 
-    keys['field_num'] = list(fields) if myfields != 'all' else ''
-    keys['field'] = [field_names[fld] for fld in fields] if myfields != 'all' else ''
-    keys['scan'] = list(scans) if myscans != 'all' else ''
-    keys['ant'] = list(ants) if myants != 'all' else ''
-    keys['spw'] = list(spws) if myspws != 'all' else ''
+    keys['field_num'] = fields.numbers if myfields != 'all' else ''
+    keys['field'] = fields.names if myfields != 'all' else ''
+    keys['scan'] = scans.names if myscans != 'all' else ''
+    keys['ant'] = ants.names if myants != 'all' else ''
+    keys['spw'] = spws.names if myspws != 'all' else ''
 
     def generate_string_from_keys(template, keys, listsep=" ", titlesep=" ", prefix=" "):
         """Converts list of keys into a string suitable for plot titles or filenames.
@@ -469,7 +469,7 @@ def main(argv):
         # update keys to be substituted into title and filename
         if fld is not None:
             keys['field_num'] = fld
-            keys['field'] = field_names[fld]
+            keys['field'] = fields[fld]
         if spw is not None:
             keys['spw'] = spw
         if scan is not None:

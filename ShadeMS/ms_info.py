@@ -1,6 +1,8 @@
 from MSUtils.msutils import STOKES_TYPES
 from casacore.tables import table
 import re
+import daskms
+from collections import OrderedDict
 
 class NamedList(object):
     """Holds a list of names (e.g. field names), and provides common indexing and subset operations"""
@@ -15,10 +17,10 @@ class NamedList(object):
         return len(self.names)
 
     def __contains__(self, name):
-        return name in self.map
+        return name in self.map if type(name) is str else name in self.numbers
 
     def __getitem__(self, item, default=None):
-        return self.map.get(item, default) if type[item] is str else self.names[item]
+        return self.map.get(item, default) if type(item) is str else self.names[item]
 
     def get_subset(self, subset):
         """Extracts subset using a comma-separated string or list of indices"""
@@ -48,7 +50,10 @@ class NamedList(object):
 class MSInfo(object):
     """Holds information about the MS structure"""
 
-    def __init__(self, msname, log=None):
+    def __init__(self, msname=None, log=None):
+        if not msname:
+            return
+
         log and log.info(f": MS is {msname}")
         self.log = log
 
@@ -56,9 +61,9 @@ class MSInfo(object):
 
         self.valid_columns = set(tab.colnames())
 
-        spw_tab = table(msname + '::SPECTRAL_WINDOW', ack=False)
-        self.nspw = spw_tab.nrows()
-        self.chan_freqs = spw_tab.getcol("CHAN_FREQ")
+        spw_tab = daskms.xds_from_table(msname + '::SPECTRAL_WINDOW', columns=['CHAN_FREQ'])
+        self.chan_freqs = spw_tab[0].CHAN_FREQ   # important for this to be an xarray
+        self.nspw = self.chan_freqs.shape[0]
         self.spws = NamedList("spw", list(map(str, range(self.nspw))))
 
         log and log.info(f":   {self.chan_freqs.shape} spectral windows and channels")
@@ -71,11 +76,11 @@ class MSInfo(object):
         all_scans = NamedList("scan", list(map(str, range(scan_numbers[-1]+1))))
         self.scan = all_scans.get_subset(scan_numbers)
 
-        all_antennas = NamedList("antenna", table(msname +'::ANTENNA', ack=False).getcol("NAME"))
+        self.all_antenna = NamedList("antenna", table(msname +'::ANTENNA', ack=False).getcol("NAME"))
 
-        self.antennas = all_antennas.get_subset(list(set(tab.getcol("ANTENNA1"))|set(tab.getcol("ANTENNA2"))))
+        self.antenna = self.all_antenna.get_subset(list(set(tab.getcol("ANTENNA1"))|set(tab.getcol("ANTENNA2"))))
 
-        log and log.info(f":   {len(self.antennas)} antennas: {self.antennas.str_list()}")
+        log and log.info(f":   {len(self.antenna)} antennas: {self.antenna.str_list()}")
 
         pol_tab = table(msname + '::POLARIZATION', ack=False)
 
@@ -83,3 +88,10 @@ class MSInfo(object):
         self.corr = NamedList("correlation", corr_labels)
         log and log.info(f":   correlations {' '.join(self.corr.names)}")
 
+        # Maps correlation -> callable that extracts that correlation from visibility data
+        # By default, populated with slicing functions for 0...3,
+        # but can also be extended with "I", "Q", etx.
+        self.corr_data_mappers = OrderedDict({i: lambda x,icorr=i:x[...,icorr] for i in self.corr.numbers})
+
+        # Maps correlation -> callable that extracts that correlation from flag data
+        self.corr_flag_mappers = OrderedDict({i: lambda x,icorr=i:x[...,icorr] for i in self.corr.numbers})
