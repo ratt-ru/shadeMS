@@ -127,7 +127,7 @@ def main(argv):
                       help='Minimum colouring value. Must be supplied for every non-discrete axis to be coloured by')
     figure_opts.add_argument('--cmax', action='append',
                       help='Maximum colouring value. Must be supplied for every non-discrete axis to be coloured by')
-    figure_opts.add_argument('--cnum', action='append', type=int,
+    figure_opts.add_argument('--cnum', action='append',
                       help=f'Number of steps used to discretize a continuous axis. Default is {DEFAULT_CNUM}.')
 
     figure_opts = parser.add_argument_group('Rendering settings')
@@ -170,13 +170,15 @@ def main(argv):
 
     perf_opts.add_argument("-d", "--debug", action='store_true',
                             help="Enable debugging output")
-    perf_opts.add_argument('-z', '--row-chunk-size', type=int, metavar="N", default=100000,
+    perf_opts.add_argument('-z', '--row-chunk-size', type=int, metavar="NROWS", default=100000,
                            help="""row chunk size for dask-ms. Larger chunks may or may not be faster, but will
                             certainly use more RAM.""")
-    perf_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=DEFAULT_NUM_RENDERS,
-                             help="""run up to N renderers in parallel (default = %(default)s). This is not necessarily 
-                             faster, as they might all end up contending for disk I/O. This might also work against 
-                             dask-ms's own intrinsic parallelism. You have been advised.""")
+    perf_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=1,
+                             help=f"""run up to N renderers in parallel. Default is serial. Use -j0 to 
+                             auto-set this to half the available cores ({DEFAULT_NUM_RENDERS} on this system).
+                             This is not necessarily faster, as they might all end up contending for disk I/O. 
+                             This might also work against sdask-ms's own intrinsic parallelism. 
+                             You have been advised.""")
 
     # various hidden performance-testing options
     sms.add_options(perf_opts)
@@ -475,13 +477,12 @@ def main(argv):
         """Renders a single plot. Make this a function since we might call it in parallel"""
         log.info(f": rendering {pngname}")
 
-        sms.create_plot(df, xdatum, ydatum, cdatum, xcanvas, ycanvas,
+        if sms.create_plot(df, xdatum, ydatum, cdatum, xcanvas, ycanvas,
                         cmap, bmap, dmap, normalize,
                         xlabel, ylabel, title,
                         pngname, bgcol, fontsize,
-                        figx=xcanvas / 60, figy=ycanvas / 60)
-
-        log.info(f'                 : wrote {pngname}')
+                        figx=xcanvas / 60, figy=ycanvas / 60):
+            log.info(f'                 : wrote {pngname}')
 
     for (fld, spw, scan, antenna), df in dataframes.items():
         # update keys to be substituted into title and filename

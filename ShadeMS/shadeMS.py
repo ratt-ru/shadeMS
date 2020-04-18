@@ -534,6 +534,9 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
             color_bins = list(range(cdatum.nlevels))
             log.debug(f'making raster with count_integer, {len(color_bins)} bins')
             raster = canvas.points(ddf, xaxis, yaxis, agg=count_integers(caxis, cdatum.nlevels))
+        if not raster.data.any():
+            log.info(": no valid data in plot. Check your flags and/or plot limits.")
+            return None
         ncolors = len(color_bins)
         # true if axis is discretized and continuous
         if cdatum.discretized_delta is not None:
@@ -560,6 +563,9 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
     else:
         log.debug('making raster')
         raster = canvas.points(ddf, xaxis, yaxis)
+        if not raster.data.any():
+            log.info(": no valid data in plot. Check your flags and/or plot limits.")
+            return None
         log.debug('shading')
         img = datashader.transfer_functions.shade(raster, cmap=cmap, how=normalize)
         rgb = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img))
