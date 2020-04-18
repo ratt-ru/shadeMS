@@ -343,9 +343,9 @@ def main(argv):
             plot_xcorr = corr if xcorr is None else xcorr  # False if no corr in datum, None if all, else set to iterant or to fixed value
             plot_ycorr = corr if ycorr is None else ycorr
             plot_ccorr = corr if ccorr is None else ccorr
-            xmap = sms.DataAxis.register(xfunction, xcolumn, plot_xcorr, (xmin, xmax))
-            ymap = sms.DataAxis.register(yfunction, ycolumn, plot_ycorr, (ymin, ymax))
-            cmap = cfunction and sms.DataAxis.register(cfunction, ccolumn, plot_ccorr, (cmin, cmax), cnum)
+            xdatum = sms.DataAxis.register(xfunction, xcolumn, plot_xcorr, (xmin, xmax))
+            ydatum = sms.DataAxis.register(yfunction, ycolumn, plot_ycorr, (ymin, ymax))
+            cdatum = cfunction and sms.DataAxis.register(cfunction, ccolumn, plot_ccorr, (cmin, cmax), cnum)
 
             # figure out plot properties -- basically construct a descriptive name and label
             # looks complicated, but we're just trying to figure out what to put in the plot title...
@@ -353,47 +353,47 @@ def main(argv):
             titles = []
             labels = []
             # start with column and correlation(s)
-            if ycolumn and not ymap.mapper.column:   # only put column if not fixed by mapper
+            if ycolumn and not ydatum.mapper.column:   # only put column if not fixed by mapper
                 titles.append(ycolumn)
                 labels.append(sms.col_to_label(ycolumn))
             titles += describe_corr(plot_ycorr)
             labels += describe_corr(plot_ycorr)
-            titles += [ymap.mapper.fullname, "vs"]
-            if ymap.function:
-                labels.append(ymap.function)
+            titles += [ydatum.mapper.fullname, "vs"]
+            if ydatum.function:
+                labels.append(ydatum.function)
             # add x column/corrs, if different
-            if xcolumn and (xcolumn != ycolumn or not xmap.function) and not xmap.mapper.column:
+            if xcolumn and (xcolumn != ycolumn or not xdatum.function) and not xdatum.mapper.column:
                 titles.append(xcolumn)
                 labels.append(sms.col_to_label(xcolumn))
             if plot_xcorr != plot_ycorr:
                 titles += describe_corr(plot_xcorr)
                 labels += describe_corr(plot_xcorr)
-            titles += [xmap.mapper.fullname]
-            if xmap.function:
-                labels.append(xmap.function)
+            titles += [xdatum.mapper.fullname]
+            if xdatum.function:
+                labels.append(xdatum.function)
             props['title'] = " ".join(titles)
             props['label'] = "_".join(labels)
             # build up color-by label
             if cfunction:
                 titles, labels = [], []
-                if ccolumn and (ccolumn != xcolumn or ccolumn != ycolumn) and not cmap.mapper.column:
+                if ccolumn and (ccolumn != xcolumn or ccolumn != ycolumn) and not cdatum.mapper.column:
                     titles.append(ccolumn)
                     labels.append(sms.col_to_label(ccolumn))
                 if plot_ccorr and (plot_ccorr != plot_xcorr or plot_ccorr != plot_ycorr):
                     titles += describe_corr(plot_ccorr)
                     labels += describe_corr(plot_ccorr)
-                titles += [cmap.mapper.fullname]
-                if cmap.function:
-                    labels.append(cmap.function)
-                if not cmap.discretized_delta:
-                    if not cmap.discretized_labels or len(cmap.discretized_labels) > cmap.nlevels:
-                        titles.append(f"(modulo {cmap.nlevels})")
+                titles += [cdatum.mapper.fullname]
+                if cdatum.function:
+                    labels.append(cdatum.function)
+                if not cdatum.discretized_delta:
+                    if not cdatum.discretized_labels or len(cdatum.discretized_labels) > cdatum.nlevels:
+                        titles.append(f"(modulo {cdatum.nlevels})")
                 props['color_title'] = " ".join(titles)
                 props['color_label'] = "_".join(labels)
             else:
                 props['color_title'] = props['color_label'] = ''
 
-            all_plots.append((props, xmap, ymap, cmap))
+            all_plots.append((props, xdatum, ydatum, cdatum))
             log.debug(f"adding plot for {props['title']}")
 
     join_corrs = not options.iter_corr and len(corrs) > 1 and have_corr_dependence
@@ -485,11 +485,11 @@ def main(argv):
             keys['ant'] = antenna
 
         # now loop over plot types
-        for props, xmap, ymap, cmap in all_plots:
+        for props, xdatum, ydatum, cdatum in all_plots:
             keys.update(title=props['title'], label=props['label'],
                         colortitle=props['color_title'], colorlabel=props['color_label'],
-                        xname=xmap.mapper.fullname, yname=ymap.mapper.fullname,
-                        xunit=xmap.mapper.unit, yunit=ymap.mapper.unit)
+                        xname=xdatum.mapper.fullname, yname=ydatum.mapper.fullname,
+                        xunit=xdatum.mapper.unit, yunit=ydatum.mapper.unit)
 
             pngname = generate_string_from_keys(options.pngname, keys, "_", "_", "-")
             title   = generate_string_from_keys(options.title, keys, " ", " ", ", ")
@@ -503,11 +503,11 @@ def main(argv):
                 log.info(f'                 : created output directory {dirname}')
 
             if options.num_parallel < 2 or len(all_plots) < 2:
-                render_single_plot(df, xmap, ymap, cmap, pngname, title, xlabel, ylabel)
+                render_single_plot(df, xdatum, ydatum, cdatum, pngname, title, xlabel, ylabel)
             else:
                 executor = ThreadPoolExecutor(options.num_parallel)
                 log.info(f'                 : submitting job for {pngname}')
-                jobs.append(executor.submit(render_single_plot, df, xmap, ymap, cmap, pngname, title, xlabel, ylabel))
+                jobs.append(executor.submit(render_single_plot, df, xdatum, ydatum, cdatum, pngname, title, xlabel, ylabel))
 
     # wait for jobs to finish
     if executor is not None:

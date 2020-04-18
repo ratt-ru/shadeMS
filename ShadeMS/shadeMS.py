@@ -48,7 +48,7 @@ def add_options(parser):
 
 def set_options(options):
     global USE_COUNT_CAT, COUNT_DTYPE
-    USE_COUNT_CAT = options.count_cat
+#    USE_COUNT_CAT = options.count_cat
     COUNT_DTYPE = getattr(numpy, options.count_dtype)
 
 class DataMapper(object):
@@ -77,7 +77,7 @@ data_mappers = OrderedDict(
     t=DataMapper("Time", "s", axis=0, column="TIME"),
     corr=DataMapper("Correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr),
     chan=DataMapper("Channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
-    freq=DataMapper("Frequency", "Hz", column=None, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
+    freq=DataMapper("Frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
     uv=DataMapper("uv-distance", "wavelengths", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel),
     u=DataMapper("u", "wavelengths", column="UVW", extras=["wavel"],
@@ -463,6 +463,8 @@ except ImportError:
 class count_integers(datashader.count_cat):
     """Count of all elements in ``column``, grouped by value.
     """
+    _dshape = datashape.dshape(datashape.coretypes.int32)
+
     def __init__(self, column, modulo):
         datashader.count_cat.__init__(self, column)
         self.modulo = modulo
@@ -478,7 +480,8 @@ class count_integers(datashader.count_cat):
     @staticmethod
     @ngjit
     def _append(x, y, agg, field):
-        agg[y, x, field] += 1
+        #print(x,y,field)
+        agg[y, x, int(field)] += 1
 
     def out_dshape(self, input_dshape):
         return datashape.util.dshape(datashape.Record([(c, datashape.coretypes.int32) for c in range(self.modulo)]))
@@ -490,6 +493,15 @@ class count_integers(datashader.count_cat):
             coords[self.column] = list(self.codes.values)
             return xarray.DataArray(bases[0], dims=dims, coords=coords)
         return finalize
+
+class count_cat(datashader.count_cat):
+    """Redefine here just so we can print during debugging..."""
+    @staticmethod
+    @ngjit
+    def _append(x, y, agg, field):
+#        print(x,y,field)
+        agg[y, x, int(field)] += 1
+
 
 USE_COUNT_CAT = 0
 
@@ -506,7 +518,7 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
         if USE_COUNT_CAT:
             color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
             log.debug(f'making raster with count_cat, {len(color_bins)} bins')
-            raster = canvas.points(ddf, xaxis, yaxis, agg=datashader.count_cat(caxis))
+            raster = canvas.points(ddf, xaxis, yaxis, agg=count_cat(caxis))
         else:
             color_bins = list(range(cdatum.nlevels))
             log.debug(f'making raster with count_integer, {len(color_bins)} bins')
