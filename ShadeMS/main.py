@@ -59,22 +59,23 @@ def main(argv):
 
     data_opts = parser.add_argument_group('Data selection')
     data_opts.add_argument('-x', '--xaxis', dest='xaxis', action="append",
-                      help="""X axis of plot. You can use things like [freq]uency, [chan]nels, [corr], [u], [v], [uv]distance, [r]eal, [i]mag,
-                      [a]mplitude, [p]hase. You can also specify column names and correlations, e.g.
-                      'DATA:p:XX', or even 'DATA-MODEL_DATA:a". For multiple plots, use comma-separated list, or 
-                      specify multiple times for multiple plots.
+                      help="""X axis of plot, e.g. "amp:CORRECTED_DATA" This recognizes all column names (also CHAN, FREQ, 
+                      CORR, U, V, W, UV), and, for complex columns, keywords such as 'amp', 'phase', 'real', 'imag'. You can also 
+                      specify correlations, e.g. 'DATA:phase:XX', and do two-column arithmetic with "+-*/", e.g. 
+                      'DATA-MODEL_DATA:amp'. The order of specifiers does not matter.
                       """)
                       
     data_opts.add_argument('-y', '--yaxis', dest='yaxis', action="append",
-                      help='Y axis to plot. Must be given the same number of times as --xaxis.')
+                      help="""Y axis to plot. Must be given the same number of times as --xaxis. Note that X/Y can
+                      employ different columns and correlations.""")
 
     data_opts.add_argument('-c', '--color-by', action="append",
                       help='Color-by axis and/or column. Can be none, or given once, or given the same number of times as --xaxis.')
 
-    data_opts.add_argument('-C', '--col', dest='col', action="append", default=[],
-                      help="""Name of visibility column (default is DATA), if needed. This is the column used if
-                      the axis specifications do not explicitly include a column. 
-                      Can use multiple times, or use comma-separated list, for multiple plots (or else specify it just once).
+    data_opts.add_argument('-C', '--col', metavar="COLUMN", dest='col', action="append", default=[],
+                      help="""Name of visibility column (default is DATA), if needed. This is used if
+                      the axis specifications do not explicitly include a column. For multiple plots,
+                      thuis can be given multiple times, or as a comma-separated list. Two-column arithmetic is recognized.
                       """)
 
     data_opts.add_argument('--antenna', dest='myants',
@@ -150,6 +151,8 @@ def main(argv):
 
     output_opts = parser.add_argument_group('Output')
     # can also use "plot-{msbase}-{column}-{corr}-{xfullname}-vs-{yfullname}", let's expand on this later
+    output_opts.add_argument('--dir',
+                      help='send all plots to this output directory')
     output_opts.add_argument('--png', dest='pngname',
                              default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}-{label}{_colorlabel}.png",
                       help='template for output png files, default "%(default)s"')
@@ -244,6 +247,14 @@ def main(argv):
     cmins = get_conformal_list('cmin', float)
     cmaxs = get_conformal_list('cmax', float)
     cnums = get_conformal_list('cnum', int, default=DEFAULT_CNUM)
+
+    # check min/max
+    if any([(a is None)^(b is None) for a, b in zip(xmins, xmaxs)]):
+        parser.error("--xmin/--xmax must be either both set, or neither")
+    if any([(a is None)^(b is None) for a, b in zip(ymins, ymaxs)]):
+        parser.error("--xmin/--xmax must be either both set, or neither")
+    if any([(a is None)^(b is None) for a, b in zip(ymins, ymaxs)]):
+        parser.error("--cmin/--cmax must be either both set, or neither")
 
     sms.blank()
 
@@ -495,6 +506,9 @@ def main(argv):
             title   = generate_string_from_keys(options.title, keys, " ", " ", ", ")
             xlabel  = generate_string_from_keys(options.xlabel, keys, " ", " ", ", ")
             ylabel  = generate_string_from_keys(options.ylabel, keys, " ", " ", ", ")
+
+            if options.dir:
+                pngname = os.path.join(options.dir, pngname)
 
             # make output directory, if needed
             dirname = os.path.dirname(pngname)

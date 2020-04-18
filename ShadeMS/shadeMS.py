@@ -69,22 +69,25 @@ class DataMapper(object):
 
 # this dict maps short axis names into full DataMapper objects
 data_mappers = OrderedDict(
-    _=DataMapper("", "", lambda x:x),
-    a=DataMapper("Amplitude", "", abs),
-    p=DataMapper("Phase", "deg", lambda x:da.arctan2(da.imag(x), da.real(x))*180/math.pi),
-    r=DataMapper("Real", "", da.real),
-    i=DataMapper("Imag", "", da.imag),
-    t=DataMapper("Time", "s", axis=0, column="TIME"),
-    corr=DataMapper("Correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr),
-    chan=DataMapper("Channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
-    freq=DataMapper("Frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
-    uv=DataMapper("uv-distance", "wavelengths", column="UVW", extras=["wavel"],
+    _     = DataMapper("", "", lambda x:x),
+    amp   = DataMapper("Amplitude", "", abs),
+    phase = DataMapper("Phase", "deg", lambda x:da.arctan2(da.imag(x), da.real(x))*180/math.pi),
+    real  = DataMapper("Real", "", da.real),
+    imag  = DataMapper("Imag", "", da.imag),
+    TIME  = DataMapper("Time", "s", axis=0, column="TIME"),
+    CORR  = DataMapper("Correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr),
+    CHAN  = DataMapper("Channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
+    FREQ  = DataMapper("Frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
+    UV    = DataMapper("uv-distance", "wavelengths", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel),
-    u=DataMapper("u", "wavelengths", column="UVW", extras=["wavel"],
+    U     = DataMapper("u", "wavelengths", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: uvw[:, 0] / wavel,
                  conjugate=True),
-    v=DataMapper("v", "wavelengths", column="UVW", extras=["wavel"],
+    V     = DataMapper("v", "wavelengths", column="UVW", extras=["wavel"],
                  mapper=lambda uvw, wavel: uvw[:, 1] / wavel,
+                 conjugate=True),
+    W     = DataMapper("w", "wavelengths", column="UVW", extras=["wavel"],
+                 mapper=lambda uvw, wavel: uvw[:, 2] / wavel,
                  conjugate=True),
 )
 
@@ -114,14 +117,14 @@ class DataAxis(object):
         for spec in specs:
             if spec is None:
                 raise ValueError(f"invalid axis specification '{axis_spec}'")
-            if DataAxis.is_legit_colspec(spec):
-                if column is not None:
-                    raise ValueError(f"column specified twice in '{axis_spec}'")
-                column = spec
-            elif spec in data_mappers:
+            if spec in data_mappers:
                 if function is not None:
                     raise ValueError(f"function specified twice in '{axis_spec}'")
                 function = spec
+            elif DataAxis.is_legit_colspec(spec):
+                if column is not None:
+                    raise ValueError(f"column specified twice in '{axis_spec}'")
+                column = spec
             else:
                 if re.fullmatch(r"\d+", spec):
                     corr1 = int(spec)
@@ -206,9 +209,9 @@ class DataAxis(object):
         elif column == "ANTENNA1" or column == "ANTENNA2":
             self.discretized_labels = ms.all_antenna.names
 
-        # if labels were set up, adjust nlevels accordingly (256 being the max)
+        # if labels were set up, adjust nlevels (but only down, never up)
         if self.discretized_labels is not None:
-            self.nlevels = len(self.discretized_labels) % 256
+            self.nlevels = min(len(self.discretized_labels), self.nlevels)
 
         if self.function == "_":
             self.function = ""
@@ -291,12 +294,12 @@ class DataAxis(object):
                 if not numpy.issubdtype(coldata.dtype, numpy.integer):
                     raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
                 coldata = da.remainder(coldata, self.nlevels).astype(COUNT_DTYPE)
-        # else just apply clipping
-        else:
-            if x0 is not None:
-                flag = da.logical_or(flag, coldata<self.minmax[0])
-            if x1 is not None:
-                flag = da.logical_or(flag, coldata>self.minmax[1])
+        # # else just apply clipping # NB no longer needed as we set the canvas correctly
+        # else:
+        #     if x0 is not None:
+        #         flag = da.logical_or(flag, coldata<self.minmax[0])
+        #     if x1 is not None:
+        #         flag = da.logical_or(flag, coldata>self.minmax[1])
         # return masked array
         return dama.masked_array(coldata, flag)
 
@@ -352,7 +355,7 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
         freqs = chan_freqs[ddid]
         nchan = len(freqs)
         wavel = freq_to_wavel(freqs)
-        extras = dict(chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
+        extras = dict(chans=numpy.arange(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
         shape = flag.shape[:-1]
         nrow = flag.shape[0]
 
@@ -360,7 +363,7 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
 
         for corr in corrs.numbers:
             # make dictionary of extra values for DataMappers
-            extras = dict(corr=corr, chans=range(nchan), freqs=freqs, wavel=freq_to_wavel(freqs), nrow=nrow)
+            extras['corr'] = corr
             # loop over datums to be computed
             for axis in DataAxis.all_axes.values():
                 value = datums[axis.label][-1] if axis.label in datums else None
@@ -483,7 +486,6 @@ class count_integers(datashader.count_cat):
     @staticmethod
     @ngjit
     def _append(x, y, agg, field):
-        #print(x,y,field)
         agg[y, x, int(field)] += 1
 
     def out_dshape(self, input_dshape):
@@ -516,8 +518,14 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
     caxis = cdatum and cdatum.label
     color_key = ncolors = color_mapping = color_labels = None
 
+    xmin, xmax = xdatum.minmax
+    ymin, ymax = ydatum.minmax
+
+    canvas = datashader.Canvas(xcanvas, ycanvas,
+                               x_range=[xmin, xmax] if xmin is not None else None,
+                               y_range=[ymin, ymax] if ymin is not None else None)
+
     if cdatum is not None:
-        canvas = datashader.Canvas(xcanvas, ycanvas)
         if USE_COUNT_CAT:
             color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
             log.debug(f'making raster with count_cat, {len(color_bins)} bins')
@@ -551,7 +559,6 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
         rgb = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img))
     else:
         log.debug('making raster')
-        canvas = datashader.Canvas(xcanvas, ycanvas)
         raster = canvas.points(ddf, xaxis, yaxis)
         log.debug('shading')
         img = datashader.transfer_functions.shade(raster, cmap=cmap, how=normalize)
@@ -566,10 +573,10 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
     data_ymin = numpy.min(raster.coords[yaxis].values)
     data_ymax = numpy.max(raster.coords[yaxis].values)
 
-    xmin = data_xmin if xdatum.minmax[0] is None else xdatum.minmax[0]
-    xmax = data_xmax if xdatum.minmax[1] is None else xdatum.minmax[1]
-    ymin = data_ymin if ydatum.minmax[0] is None else ydatum.minmax[0]
-    ymax = data_ymax if ydatum.minmax[1] is None else ydatum.minmax[1]
+    xmin = data_xmin if xmin is None else xdatum.minmax[0]
+    xmax = data_xmax if xmax is None else xdatum.minmax[1]
+    ymin = data_ymin if ymin is None else ydatum.minmax[0]
+    ymax = data_ymax if ymax is None else ydatum.minmax[1]
 
     log.debug('rendering image')
 
