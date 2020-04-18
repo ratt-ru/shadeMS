@@ -19,7 +19,8 @@ import sys
 import colorcet
 from concurrent.futures import ThreadPoolExecutor
 
-from argparse import ArgumentParser
+import argparse
+
 from ShadeMS import shadeMS as sms
 
 
@@ -48,7 +49,7 @@ def main(argv):
     # ---------------------------------------------------------------------------------------------------------------------------------------------
 
 
-    parser = ArgumentParser(description='Rapid Measurement Set plotting with dask-ms and datashader. Version {0:s}'.format(__version__))
+    parser = argparse.ArgumentParser(description='Rapid Measurement Set plotting with dask-ms and datashader. Version {0:s}'.format(__version__))
 
 
     parser.add_argument('ms', 
@@ -174,6 +175,9 @@ def main(argv):
                              faster, as they might all end up contending for disk I/O. This might also work against 
                              dask-ms's own intrinsic parallelism. You have been advised.""")
 
+    # various hidden performance-testing options
+    sms.add_options(perf_opts)
+
     options = parser.parse_args(argv)
 
     myants = options.myants
@@ -200,6 +204,7 @@ def main(argv):
     if options.debug:
         ShadeMS.log_console_handler.setLevel(logging.DEBUG)
 
+    sms.set_options(options)
     # figure our list of plots to make
 
     xaxes = list(itertools.chain(*[opt.split(",") for opt in options.xaxis]))

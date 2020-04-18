@@ -17,9 +17,11 @@ import datashader.transfer_functions
 import numpy
 import math
 import re
+import argparse
 import pylab
 import matplotlib.cm
 import ShadeMS
+
 from collections import OrderedDict
 from .ms_info import MSInfo
 
@@ -38,6 +40,16 @@ def col_to_label(col):
     return col.replace("-", "min").replace("/", "div")
 
 USE_COUNT_CAT = 1
+COUNT_DTYPE = numpy.uint8
+
+def add_options(parser):
+    parser.add_argument('--count-cat', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--count-dtype', default='uint8', help=argparse.SUPPRESS)
+
+def set_options(options):
+    global USE_COUNT_CAT, COUNT_DTYPE
+    USE_COUNT_CAT = options.count_cat
+    COUNT_DTYPE = getattr(numpy, options.count_dtype)
 
 class DataMapper(object):
     """This class defines a mapping from a dask group to an array of real values to be plotted"""
@@ -278,12 +290,12 @@ class DataAxis(object):
         if self.nlevels:
             # minmax set? discretize over that
             if self.discretized_delta is not None:
-                coldata = da.minimum(da.floor((coldata - self.minmax[0])/self.discretized_delta).astype(numpy.int64),
+                coldata = da.minimum(da.floor((coldata - self.minmax[0])/self.discretized_delta).astype(COUNT_DTYPE),
                                      self.nlevels-1)
             else:
                 if not numpy.issubdtype(coldata.dtype, numpy.integer):
                     raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
-                coldata = da.remainder(coldata, self.nlevels).astype(numpy.int64)
+                coldata = da.remainder(coldata, self.nlevels).astype(COUNT_DTYPE)
         # return masked array
         return dama.masked_array(coldata, flag)
 
@@ -441,7 +453,6 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
     log.info(": complete")
     return output_dataframes, np
 
-from datashader.reductions import Preprocess
 from datashader.utils import ngjit
 
 try:
@@ -449,22 +460,9 @@ try:
 except ImportError:
     cudf = None
 
-
-# class integer_codes(Preprocess):
-#     def __init__(self, column):
-#         Preprocess.__init__(self, column)
-#
-#     def apply(self, df):
-#         if cudf and isinstance(df, cudf.DataFrame):
-#             return df[self.column].to_gpu_array()
-#         else:
-#             return df[self.column].values
-#
 class count_integers(datashader.count_cat):
     """Count of all elements in ``column``, grouped by value.
     """
-    _dshape = datashape.util.dshape(datashape.coretypes.int32)
-
     def __init__(self, column, modulo):
         datashader.count_cat.__init__(self, column)
         self.modulo = modulo
@@ -504,14 +502,15 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
     color_key = ncolors = color_mapping = color_labels = None
 
     if cdatum is not None:
-        log.debug('making raster with color-by')
         canvas = datashader.Canvas(xcanvas, ycanvas)
         if USE_COUNT_CAT:
-            raster = canvas.points(ddf, xaxis, yaxis, agg=datashader.count_cat(caxis))
             color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
+            log.debug(f'making raster with count_cat, {len(color_bins)} bins')
+            raster = canvas.points(ddf, xaxis, yaxis, agg=datashader.count_cat(caxis))
         else:
-            raster = canvas.points(ddf, xaxis, yaxis, agg=count_integers(caxis, cdatum.nlevels))
             color_bins = list(range(cdatum.nlevels))
+            log.debug(f'making raster with count_integer, {len(color_bins)} bins')
+            raster = canvas.points(ddf, xaxis, yaxis, agg=count_integers(caxis, cdatum.nlevels))
         ncolors = len(color_bins)
         # true if axis is discretized and continuous
         if cdatum.discretized_delta is not None:
