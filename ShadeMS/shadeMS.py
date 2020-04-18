@@ -39,8 +39,8 @@ def col_to_label(col):
     """Replaces '-' and "/" in column names with palatable characters acceptable in filenames and identifiers"""
     return col.replace("-", "min").replace("/", "div")
 
-USE_COUNT_CAT = 1
-COUNT_DTYPE = numpy.uint8
+USE_COUNT_CAT = 0
+COUNT_DTYPE = numpy.int16
 
 def add_options(parser):
     parser.add_argument('--count-cat', action='store_true', help=argparse.SUPPRESS)
@@ -48,7 +48,7 @@ def add_options(parser):
 
 def set_options(options):
     global USE_COUNT_CAT, COUNT_DTYPE
-    # USE_COUNT_CAT = options.count_cat
+    USE_COUNT_CAT = options.count_cat
     COUNT_DTYPE = getattr(numpy, options.count_dtype)
 
 class DataMapper(object):
@@ -281,21 +281,22 @@ class DataAxis(object):
             if coldata.shape != flag.shape:
                 raise TypeError(f"{self.name}: unexpected column shape")
         x0, x1 = self.minmax
-        # apply clipping
-        if x0 is not None:
-            flag = da.logical_or(flag, coldata<self.minmax[0])
-        if x1 is not None:
-            flag = da.logical_or(flag, coldata>self.minmax[1])
         # discretize
         if self.nlevels:
             # minmax set? discretize over that
             if self.discretized_delta is not None:
-                coldata = da.minimum(da.floor((coldata - self.minmax[0])/self.discretized_delta).astype(COUNT_DTYPE),
-                                     self.nlevels-1)
+                coldata = da.floor((coldata - self.minmax[0])/self.discretized_delta)
+                coldata = da.minimum(da.maximum(coldata, 0), self.nlevels-1).astype(COUNT_DTYPE)
             else:
                 if not numpy.issubdtype(coldata.dtype, numpy.integer):
                     raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
                 coldata = da.remainder(coldata, self.nlevels).astype(COUNT_DTYPE)
+        # else just apply clipping
+        else:
+            if x0 is not None:
+                flag = da.logical_or(flag, coldata<self.minmax[0])
+            if x1 is not None:
+                flag = da.logical_or(flag, coldata>self.minmax[1])
         # return masked array
         return dama.masked_array(coldata, flag)
 

@@ -59,7 +59,7 @@ def main(argv):
 
     data_opts = parser.add_argument_group('Data selection')
     data_opts.add_argument('-x', '--xaxis', dest='xaxis', action="append",
-                      help="""X axis of plot. You can use things like [t]ime, [freq]uency, [chan]nels, [corr], [u], [v], [uv]distance, [r]eal, [i]mag,
+                      help="""X axis of plot. You can use things like [freq]uency, [chan]nels, [corr], [u], [v], [uv]distance, [r]eal, [i]mag,
                       [a]mplitude, [p]hase. You can also specify column names and correlations, e.g.
                       'DATA:p:XX', or even 'DATA-MODEL_DATA:a". For multiple plots, use comma-separated list, or 
                       specify multiple times for multiple plots.
