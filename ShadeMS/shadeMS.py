@@ -44,11 +44,11 @@ COUNT_DTYPE = numpy.uint8
 
 def add_options(parser):
     parser.add_argument('--count-cat', action='store_true', help=argparse.SUPPRESS)
-    parser.add_argument('--count-dtype', default='uint8', help=argparse.SUPPRESS)
+    parser.add_argument('--count-dtype', default='int16', help=argparse.SUPPRESS)
 
 def set_options(options):
     global USE_COUNT_CAT, COUNT_DTYPE
-#    USE_COUNT_CAT = options.count_cat
+    # USE_COUNT_CAT = options.count_cat
     COUNT_DTYPE = getattr(numpy, options.count_dtype)
 
 class DataMapper(object):
@@ -381,6 +381,8 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
                         shape1 = [1,1]
                         shape1[timefreq_axis] = value.shape[0]
                         value = value.reshape(shape1)
+                        if timefreq_axis > 0:
+                            value = da.broadcast_to(value, shape)
                         log.debug(f"axis {axis.mapper.fullname} has shape {value.shape}")
                     # else 2D value better match expected shape
                     else:
