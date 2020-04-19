@@ -389,7 +389,7 @@ def main(argv):
             # build up color-by label
             if cfunction:
                 titles, labels = [], []
-                if ccolumn and (ccolumn != xcolumn or ccolumn != ycolumn) and not cdatum.mapper.column:
+                if ccolumn and (ccolumn != xcolumn or ccolumn != ycolumn) and cdatum.mapper.column is None:
                     titles.append(ccolumn)
                     labels.append(sms.col_to_label(ccolumn))
                 if plot_ccorr and (plot_ccorr != plot_xcorr or plot_ccorr != plot_ycorr):

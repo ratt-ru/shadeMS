@@ -542,12 +542,12 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
         # true if axis is discretized and continuous
         if cdatum.discretized_delta is not None:
             # color labels are bin centres
-            color_labels = [cdatum.discretized_bin_centers[i] for i in color_bins]
+            bin_centers = [cdatum.discretized_bin_centers[i] for i in color_bins]
             # map to colors pulled from 256 color map
             color_key = [bmap[(i*256)//cdatum.nlevels] for i in color_bins]
-            color_labels = list(map(str, sorted(color_labels)))
+            color_labels = list(map(str, bin_centers))
             log.info(f": shading using {ncolors} colors (bin centres are {' '.join(color_labels)})")
-        # for a discrete axis, just pick the
+        # else a discrete-valued axis
         else:
             # just use bin numbers to look up a color directly
             color_key = [dmap[i] for i in color_bins]
@@ -617,7 +617,7 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
         # discretized axis
         else:
             norm = matplotlib.colors.Normalize(cdatum.minmax[0], cdatum.minmax[1])
-            colormap = matplotlib.colors.ListedColormap(bmap)
+            colormap = matplotlib.colors.ListedColormap(color_key)
             # auto-mark colorbar, since it represents a continuous range of values
             ticks = None
 
