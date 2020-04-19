@@ -68,17 +68,21 @@ class DataMapper(object):
         self.conjugate = conjugate
         self.axis = axis
 
+_identity = lambda x:x
+
 # this dict maps short axis names into full DataMapper objects
 data_mappers = OrderedDict(
-    _     = DataMapper("", "", lambda x:x),
+    _     = DataMapper("", "", _identity),
     amp   = DataMapper("Amplitude", "", abs),
     phase = DataMapper("Phase", "deg", lambda x:da.arctan2(da.imag(x), da.real(x))*180/math.pi),
     real  = DataMapper("Real", "", da.real),
     imag  = DataMapper("Imag", "", da.imag),
-    TIME  = DataMapper("Time", "s", axis=0, column="TIME", mapper=lambda x:x),
+    TIME  = DataMapper("Time", "s", axis=0, column="TIME", mapper=_identity),
+    ROW   = DataMapper("Row number", "", column=False, axis=0, extras=["rows"], mapper=lambda x,rows: rows),
     CORR  = DataMapper("Correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr),
     CHAN  = DataMapper("Channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
     FREQ  = DataMapper("Frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
+    WAVEL = DataMapper("Wavelength", "m", column=False, axis=1, extras=["wavel"], mapper=lambda x, wavel: wavel),
     UV    = DataMapper("uv-distance", "wavelengths", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel),
     U     = DataMapper("u", "wavelengths", column="UVW", extras=["wavel"],
@@ -356,7 +360,7 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
         freqs = chan_freqs[ddid]
         nchan = len(freqs)
         wavel = freq_to_wavel(freqs)
-        extras = dict(chans=numpy.arange(nchan), freqs=freqs, wavel=freq_to_wavel(freqs))
+        extras = dict(chans=numpy.arange(nchan), freqs=freqs, wavel=freq_to_wavel(freqs), rows=group.row.values)
         shape = flag.shape[:-1]
         nrow = flag.shape[0]
 

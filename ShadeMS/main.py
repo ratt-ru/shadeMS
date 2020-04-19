@@ -60,7 +60,7 @@ def main(argv):
     data_opts = parser.add_argument_group('Data selection')
     data_opts.add_argument('-x', '--xaxis', dest='xaxis', action="append",
                       help="""X axis of plot, e.g. "amp:CORRECTED_DATA" This recognizes all column names (also CHAN, FREQ, 
-                      CORR, U, V, W, UV), and, for complex columns, keywords such as 'amp', 'phase', 'real', 'imag'. You can also 
+                      CORR, ROW, WAVEL, U, V, W, UV), and, for complex columns, keywords such as 'amp', 'phase', 'real', 'imag'. You can also 
                       specify correlations, e.g. 'DATA:phase:XX', and do two-column arithmetic with "+-*/", e.g. 
                       'DATA-MODEL_DATA:amp'. The order of specifiers does not matter.
                       """)
