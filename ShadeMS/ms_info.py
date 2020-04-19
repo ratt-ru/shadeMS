@@ -54,10 +54,10 @@ class MSInfo(object):
         if not msname:
             return
 
-        log and log.info(f": MS is {msname}")
         self.log = log
 
         tab = table(msname, ack=False)
+        log and log.info(f": MS {msname} contains {tab.nrows()} rows")
 
         self.valid_columns = set(tab.colnames())
 

@@ -53,7 +53,7 @@ def set_options(options):
 
 class DataMapper(object):
     """This class defines a mapping from a dask group to an array of real values to be plotted"""
-    def __init__(self, fullname, unit, mapper=None, column=None, extras=[], conjugate=False, axis=None):
+    def __init__(self, fullname, unit, mapper, column=None, extras=[], conjugate=False, axis=None):
         """
         :param fullname:    full name of parameter (real, amplitude, etc.)
         :param unit:        unit string
@@ -63,6 +63,7 @@ class DataMapper(object):
         :param conjugate:   sets conjugation flag
         :param axis:        which axis the parameter represets (0 time, 1 freq), if 1-dimensional
         """
+        assert mapper is not None
         self.fullname, self.unit, self.mapper, self.column, self.extras = fullname, unit, mapper, column, extras
         self.conjugate = conjugate
         self.axis = axis
@@ -74,7 +75,7 @@ data_mappers = OrderedDict(
     phase = DataMapper("Phase", "deg", lambda x:da.arctan2(da.imag(x), da.real(x))*180/math.pi),
     real  = DataMapper("Real", "", da.real),
     imag  = DataMapper("Imag", "", da.imag),
-    TIME  = DataMapper("Time", "s", axis=0, column="TIME"),
+    TIME  = DataMapper("Time", "s", axis=0, column="TIME", mapper=lambda x:x),
     CORR  = DataMapper("Correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr),
     CHAN  = DataMapper("Channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
     FREQ  = DataMapper("Frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
@@ -320,7 +321,7 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
     msdata = daskms.xds_from_ms(myms, columns=list(ms_cols), group_cols=group_cols, taql_where=mytaql,
                                 chunks=dict(row=row_chunk_size))
 
-    log.info('                 : Indexing MS and building dataframes')
+    log.info(f': Indexing MS and building dataframes (chunk size is {row_chunk_size})')
 
     np = 0  # number of points to plot
 
