@@ -539,7 +539,7 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
         ncolors = len(color_bins)
-        # true if axis is discretized and continuous
+        # true if axis is continuous discretized
         if cdatum.discretized_delta is not None:
             # color labels are bin centres
             bin_centers = [cdatum.discretized_bin_centers[i] for i in color_bins]
@@ -547,7 +547,7 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
             color_key = [bmap[(i*256)//cdatum.nlevels] for i in color_bins]
             color_labels = list(map(str, bin_centers))
             log.info(f": shading using {ncolors} colors (bin centres are {' '.join(color_labels)})")
-        # else a discrete-valued axis
+        # else a discrete axis
         else:
             # just use bin numbers to look up a color directly
             color_key = [dmap[i] for i in color_bins]
@@ -606,10 +606,14 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
     ax.set_ylim([numpy.min((data_ymin,ymin)),
         numpy.max((data_ymax,ymax))])
 
+    # set fontsize on everything rendered so far
+    for textobj in fig.findobj(match=match):
+        textobj.set_fontsize(fontsize)
+
     # colorbar?
     if color_key:
         import matplotlib.colors
-        # int axis
+        # discrete axis
         if color_mapping is not None:
             norm = matplotlib.colors.Normalize(-0.5, ncolors-0.5)
             ticks = numpy.arange(ncolors)
@@ -623,18 +627,17 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
 
         cb = fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=colormap), ax=ax, ticks=ticks)
 
+        # adjust ticks for discrete axis
         if color_mapping is not None:
             rot = 0
-            fontdict = None
+            # adjust fontsize for number of labels
+            fs = max(fontsize*min(1, 32./len(color_labels)), 6)
+            fontdict = dict(fontsize=fs)
             if max([len(lbl) for lbl in color_labels]) > 3 and len(color_labels) < 8:
                 rot = 90
-                fontdict = dict(verticalalignment='center')
+                fontdict['verticalalignment'] ='center'
             cb.ax.set_yticklabels(color_labels, rotation=rot, fontdict=fontdict)
 
-        # mat, ticks=np.arange(np.min(data),np.max(data)+1))
-
-    for textobj in fig.findobj(match=match):
-        textobj.set_fontsize(fontsize)
     fig.savefig(pngname, bbox_inches='tight')
 
     pylab.close()
