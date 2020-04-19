@@ -257,6 +257,8 @@ def main(argv):
         except ValueError:
             parser.error(f"invalid channel selection --chan {options.chan}")
 
+    log.info(" ".join(sys.argv))
+
     sms.blank()
 
     from .ms_info import MSInfo
