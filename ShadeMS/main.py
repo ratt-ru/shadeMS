@@ -70,8 +70,8 @@ def main(argv):
                       help="""Y axis to plot. Must be given the same number of times as --xaxis. Note that X/Y can
                       employ different columns and correlations.""")
 
-    group_opts.add_argument('-c', '--color-by', action="append",
-                      help='Color-by axis and/or column. Can be none, or given once, or given the same number of times as --xaxis.')
+    group_opts.add_argument('-c', '--colour-by', action="append",
+                      help='Colour by axis and/or column. Can be none, or given once, or given the same number of times as --xaxis.')
 
     group_opts.add_argument('-C', '--col', metavar="COLUMN", dest='col', action="append", default=[],
                       help="""Name of visibility column (default is DATA), if needed. This is used if
