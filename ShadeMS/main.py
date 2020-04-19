@@ -246,7 +246,7 @@ def main(argv):
     xmaxs = get_conformal_list('xmax', float)
     ymins = get_conformal_list('ymin', float)
     ymaxs = get_conformal_list('ymax', float)
-    caxes = get_conformal_list('color_by')
+    caxes = get_conformal_list('colour_by')
     cmins = get_conformal_list('cmin', float)
     cmaxs = get_conformal_list('cmax', float)
     cnums = get_conformal_list('cnum', int, default=DEFAULT_CNUM)
