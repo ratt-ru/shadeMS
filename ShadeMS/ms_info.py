@@ -83,7 +83,7 @@ class MSInfo(object):
 
         self.antenna = self.all_antenna.get_subset(list(set(tab.getcol("ANTENNA1"))|set(tab.getcol("ANTENNA2"))))
 
-        baselines = [(p,q) for p in self.antenna.numbers for q in self.antenna.numbers if p<q]
+        baselines = [(p,q) for p in self.antenna.numbers for q in self.antenna.numbers if p <= q]
         self.baseline_numbering = { (p, q): i for i, (p, q) in enumerate(baselines)}
         self.baseline_numbering.update({ (q, p): i for i, (p, q) in enumerate(baselines)})
 
