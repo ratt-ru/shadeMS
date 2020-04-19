@@ -17,6 +17,7 @@ import itertools
 import re
 import sys
 import colorcet
+from _collections import OrderedDict
 
 import argparse
 
@@ -119,7 +120,11 @@ def main(argv):
     group_opts = parser.add_argument_group('Data subset selection')
 
     group_opts.add_argument('--ant',
-                      help='Antenna(s) to plot (comma-separated list, default = all)', default='all')
+                      help='Antennas to plot (comma-separated list, default = all)',
+                      default='all')
+    group_opts.add_argument('--baseline',
+                      help="Baselines to plot, as 'ant1-ant2'  (comma-separated list, default = all",
+                      default='all')
     group_opts.add_argument('--spw',
                       help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)', default='all')
     group_opts.add_argument('--field',
@@ -188,9 +193,15 @@ def main(argv):
 
     options = parser.parse_args(argv)
 
-    cmap = getattr(colorcet, options.cmap)
-    bmap = getattr(colorcet, options.bmap)
-    dmap = getattr(colorcet, options.dmap)
+    cmap = getattr(colorcet, options.cmap, None)
+    if cmap is None:
+        parser.error(f"unknown --cmap {options.cmap}")
+    bmap = getattr(colorcet, options.bmap, None)
+    if bmap is None:
+        parser.error(f"unknown --bmap {options.bmap}")
+    dmap = getattr(colorcet, options.dmap, None)
+    if dmap is None:
+        parser.error(f"unknown --dmap {options.dmap}")
 
     options.ms = options.ms.rstrip('/')
 
@@ -281,6 +292,22 @@ def main(argv):
     else:
         ants = ms.antenna
         log.info('Antenna(s)       : all')
+
+    if options.baseline != 'all':
+        baselines = OrderedDict()
+        for blspec in options.baseline.split(","):
+            match = re.fullmatch(r"(\w+)-(\w+)", blspec)
+            ant1 = match and ms.antenna[match.group(1)]
+            ant2 = match and ms.antenna[match.group(2)]
+            if ant1 is None or ant2 is None:
+                raise ValueError("invalid baseline '{blspec}'")
+            baselines[blspec] = (ant1, ant2)
+        # group_cols.append('ANTENNA1')
+        log.info(f"Baseline(s)      : {' '.join(baselines.keys())}")
+        mytaql.append("||".join([f'(ANTENNA1=={ant1}&&ANTENNA2=={ant2})||(ANTENNA1=={ant2}&&ANTENNA2=={ant1})'
+                                 for ant1, ant2 in baselines.values()]))
+    else:
+        log.info('Baseline(s)      : all')
 
     if options.field != 'all':
         fields = ms.field.get_subset(options.field)
@@ -425,7 +452,7 @@ def main(argv):
     log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join corrs is {join_corrs}")
 
     dataframes, np = \
-        sms.get_plot_data(options.ms, group_cols, mytaql, ms.chan_freqs,
+        sms.get_plot_data(ms, group_cols, mytaql, ms.chan_freqs,
                       chanslice=chanslice,
                       spws=spws, fields=fields, corrs=corrs, noflags=options.noflags, noconj=options.noconj,
                       iter_field=options.iter_field, iter_spw=options.iter_spw,

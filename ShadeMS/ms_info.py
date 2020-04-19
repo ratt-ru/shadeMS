@@ -2,7 +2,9 @@ from MSUtils.msutils import STOKES_TYPES
 from casacore.tables import table
 import re
 import daskms
+import numpy
 from collections import OrderedDict
+from xarray import DataArray
 
 class NamedList(object):
     """Holds a list of names (e.g. field names), and provides common indexing and subset operations"""
@@ -54,6 +56,7 @@ class MSInfo(object):
         if not msname:
             return
 
+        self.msname = msname
         self.log = log
 
         tab = table(msname, ack=False)
@@ -80,6 +83,10 @@ class MSInfo(object):
 
         self.antenna = self.all_antenna.get_subset(list(set(tab.getcol("ANTENNA1"))|set(tab.getcol("ANTENNA2"))))
 
+        baselines = [(p,q) for p in self.antenna.numbers for q in self.antenna.numbers if p<q]
+        self.baseline_numbering = { (p, q): i for i, (p, q) in enumerate(baselines)}
+        self.baseline_numbering.update({ (q, p): i for i, (p, q) in enumerate(baselines)})
+
         log and log.info(f":   {len(self.antenna)} antennas: {self.antenna.str_list()}")
 
         pol_tab = table(msname + '::POLARIZATION', ack=False)
@@ -95,3 +102,7 @@ class MSInfo(object):
 
         # Maps correlation -> callable that extracts that correlation from flag data
         self.corr_flag_mappers = OrderedDict({i: lambda x,icorr=i:x[...,icorr] for i in self.corr.numbers})
+
+    def baseline_number(self, ant1, ant2):
+        a1 = DataArray.minimum(ant1, ant2)
+        a2 = DataArray.maximum(ant1, ant2)

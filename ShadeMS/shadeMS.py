@@ -79,6 +79,7 @@ data_mappers = OrderedDict(
     imag  = DataMapper("Imag", "", da.imag),
     TIME  = DataMapper("Time", "s", axis=0, column="TIME", mapper=_identity),
     ROW   = DataMapper("Row number", "", column=False, axis=0, extras=["rows"], mapper=lambda x,rows: rows),
+    BASELINE = DataMapper("Baseline", "", column=False, axis=0, extras=["baselines"], mapper=lambda x,baselines: baselines),
     CORR  = DataMapper("Correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr),
     CHAN  = DataMapper("Channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
     FREQ  = DataMapper("Frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
@@ -279,8 +280,9 @@ class DataAxis(object):
             coldata = da.full_like(flag_row, fill_value=coldata, dtype=type(coldata))
             flag = flag_row
         else:
-            # apply channel slicing, if there's a channel axis in the array
-            coldata = coldata[dict(chan=chanslice)]
+            # apply channel slicing, if there's a channel axis in the array (and the array is a DataArray)
+            if type(coldata) is xarray.DataArray:
+                coldata = coldata[dict(chan=chanslice)]
             # determine flags -- start with original flags
             if coldata.ndim == 2:
                 flag = ms.corr_flag_mappers[corr](flag)
@@ -313,21 +315,21 @@ class DataAxis(object):
         return dama.masked_array(coldata, flag)
 
 
-def get_plot_data(myms, group_cols, mytaql, chan_freqs,
+def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                   chanslice,
                   spws, fields, corrs, noflags, noconj,
                   iter_field, iter_spw, iter_scan,
                   join_corrs=False,
                   row_chunk_size=100000):
 
-    ms_cols = {'FLAG', 'FLAG_ROW'}
+    ms_cols = {'FLAG', 'FLAG_ROW', 'ANTENNA1', 'ANTENNA2'}
 
     # get visibility columns
     for axis in DataAxis.all_axes.values():
         ms_cols.update(axis.columns)
 
     # get MS data
-    msdata = daskms.xds_from_ms(myms, columns=list(ms_cols), group_cols=group_cols, taql_where=mytaql,
+    msdata = daskms.xds_from_ms(msinfo.msname, columns=list(ms_cols), group_cols=group_cols, taql_where=mytaql,
                                 chunks=dict(row=row_chunk_size))
 
     log.info(f': Indexing MS and building dataframes (chunk size is {row_chunk_size})')
@@ -362,10 +364,12 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
             flag = da.zeros_like(flag)
             flag_row = da.zeros_like(flag_row)
 
+        baselines = numpy.array([msinfo.baseline_numbering[p,q] for p,q in zip(group.ANTENNA1.values,
+                                                                               group.ANTENNA2.values)])
         freqs = chan_freqs[ddid]
         chans = xarray.DataArray(range(len(freqs)), dims=("chan",))
         wavel = freq_to_wavel(freqs)
-        extras = dict(chans=chans, freqs=freqs, wavel=wavel, rows=group.row)
+        extras = dict(chans=chans, freqs=freqs, wavel=wavel, rows=group.row, baselines=baselines)
 
         flag = flag[dict(chan=chanslice)]
         shape = flag.shape[:-1]
