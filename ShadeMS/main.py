@@ -476,10 +476,7 @@ def main(argv):
         return template.format(**full_keys)
 
     jobs = []
-    if options.num_parallel > 1:
-        executor = ThreadPoolExecutor(options.num_parallel)
-    else:
-        executor = None
+    executor = None
 
     def render_single_plot(df, xdatum, ydatum, cdatum, pngname, title, xlabel, ylabel):
         """Renders a single plot. Make this a function since we might call it in parallel"""
