@@ -119,22 +119,21 @@ def main(argv):
 
     group_opts = parser.add_argument_group('Data subset selection')
 
-    group_opts.add_argument('--ant',
-                      help='Antennas to plot (comma-separated list, default = all)',
-                      default='all')
-    group_opts.add_argument('--baseline',
-                      help="Baselines to plot, as 'ant1-ant2'  (comma-separated list, default = all",
-                      default='all')
-    group_opts.add_argument('--spw',
-                      help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)', default='all')
-    group_opts.add_argument('--field',
-                      help='Field ID(s) to plot (comma-separated list, default = all)', default='all')
-    group_opts.add_argument('--scan',
-                      help='Scans to plot (comma-separated list, default = all)', default='all')    
-    group_opts.add_argument('--corr', 
-                      help='Correlations to plot, use indices or labels (comma-separated list, default is 0)',
-                      default="0")
-    group_opts.add_argument('--chan', dest='chan',
+    group_opts.add_argument('--ant', default='all',
+                      help='Antennas to plot (comma-separated list of names, default = all)')
+    group_opts.add_argument('--ant-num',
+                      help='Antennas to plot (comma-separated list of numbers, or a [start]:[stop][:step] slice, overrides --ant)')
+    group_opts.add_argument('--baseline', default='all',
+                      help="Baselines to plot, as 'ant1-ant2'  (comma-separated list, default = all)")
+    group_opts.add_argument('--spw', default='all',
+                      help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)')
+    group_opts.add_argument('--field', default='all',
+                      help='Field ID(s) to plot (comma-separated list, default = all)')
+    group_opts.add_argument('--scan', default='all',
+                      help='Scans to plot (comma-separated list, default = all)')
+    group_opts.add_argument('--corr',  default='all',
+                      help='Correlations to plot, use indices or labels (comma-separated list, default is 0)')
+    group_opts.add_argument('--chan',
                       help='Channel slice, as [start]:[stop][:step], default is to plot all channels')
 
     group_opts = parser.add_argument_group('Rendering settings')
@@ -260,14 +259,17 @@ def main(argv):
         parser.error("--cmin/--cmax must be either both set, or neither")
 
     # check chan slice
-    chanslice = slice(None)
-    chanslice_spec = []
-    if options.chan:
-        try:
-            chanslice_spec = [int(x) if x else None for x in options.chan.split(":", 2)]
-        except ValueError:
-            parser.error(f"invalid channel selection --chan {options.chan}")
-        chanslice = slice(*chanslice_spec)
+    def parse_slice_spec(spec, name):
+        if spec:
+            try:
+                spec_elems = [int(x) if x else None for x in spec.split(":", 2)]
+            except ValueError:
+                parser.error(f"invalid selection --{name} {spec}")
+            return slice(*spec_elems), spec_elems
+        else:
+            return slice(None), []
+
+    chanslice, chanslice_spec = parse_slice_spec(options.chan, name="chan")
 
     log.info(" ".join(sys.argv))
 
@@ -277,6 +279,7 @@ def main(argv):
     ms = sms.ms = MSInfo(options.ms, log=log)
 
     sms.blank()
+    log.info(": Data selected for plotting:")
 
     group_cols = ['FIELD_ID', 'DATA_DESC_ID']
 
@@ -286,16 +289,25 @@ def main(argv):
         pass
     subset = Subset()
 
-    if options.ant != 'all':
-        subset.ant = ms.antenna.get_subset(options.ant)
-        # group_cols.append('ANTENNA1')
+    if options.ant != 'all' or options.ant_num:
+        if options.ant_num:
+            ant_subset = set()
+            for spec in options.ant_num.split(","):
+                if re.fullmatch(r"\d+", spec):
+                    ant_subset.add(int(spec))
+                else:
+                    ant_subset.update(ms.all_antenna.numbers[parse_slice_spec(spec, "ant-num")[0]])
+            subset.ant = ms.antenna.get_subset(sorted(ant_subset))
+        else:
+            subset.ant = ms.antenna.get_subset(options.ant)
         log.info(f"Antenna name(s)  : {' '.join(subset.ant.names)}")
-        if options.iter_antenna:
-            raise NotImplementedError("iteration over antennas not currently supported")
         mytaql.append("||".join([f'ANTENNA1=={ant}||ANTENNA2=={ant}' for ant in subset.ant.numbers]))
     else:
         subset.ant = ms.antenna
         log.info('Antenna(s)       : all')
+
+    if options.iter_antenna:
+        raise NotImplementedError("iteration over antennas not currently supported")
 
     if options.baseline != 'all':
         subset.baseline = OrderedDict()
