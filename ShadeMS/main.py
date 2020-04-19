@@ -251,11 +251,13 @@ def main(argv):
 
     # check chan slice
     chanslice = slice(None)
+    chanslice_spec = []
     if options.chan:
         try:
-            chanslice = slice(*[int(x) if x else None for x in options.chan.split(":", 2)])
+            chanslice_spec = [int(x) if x else None for x in options.chan.split(":", 2)]
         except ValueError:
             parser.error(f"invalid channel selection --chan {options.chan}")
+        chanslice = slice(*chanslice_spec)
 
     log.info(" ".join(sys.argv))
 
@@ -305,9 +307,13 @@ def main(argv):
     else:
         scans = ms.scan
         log.info('Scan(s)          : all')
-
     if options.iter_scan:
         group_cols.append('SCAN_NUMBER')
+
+    if chanslice == slice(None):
+        log.info('Channels         : all')
+    else:
+        log.info(f"Channels         : {':'.join(str(x) if x is not None else '' for x in chanslice_spec)}")
 
     mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else ''
 
