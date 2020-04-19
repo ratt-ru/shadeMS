@@ -17,7 +17,6 @@ import itertools
 import re
 import sys
 import colorcet
-from concurrent.futures import ThreadPoolExecutor
 
 import argparse
 
@@ -526,6 +525,7 @@ def main(argv):
             if options.num_parallel < 2 or len(all_plots) < 2:
                 render_single_plot(df, xdatum, ydatum, cdatum, pngname, title, xlabel, ylabel)
             else:
+                from concurrent.futures import ThreadPoolExecutor
                 executor = ThreadPoolExecutor(options.num_parallel)
                 log.info(f'                 : submitting job for {pngname}')
                 jobs.append(executor.submit(render_single_plot, df, xdatum, ydatum, cdatum, pngname, title, xlabel, ylabel))

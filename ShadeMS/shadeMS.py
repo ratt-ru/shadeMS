@@ -179,7 +179,7 @@ class DataAxis(object):
             while label in cls.all_labels:
                 i += 1
                 label = f"{label}_{i}"
-            log.info(f'defining new plot axis: {function} of {column} corr {corr}, clip {minmax}, discretization {ncol}')
+            cls.all_labels.add(label)
             axis = cls.all_axes[key] = DataAxis(column, function, corr, minmax, ncol, label)
             return axis
 
@@ -229,15 +229,17 @@ class DataAxis(object):
 
         # does the mapper have no column (i.e. frequency)?
         if self.mapper.column is False:
-            pass
+            log.info(f'axis: {function}, range {self.minmax}, discretization {self.nlevels}')
         # does the mapper have a fixed column? This better be consistent
         elif self.mapper.column is not None:
             # if a mapper (such as "uv") implies a fixed column name, make sure it's consistent with what the user said
             if column and self.mapper.column != column:
                 raise ValueError(f"'{function}' not applicable with column {column}")
             self.columns = (column,)
+            log.info(f'axis: {function}({column}), range {self.minmax}, discretization {self.nlevels}')
         # else arbitrary column
         else:
+            log.info(f'axis: {function}({column}), corr {self.corr}, range {self.minmax}, discretization {self.nlevels}')
             # check for column arithmetic
             match = re.fullmatch(r"(\w+)([*/+-])(\w+)", column)
             if match:
