@@ -353,7 +353,7 @@ def main(argv):
         def describe_corr(corrvalue):
             """Returns list of correlation labels corresponding to this corr setting"""
             if corrvalue is None:
-                return ms.corr.names
+                return corrs.names
             elif corrvalue is False:
                 return []
             else:
