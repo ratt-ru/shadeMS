@@ -156,7 +156,7 @@ class DataAxis(object):
         return function, column, corr, (has_corr_axis and corr is None)
 
     @classmethod
-    def register(cls, function, column, corr, minmax=None, ncol=None):
+    def register(cls, function, column, corr, minmax=None, ncol=None, subset=None):
         """
         Registers a data axis, which ultimately ends up as a column in the assembled dataframe.
         For multiple plots, we want to reuse the same information (assuming the same
@@ -181,10 +181,10 @@ class DataAxis(object):
                 i += 1
                 label = f"{label}_{i}"
             cls.all_labels.add(label)
-            axis = cls.all_axes[key] = DataAxis(column, function, corr, minmax, ncol, label)
+            axis = cls.all_axes[key] = DataAxis(column, function, corr, minmax, ncol, label, subset=subset)
             return axis
 
-    def __init__(self, column, function, corr, minmax=None, ncol=None, label=None):
+    def __init__(self, column, function, corr, minmax=None, ncol=None, label=None, subset=None):
         """See register() class method above. Not called directly."""
         self.name = ":".join([str(x) for x in (function, column, corr, minmax, ncol) if x is not None ])
         self.function = function        # function to apply to column (see list of DataMappers below)
@@ -205,15 +205,15 @@ class DataAxis(object):
         self.mapper = data_mappers[function]
 
         # columns with labels?
-        if function == 'corr':
+        if function == 'CORR':
             # special case of "corr" if corr is fixed: return constant value fixed here
             if corr is not None:
                 self.mapper = DataMapper("Correlation", "", column=False, axis=-1, mapper=lambda x: corr)
-            self.discretized_labels = ms.corr.names
+            self.discretized_labels = [name for name in ms.corr.names if name in subset.corr]
         elif column == "FIELD_ID":
-            self.discretized_labels = ms.field.names
+            self.discretized_labels = [name for name in ms.field.names if name in subset.field]
         elif column == "ANTENNA1" or column == "ANTENNA2":
-            self.discretized_labels = ms.all_antenna.names
+            self.discretized_labels = [name for name in ms.all_antenna.names if name in subset.ant]
 
         # if labels were set up, adjust nlevels (but only down, never up)
         if self.discretized_labels is not None:
@@ -316,8 +316,8 @@ class DataAxis(object):
 
 
 def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
-                  chanslice,
-                  spws, fields, corrs, noflags, noconj,
+                  chanslice, subset,
+                  noflags, noconj,
                   iter_field, iter_spw, iter_scan,
                   join_corrs=False,
                   row_chunk_size=100000):
@@ -349,7 +349,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
     for group in msdata:
         ddid     =  group.DATA_DESC_ID  # always present
         fld      =  group.FIELD_ID # always present
-        if fld not in fields or ddid not in spws:
+        if fld not in subset.field or ddid not in subset.spw:
             log.debug(f"field {fld} ddid {ddid} not in selection, skipping")
             continue
         scan    = getattr(group, 'SCAN_NUMBER', None)  # will be present if iterating over scans
@@ -376,7 +376,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
 
         datums = OrderedDict()
 
-        for corr in corrs.numbers:
+        for corr in subset.corr.numbers:
             # make dictionary of extra values for DataMappers
             extras['corr'] = corr
             # loop over datums to be computed

@@ -282,56 +282,60 @@ def main(argv):
 
     mytaql = []
 
+    class Subset(object):
+        pass
+    subset = Subset()
+
     if options.ant != 'all':
-        ants = ms.antenna.get_subset(options.ant)
+        subset.ant = ms.antenna.get_subset(options.ant)
         # group_cols.append('ANTENNA1')
-        log.info(f"Antenna name(s)  : {' '.join(ants.names)}")
+        log.info(f"Antenna name(s)  : {' '.join(subset.ant.names)}")
         if options.iter_antenna:
             raise NotImplementedError("iteration over antennas not currently supported")
-        mytaql.append("||".join([f'ANTENNA1=={ant}||ANTENNA2=={ant}' for ant in ants.numbers]))
+        mytaql.append("||".join([f'ANTENNA1=={ant}||ANTENNA2=={ant}' for ant in subset.ant.numbers]))
     else:
-        ants = ms.antenna
+        subset.ant = ms.antenna
         log.info('Antenna(s)       : all')
 
     if options.baseline != 'all':
-        baselines = OrderedDict()
+        subset.baseline = OrderedDict()
         for blspec in options.baseline.split(","):
             match = re.fullmatch(r"(\w+)-(\w+)", blspec)
             ant1 = match and ms.antenna[match.group(1)]
             ant2 = match and ms.antenna[match.group(2)]
             if ant1 is None or ant2 is None:
                 raise ValueError("invalid baseline '{blspec}'")
-            baselines[blspec] = (ant1, ant2)
+            subset.baseline[blspec] = (ant1, ant2)
         # group_cols.append('ANTENNA1')
-        log.info(f"Baseline(s)      : {' '.join(baselines.keys())}")
+        log.info(f"Baseline(s)      : {' '.join(subset.baseline.keys())}")
         mytaql.append("||".join([f'(ANTENNA1=={ant1}&&ANTENNA2=={ant2})||(ANTENNA1=={ant2}&&ANTENNA2=={ant1})'
-                                 for ant1, ant2 in baselines.values()]))
+                                 for ant1, ant2 in subset.baseline.values()]))
     else:
         log.info('Baseline(s)      : all')
 
     if options.field != 'all':
-        fields = ms.field.get_subset(options.field)
-        log.info(f"Field(s)         : {' '.join(fields.names)}")
+        subset.field = ms.field.get_subset(options.field)
+        log.info(f"Field(s)         : {' '.join(subset.field.names)}")
         # here for now, workaround for https://github.com/ska-sa/dask-ms/issues/100, should be inside if clause
-        mytaql.append("||".join([f'FIELD_ID=={fld}' for fld in fields.numbers]))
+        mytaql.append("||".join([f'FIELD_ID=={fld}' for fld in subset.field.numbers]))
     else:
-        fields = ms.field
+        subset.field = ms.field
         log.info('Field(s)         : all')
 
     if options.spw != 'all':
-        spws = ms.spws.get_subset(options.spw)
-        log.info(f"SPW(s)           : {' '.join(spws.names)}")
-        mytaql.append("||".join([f'DATA_DESC_ID=={ddid}' for ddid in spws.numbers]))
+        subset.spw = ms.spw.get_subset(options.spw)
+        log.info(f"SPW(s)           : {' '.join(subset.spw.names)}")
+        mytaql.append("||".join([f'DATA_DESC_ID=={ddid}' for ddid in subset.spw.numbers]))
     else:
-        spws = ms.spws
+        subset.spw = ms.spw
         log.info(f'SPW(s)           : all')
 
     if options.scan != 'all':
-        scans = ms.scan.get_subset(options.scan)
-        log.info(f"Scan(s)          : {' '.join(scans.names)}")
-        mytaql.append("||".join([f'SCAN_NUMBER=={n}' for n in scans.numbers]))
+        subset.scan = ms.scan.get_subset(options.scan)
+        log.info(f"Scan(s)          : {' '.join(subset.scan.names)}")
+        mytaql.append("||".join([f'SCAN_NUMBER=={n}' for n in subset.scan.numbers]))
     else:
-        scans = ms.scan
+        subset.scan = ms.scan
         log.info('Scan(s)          : all')
     if options.iter_scan:
         group_cols.append('SCAN_NUMBER')
@@ -343,7 +347,8 @@ def main(argv):
 
     mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else ''
 
-    corrs = ms.corr.get_subset(options.corr)
+    subset.corr = ms.corr.get_subset(options.corr)
+    log.info(f"Correlation(s)   : {' '.join(subset.corr.names)}")
 
     sms.blank()
 
@@ -372,14 +377,14 @@ def main(argv):
 
         # do we iterate over correlations to make separate plots now?
         if datum_itercorr and options.iter_corr:
-            corr_list = corrs.numbers
+            corr_list = subset.corr.numbers
         else:
             corr_list = [None]
 
         def describe_corr(corrvalue):
             """Returns list of correlation labels corresponding to this corr setting"""
             if corrvalue is None:
-                return corrs.names
+                return subset.corr.names
             elif corrvalue is False:
                 return []
             else:
@@ -389,9 +394,9 @@ def main(argv):
             plot_xcorr = corr if xcorr is None else xcorr  # False if no corr in datum, None if all, else set to iterant or to fixed value
             plot_ycorr = corr if ycorr is None else ycorr
             plot_ccorr = corr if ccorr is None else ccorr
-            xdatum = sms.DataAxis.register(xfunction, xcolumn, plot_xcorr, (xmin, xmax))
-            ydatum = sms.DataAxis.register(yfunction, ycolumn, plot_ycorr, (ymin, ymax))
-            cdatum = cfunction and sms.DataAxis.register(cfunction, ccolumn, plot_ccorr, (cmin, cmax), cnum)
+            xdatum = sms.DataAxis.register(xfunction, xcolumn, plot_xcorr, (xmin, xmax), subset=subset)
+            ydatum = sms.DataAxis.register(yfunction, ycolumn, plot_ycorr, (ymin, ymax), subset=subset)
+            cdatum = cfunction and sms.DataAxis.register(cfunction, ccolumn, plot_ccorr, (cmin, cmax), cnum, subset=subset)
 
             # figure out plot properties -- basically construct a descriptive name and label
             # looks complicated, but we're just trying to figure out what to put in the plot title...
@@ -407,7 +412,7 @@ def main(argv):
             titles += [ydatum.mapper.fullname, "vs"]
             if ydatum.function:
                 labels.append(ydatum.function)
-            # add x column/corrs, if different
+            # add x column/subset.corr, if different
             if xcolumn and (xcolumn != ycolumn or not xdatum.function) and not xdatum.mapper.column:
                 titles.append(xcolumn)
                 labels.append(sms.col_to_label(xcolumn))
@@ -442,19 +447,19 @@ def main(argv):
             all_plots.append((props, xdatum, ydatum, cdatum))
             log.debug(f"adding plot for {props['title']}")
 
-    join_corrs = not options.iter_corr and len(corrs) > 1 and have_corr_dependence
+    join_corrs = not options.iter_corr and len(subset.corr) > 1 and have_corr_dependence
 
     log.info('                 : you have asked for {} plots employing {} unique datums'.format(len(all_plots),
                                                                                                 len(sms.DataAxis.all_axes)))
     if not len(all_plots):
         sys.exit(0)
 
-    log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join corrs is {join_corrs}")
+    log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join subset.corr is {join_corrs}")
 
     dataframes, np = \
         sms.get_plot_data(ms, group_cols, mytaql, ms.chan_freqs,
-                      chanslice=chanslice,
-                      spws=spws, fields=fields, corrs=corrs, noflags=options.noflags, noconj=options.noconj,
+                      chanslice=chanslice, subset=subset,
+                      noflags=options.noflags, noconj=options.noconj,
                       iter_field=options.iter_field, iter_spw=options.iter_spw,
                       iter_scan=options.iter_scan,
                       join_corrs=join_corrs,
@@ -471,11 +476,11 @@ def main(argv):
     # dictionary of titles for these identifiers
     titles = dict(field="", field_num="field", scan="scan", spw="spw", antenna="ant", colortitle="coloured by")
 
-    keys['field_num'] = fields.numbers if options.field != 'all' else ''
-    keys['field'] = fields.names if options.field != 'all' else ''
-    keys['scan'] = scans.names if options.scan != 'all' else ''
-    keys['ant'] = ants.names if options.ant != 'all' else ''
-    keys['spw'] = spws.names if options.spw != 'all' else ''
+    keys['field_num'] = subset.field.numbers if options.field != 'all' else ''
+    keys['field'] = subset.field.names if options.field != 'all' else ''
+    keys['scan'] = subset.scan.names if options.scan != 'all' else ''
+    keys['ant'] = subset.ant.names if options.ant != 'all' else ''
+    keys['spw'] = subset.spw.names if options.spw != 'all' else ''
 
     def generate_string_from_keys(template, keys, listsep=" ", titlesep=" ", prefix=" "):
         """Converts list of keys into a string suitable for plot titles or filenames.
@@ -520,13 +525,13 @@ def main(argv):
         # update keys to be substituted into title and filename
         if fld is not None:
             keys['field_num'] = fld
-            keys['field'] = fields[fld]
+            keys['field'] = ms.field[fld]
         if spw is not None:
             keys['spw'] = spw
         if scan is not None:
             keys['scan'] = scan
         if antenna is not None:
-            keys['ant'] = antenna
+            keys['ant'] = ms.all_antenna[antenna]
 
         # now loop over plot types
         for props, xdatum, ydatum, cdatum in all_plots:

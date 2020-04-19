@@ -67,7 +67,7 @@ class MSInfo(object):
         spw_tab = daskms.xds_from_table(msname + '::SPECTRAL_WINDOW', columns=['CHAN_FREQ'])
         self.chan_freqs = spw_tab[0].CHAN_FREQ   # important for this to be an xarray
         self.nspw = self.chan_freqs.shape[0]
-        self.spws = NamedList("spw", list(map(str, range(self.nspw))))
+        self.spw = NamedList("spw", list(map(str, range(self.nspw))))
 
         log and log.info(f":   {self.chan_freqs.shape} spectral windows and channels")
 
