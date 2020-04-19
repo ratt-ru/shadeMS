@@ -57,123 +57,127 @@ def main(argv):
     parser.add_argument("-v", "--version", action='version',
                       version='{:s} version {:s}'.format(parser.prog, __version__))
 
-    data_opts = parser.add_argument_group('Data selection')
-    data_opts.add_argument('-x', '--xaxis', dest='xaxis', action="append",
+    group_opts = parser.add_argument_group('Plot types and data sources')
+
+    group_opts.add_argument('-x', '--xaxis', dest='xaxis', action="append",
                       help="""X axis of plot, e.g. "amp:CORRECTED_DATA" This recognizes all column names (also CHAN, FREQ, 
                       CORR, ROW, WAVEL, U, V, W, UV), and, for complex columns, keywords such as 'amp', 'phase', 'real', 'imag'. You can also 
                       specify correlations, e.g. 'DATA:phase:XX', and do two-column arithmetic with "+-*/", e.g. 
                       'DATA-MODEL_DATA:amp'. The order of specifiers does not matter.
                       """)
                       
-    data_opts.add_argument('-y', '--yaxis', dest='yaxis', action="append",
+    group_opts.add_argument('-y', '--yaxis', dest='yaxis', action="append",
                       help="""Y axis to plot. Must be given the same number of times as --xaxis. Note that X/Y can
                       employ different columns and correlations.""")
 
-    data_opts.add_argument('-c', '--color-by', action="append",
+    group_opts.add_argument('-c', '--color-by', action="append",
                       help='Color-by axis and/or column. Can be none, or given once, or given the same number of times as --xaxis.')
 
-    data_opts.add_argument('-C', '--col', metavar="COLUMN", dest='col', action="append", default=[],
+    group_opts.add_argument('-C', '--col', metavar="COLUMN", dest='col', action="append", default=[],
                       help="""Name of visibility column (default is DATA), if needed. This is used if
                       the axis specifications do not explicitly include a column. For multiple plots,
                       thuis can be given multiple times, or as a comma-separated list. Two-column arithmetic is recognized.
                       """)
 
-    data_opts.add_argument('--antenna', dest='myants',
-                      help='Antenna(s) to plot (comma-separated list, default = all)', default='all')
-
-    # data_opts.add_argument('--q', dest='antenna2',
-    #                   help='Antenna 2 (comma-separated list, default = all)', default='all')
-    data_opts.add_argument('--spw', dest='myspws',
-                      help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)', default='all')
-
-    data_opts.add_argument('--field', dest='myfields',
-                      help='Field ID(s) to plot (comma-separated list, default = all)', default='all')
-
-    data_opts.add_argument('--scan', dest='myscans',
-                      help='Scans to plot (comma-separated list, default = all)', default='all')    
-
-    data_opts.add_argument('--corr', dest='corr',
-                      help='Correlations to plot, use indices or labels (comma-separated list, default is 0)',
-                      default="0")
-
-
-    figure_opts = parser.add_argument_group('Plot selection')
-    figure_opts.add_argument('--iter-field', action="store_true",
-                      help='Separate plots per field (default is to combine in one plot)')
-    figure_opts.add_argument('--iter-antenna', action="store_true",
-                      help='Separate plots per antenna (default is to combine in one plot)')
-    figure_opts.add_argument('--iter-spw', action="store_true",
-                      help='Separate plots per spw (default is to combine in one plot)')
-    figure_opts.add_argument('--iter-scan', action="store_true",
-                      help='Separate plots per scan (default is to combine in one plot)')
-    figure_opts.add_argument('--iter-corr', action="store_true",
-                      help='Separate plots per correlation (default is to combine in one plot)')
-    figure_opts.add_argument('--noflags',
-                      help='Enable to include flagged data', action='store_true')
-    figure_opts.add_argument('--noconj',
+    group_opts.add_argument('--noflags',
+                      help='Enable to ignore flags. Default is to omit flagged data.', action='store_true')
+    group_opts.add_argument('--noconj',
                       help='Do not show conjugate points in u,v plots (default = plot conjugates)', action='store_true')
-    figure_opts.add_argument('--xmin', action='append',
+
+    group_opts = parser.add_argument_group('Plot axes setup')
+
+    group_opts.add_argument('--xmin', action='append',
                       help="""Minimum x-axis value (default = data min). For multiple plots, you can give this 
                       multiple times, or use a comma-separated list, but note that the clipping is the same per axis 
                       across all plots, so only the last applicable setting will be used. The list may include empty
                       elements (or 'None') to not apply a clip.""")
-    figure_opts.add_argument('--xmax', action='append',
+    group_opts.add_argument('--xmax', action='append',
                       help='Maximum x-axis value (default = data max)')
-    figure_opts.add_argument('--ymin', action='append',
+    group_opts.add_argument('--ymin', action='append',
                       help='Minimum y-axis value (default = data min)')
-    figure_opts.add_argument('--ymax', action='append',
+    group_opts.add_argument('--ymax', action='append',
                       help='Maximum y-axis value (default = data max)')
-    figure_opts.add_argument('--cmin', action='append',
+    group_opts.add_argument('--cmin', action='append',
                       help='Minimum colouring value. Must be supplied for every non-discrete axis to be coloured by')
-    figure_opts.add_argument('--cmax', action='append',
+    group_opts.add_argument('--cmax', action='append',
                       help='Maximum colouring value. Must be supplied for every non-discrete axis to be coloured by')
-    figure_opts.add_argument('--cnum', action='append',
+    group_opts.add_argument('--cnum', action='append',
                       help=f'Number of steps used to discretize a continuous axis. Default is {DEFAULT_CNUM}.')
 
-    figure_opts = parser.add_argument_group('Rendering settings')
-    figure_opts.add_argument('--xcanvas', type=int,
+    group_opts = parser.add_argument_group('Options for multiple plots or combined plots')
+
+    group_opts.add_argument('--iter-field', action="store_true",
+                      help='Separate plots per field (default is to combine in one plot)')
+    group_opts.add_argument('--iter-antenna', action="store_true",
+                      help='Separate plots per antenna (default is to combine in one plot)')
+    group_opts.add_argument('--iter-spw', action="store_true",
+                      help='Separate plots per spw (default is to combine in one plot)')
+    group_opts.add_argument('--iter-scan', action="store_true",
+                      help='Separate plots per scan (default is to combine in one plot)')
+    group_opts.add_argument('--iter-corr', action="store_true",
+                      help='Separate plots per correlation (default is to combine in one plot)')
+
+    group_opts = parser.add_argument_group('Data subset selection')
+
+    group_opts.add_argument('--ant',
+                      help='Antenna(s) to plot (comma-separated list, default = all)', default='all')
+    group_opts.add_argument('--spw',
+                      help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)', default='all')
+    group_opts.add_argument('--field',
+                      help='Field ID(s) to plot (comma-separated list, default = all)', default='all')
+    group_opts.add_argument('--scan',
+                      help='Scans to plot (comma-separated list, default = all)', default='all')    
+    group_opts.add_argument('--corr', 
+                      help='Correlations to plot, use indices or labels (comma-separated list, default is 0)',
+                      default="0")
+    group_opts.add_argument('--chan', dest='chan',
+                      help='Channel slice, as [start]:[stop][:step], default is to plot all channels')
+
+    group_opts = parser.add_argument_group('Rendering settings')
+
+    group_opts.add_argument('--xcanvas', type=int,
                       help='Canvas x-size in pixels (default = %(default)s)', default=1280)
-    figure_opts.add_argument('--ycanvas', type=int,
+    group_opts.add_argument('--ycanvas', type=int,
                       help='Canvas y-size in pixels (default = %(default)s)', default=900)
-    figure_opts.add_argument('--norm', dest='normalize', choices=['eq_hist', 'cbrt', 'log', 'linear'],
+    group_opts.add_argument('--norm', dest='normalize', choices=['eq_hist', 'cbrt', 'log', 'linear'],
                       help='Pixel scale normalization (default = %(default)s)', default='eq_hist')
-    figure_opts.add_argument('--cmap',
+    group_opts.add_argument('--cmap',
                       help='Colorcet map used without --color-by  (default = %(default)s)', default='bkr')
-    figure_opts.add_argument('--bmap',
+    group_opts.add_argument('--bmap',
                       help='Colorcet map used when coloring by a continuous axis (default = %(default)s)', default='bkr')
-    figure_opts.add_argument('--dmap',
+    group_opts.add_argument('--dmap',
                       help='Colorcet map used when coloring by a discrete axis (default = %(default)s)', default='glasbey_dark')
-    figure_opts.add_argument('--bgcol', dest='bgcol',
+    group_opts.add_argument('--bgcol', dest='bgcol',
                       help='RGB hex code for background colour (default = FFFFFF)', default='FFFFFF')
-    figure_opts.add_argument('--fontsize', dest='fontsize',
+    group_opts.add_argument('--fontsize', dest='fontsize',
                       help='Font size for all text elements (default = 20)', default=20)
 
+    group_opts = parser.add_argument_group('Output settings')
 
-    output_opts = parser.add_argument_group('Output')
     # can also use "plot-{msbase}-{column}-{corr}-{xfullname}-vs-{yfullname}", let's expand on this later
-    output_opts.add_argument('--dir',
+    group_opts.add_argument('--dir',
                       help='send all plots to this output directory')
-    output_opts.add_argument('--png', dest='pngname',
+    group_opts.add_argument('--png', dest='pngname',
                              default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}-{label}{_colorlabel}.png",
                       help='template for output png files, default "%(default)s"')
-    output_opts.add_argument('--title',
+    group_opts.add_argument('--title',
                              default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_title}{_Colortitle}",
                       help='template for plot titles, default "%(default)s"')
-    output_opts.add_argument('--xlabel',
+    group_opts.add_argument('--xlabel',
                              default="{xname}{_xunit}",
                       help='template for X axis labels, default "%(default)s"')
-    output_opts.add_argument('--ylabel',
+    group_opts.add_argument('--ylabel',
                              default="{yname}{_yunit}",
                              help='template for X axis labels, default "%(default)s"')
 
-    perf_opts = parser.add_argument_group('Performance & tweaking')
+    group_opts = parser.add_argument_group('Performance & tweaking')
 
-    perf_opts.add_argument("-d", "--debug", action='store_true',
+    group_opts.add_argument("-d", "--debug", action='store_true',
                             help="Enable debugging output")
-    perf_opts.add_argument('-z', '--row-chunk-size', type=int, metavar="NROWS", default=100000,
+    group_opts.add_argument('-z', '--row-chunk-size', type=int, metavar="NROWS", default=100000,
                            help="""row chunk size for dask-ms. Larger chunks may or may not be faster, but will
                             certainly use more RAM.""")
-    perf_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=1,
+    group_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=1,
                              help=f"""run up to N renderers in parallel. Default is serial. Use -j0 to 
                              auto-set this to half the available cores ({DEFAULT_NUM_RENDERS} on this system).
                              This is not necessarily faster, as they might all end up contending for disk I/O. 
@@ -181,35 +185,22 @@ def main(argv):
                              You have been advised.""")
 
     # various hidden performance-testing options
-    sms.add_options(perf_opts)
+    sms.add_options(group_opts)
 
     options = parser.parse_args(argv)
-
-    myants = options.myants
-#    q = options.antenna2
-    myspws = options.myspws
-    myfields = options.myfields
-    myscans = options.myscans
-    mycorrs = options.corr
-
-    noflags = options.noflags
-    noconj = options.noconj
-    xcanvas = options.xcanvas
-    ycanvas = options.ycanvas
-    normalize = options.normalize
-    bgcol = '#'+options.bgcol.lstrip('#')
-    fontsize = options.fontsize
 
     cmap = getattr(colorcet, options.cmap)
     bmap = getattr(colorcet, options.bmap)
     dmap = getattr(colorcet, options.dmap)
 
-    myms = options.ms.rstrip('/')
+    options.ms = options.ms.rstrip('/')
 
     if options.debug:
         ShadeMS.log_console_handler.setLevel(logging.DEBUG)
 
+    # pass options to ShadeMS
     sms.set_options(options)
+
     # figure our list of plots to make
 
     xaxes = list(itertools.chain(*[opt.split(",") for opt in options.xaxis]))
@@ -258,10 +249,18 @@ def main(argv):
     if any([(a is None)^(b is None) for a, b in zip(ymins, ymaxs)]):
         parser.error("--cmin/--cmax must be either both set, or neither")
 
+    # check chan slice
+    chanslice = slice(None)
+    if options.chan:
+        try:
+            chanslice = slice(*[int(x) if x else None for x in options.chan.split(":", 2)])
+        except ValueError:
+            parser.error(f"invalid channel selection --chan {options.chan}")
+
     sms.blank()
 
     from .ms_info import MSInfo
-    ms = sms.ms = MSInfo(myms, log=log)
+    ms = sms.ms = MSInfo(options.ms, log=log)
 
     sms.blank()
 
@@ -269,8 +268,8 @@ def main(argv):
 
     mytaql = []
 
-    if myants != 'all':
-        ants = ms.antenna.get_subset(myants)
+    if options.ant != 'all':
+        ants = ms.antenna.get_subset(options.ant)
         # group_cols.append('ANTENNA1')
         log.info(f"Antenna name(s)  : {' '.join(ants.names)}")
         if options.iter_antenna:
@@ -280,8 +279,8 @@ def main(argv):
         ants = ms.antenna
         log.info('Antenna(s)       : all')
 
-    if myfields != 'all':
-        fields = ms.field.get_subset(myfields)
+    if options.field != 'all':
+        fields = ms.field.get_subset(options.field)
         log.info(f"Field(s)         : {' '.join(fields.names)}")
         # here for now, workaround for https://github.com/ska-sa/dask-ms/issues/100, should be inside if clause
         mytaql.append("||".join([f'FIELD_ID=={fld}' for fld in fields.numbers]))
@@ -289,16 +288,16 @@ def main(argv):
         fields = ms.field
         log.info('Field(s)         : all')
 
-    if myspws != 'all':
-        spws = ms.spws.get_subset(myspws)
+    if options.spw != 'all':
+        spws = ms.spws.get_subset(options.spw)
         log.info(f"SPW(s)           : {' '.join(spws.names)}")
         mytaql.append("||".join([f'DATA_DESC_ID=={ddid}' for ddid in spws.numbers]))
     else:
         spws = ms.spws
         log.info(f'SPW(s)           : all')
 
-    if myscans != 'all':
-        scans = ms.scan.get_subset(myscans)
+    if options.scan != 'all':
+        scans = ms.scan.get_subset(options.scan)
         log.info(f"Scan(s)          : {' '.join(scans.names)}")
         mytaql.append("||".join([f'SCAN_NUMBER=={n}' for n in scans.numbers]))
     else:
@@ -310,7 +309,7 @@ def main(argv):
 
     mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else ''
 
-    corrs = ms.corr.get_subset(mycorrs)
+    corrs = ms.corr.get_subset(options.corr)
 
     sms.blank()
 
@@ -419,8 +418,9 @@ def main(argv):
     log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join corrs is {join_corrs}")
 
     dataframes, np = \
-        sms.get_plot_data(myms, group_cols, mytaql, ms.chan_freqs,
-                      spws=spws, fields=fields, corrs=corrs, noflags=noflags, noconj=noconj,
+        sms.get_plot_data(options.ms, group_cols, mytaql, ms.chan_freqs,
+                      chanslice=chanslice,
+                      spws=spws, fields=fields, corrs=corrs, noflags=options.noflags, noconj=options.noconj,
                       iter_field=options.iter_field, iter_spw=options.iter_spw,
                       iter_scan=options.iter_scan,
                       join_corrs=join_corrs,
@@ -432,16 +432,16 @@ def main(argv):
 
     # dictionary of substitutions for filename and title
     keys = {}
-    keys['ms'] = os.path.basename(os.path.splitext(myms.rstrip("/"))[0])
+    keys['ms'] = os.path.basename(os.path.splitext(options.ms.rstrip("/"))[0])
     keys['timestamp'] = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     # dictionary of titles for these identifiers
     titles = dict(field="", field_num="field", scan="scan", spw="spw", antenna="ant", colortitle="coloured by")
 
-    keys['field_num'] = fields.numbers if myfields != 'all' else ''
-    keys['field'] = fields.names if myfields != 'all' else ''
-    keys['scan'] = scans.names if myscans != 'all' else ''
-    keys['ant'] = ants.names if myants != 'all' else ''
-    keys['spw'] = spws.names if myspws != 'all' else ''
+    keys['field_num'] = fields.numbers if options.field != 'all' else ''
+    keys['field'] = fields.names if options.field != 'all' else ''
+    keys['scan'] = scans.names if options.scan != 'all' else ''
+    keys['ant'] = ants.names if options.ant != 'all' else ''
+    keys['spw'] = spws.names if options.spw != 'all' else ''
 
     def generate_string_from_keys(template, keys, listsep=" ", titlesep=" ", prefix=" "):
         """Converts list of keys into a string suitable for plot titles or filenames.
@@ -477,11 +477,12 @@ def main(argv):
         """Renders a single plot. Make this a function since we might call it in parallel"""
         log.info(f": rendering {pngname}")
 
-        if sms.create_plot(df, xdatum, ydatum, cdatum, xcanvas, ycanvas,
-                        cmap, bmap, dmap, normalize,
-                        xlabel, ylabel, title,
-                        pngname, bgcol, fontsize,
-                        figx=xcanvas / 60, figy=ycanvas / 60):
+        if sms.create_plot(df, xdatum, ydatum, cdatum, options.xcanvas, options.ycanvas,
+                        cmap=cmap, bmap=bmap, dmap=dmap, normalize=options.normalize,
+                        xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
+                        bgcol='#'+options.bgcol.lstrip('#'),
+                        fontsize=options.fontsize,
+                        figx=options.xcanvas / 60, figy=options.ycanvas / 60):
             log.info(f'                 : wrote {pngname}')
 
     for (fld, spw, scan, antenna), df in dataframes.items():

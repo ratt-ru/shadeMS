@@ -259,7 +259,7 @@ class DataAxis(object):
         except AttributeError:
             raise NameError("column {} not found in group".format(" or ".join(self.columns)))
 
-    def get_value(self, group, corr, extras, flag, flag_row):
+    def get_value(self, group, corr, extras, flag, flag_row, chanslice):
         coldata = self.get_column_data(group)
         # correlation may be pre-set by plot type, or may be passed to us
         corr = self.corr if self.corr is not None else corr
@@ -277,6 +277,8 @@ class DataAxis(object):
             coldata = da.full_like(flag_row, fill_value=coldata, dtype=type(coldata))
             flag = flag_row
         else:
+            # apply channel slicing, if there's a channel axis in the array
+            coldata = coldata[dict(chan=chanslice)]
             # determine flags -- start with original flags
             if coldata.ndim == 2:
                 flag = ms.corr_flag_mappers[corr](flag)
@@ -310,6 +312,7 @@ class DataAxis(object):
 
 
 def get_plot_data(myms, group_cols, mytaql, chan_freqs,
+                  chanslice,
                   spws, fields, corrs, noflags, noconj,
                   iter_field, iter_spw, iter_scan,
                   join_corrs=False,
@@ -358,11 +361,12 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
             flag_row = da.zeros_like(flag_row)
 
         freqs = chan_freqs[ddid]
-        nchan = len(freqs)
+        chans = xarray.DataArray(range(len(freqs)), dims=("chan",))
         wavel = freq_to_wavel(freqs)
-        extras = dict(chans=numpy.arange(nchan), freqs=freqs, wavel=freq_to_wavel(freqs), rows=group.row.values)
+        extras = dict(chans=chans, freqs=freqs, wavel=wavel, rows=group.row)
+
+        flag = flag[dict(chan=chanslice)]
         shape = flag.shape[:-1]
-        nrow = flag.shape[0]
 
         datums = OrderedDict()
 
@@ -381,7 +385,7 @@ def get_plot_data(myms, group_cols, mytaql, chan_freqs,
                     if axis.corr is None:
                         value = None
                 if value is None:
-                    value = axis.get_value(group, corr, extras, flag, flag_row)
+                    value = axis.get_value(group, corr, extras, flag=flag, flag_row=flag_row, chanslice=chanslice)
                     # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ), and scalar to (NTIME,1)
                     if value.ndim == 1:
                         timefreq_axis = axis.mapper.axis or 0
@@ -601,14 +605,12 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
     ax.set_title(title,loc='left')
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    ax.plot(xmin,ymin,'.',alpha=0.0)
-    ax.plot(xmax,ymax,'.',alpha=0.0)
+    # ax.plot(xmin,ymin,'.',alpha=0.0)
+    # ax.plot(xmax,ymax,'.',alpha=0.0)
 
-    ax.set_xlim([numpy.min((data_xmin,xmin)),
-        numpy.max((data_xmax,xmax))])
-
-    ax.set_ylim([numpy.min((data_ymin,ymin)),
-        numpy.max((data_ymax,ymax))])
+    dx, dy = xmax - xmin, ymax - ymin
+    ax.set_xlim([xmin - dx/100, xmax + dx/100])
+    ax.set_ylim([ymin - dy/100, ymax + dy/100])
 
     # set fontsize on everything rendered so far
     for textobj in fig.findobj(match=match):
