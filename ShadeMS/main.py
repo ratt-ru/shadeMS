@@ -5,7 +5,6 @@
 import matplotlib
 matplotlib.use('agg')
 
-
 import numpy
 import datetime
 import os
@@ -21,11 +20,12 @@ from _collections import OrderedDict
 
 import argparse
 
-from ShadeMS import shadeMS as sms
+from . import shadeMS, data_mappers
 
+from .data_mappers import DataAxis, col_to_label
+from .ms_info import MSInfo
 
-log = ShadeMS.log
-
+from ShadeMS import log, blank
 
 try:
     __version__ = pkg_resources.require("shadems")[0].version
@@ -188,7 +188,7 @@ def main(argv):
                              You have been advised.""")
 
     # various hidden performance-testing options
-    sms.add_options(group_opts)
+    data_mappers.add_options(group_opts)
 
     options = parser.parse_args(argv)
 
@@ -208,7 +208,7 @@ def main(argv):
         ShadeMS.log_console_handler.setLevel(logging.DEBUG)
 
     # pass options to ShadeMS
-    sms.set_options(options)
+    data_mappers.set_options(options)
 
     # figure our list of plots to make
 
@@ -273,12 +273,11 @@ def main(argv):
 
     log.info(" ".join(sys.argv))
 
-    sms.blank()
+    blank()
 
-    from .ms_info import MSInfo
-    ms = sms.ms = MSInfo(options.ms, log=log)
+    ms = MSInfo(options.ms, log=log)
 
-    sms.blank()
+    blank()
     log.info(": Data selected for plotting:")
 
     group_cols = ['FIELD_ID', 'DATA_DESC_ID']
@@ -362,7 +361,7 @@ def main(argv):
     subset.corr = ms.corr.get_subset(options.corr)
     log.info(f"Correlation(s)   : {' '.join(subset.corr.names)}")
 
-    sms.blank()
+    blank()
 
     # figure out list of plots to make
     all_plots = []
@@ -374,9 +373,9 @@ def main(argv):
     for xaxis, yaxis, default_column, caxis, xmin, xmax, ymin, ymax, cmin, cmax, cnum in \
             zip(xaxes, yaxes, columns, caxes, xmins, xmaxs, ymins, ymaxs, cmins, cmaxs, cnums):
         # get axis specs
-        xspecs = sms.DataAxis.parse_datum_spec(xaxis, default_column)
-        yspecs = sms.DataAxis.parse_datum_spec(yaxis, default_column)
-        cspecs = sms.DataAxis.parse_datum_spec(caxis, default_column) if caxis else [None] * 4
+        xspecs = DataAxis.parse_datum_spec(xaxis, default_column, ms=ms)
+        yspecs = DataAxis.parse_datum_spec(yaxis, default_column, ms=ms)
+        cspecs = DataAxis.parse_datum_spec(caxis, default_column, ms=ms) if caxis else [None] * 4
         # parse axis specifications
         xfunction, xcolumn, xcorr, xitercorr = xspecs
         yfunction, ycolumn, ycorr, yitercorr = yspecs
@@ -406,9 +405,10 @@ def main(argv):
             plot_xcorr = corr if xcorr is None else xcorr  # False if no corr in datum, None if all, else set to iterant or to fixed value
             plot_ycorr = corr if ycorr is None else ycorr
             plot_ccorr = corr if ccorr is None else ccorr
-            xdatum = sms.DataAxis.register(xfunction, xcolumn, plot_xcorr, (xmin, xmax), subset=subset)
-            ydatum = sms.DataAxis.register(yfunction, ycolumn, plot_ycorr, (ymin, ymax), subset=subset)
-            cdatum = cfunction and sms.DataAxis.register(cfunction, ccolumn, plot_ccorr, (cmin, cmax), cnum, subset=subset)
+            xdatum = DataAxis.register(xfunction, xcolumn, plot_xcorr, ms=ms, minmax=(xmin, xmax), subset=subset)
+            ydatum = DataAxis.register(yfunction, ycolumn, plot_ycorr, ms=ms, minmax=(ymin, ymax),  subset=subset)
+            cdatum = cfunction and DataAxis.register(cfunction, ccolumn, plot_ccorr, ms=ms,
+                                                     minmax=(cmin, cmax), ncol=cnum, subset=subset)
 
             # figure out plot properties -- basically construct a descriptive name and label
             # looks complicated, but we're just trying to figure out what to put in the plot title...
@@ -418,7 +418,7 @@ def main(argv):
             # start with column and correlation(s)
             if ycolumn and not ydatum.mapper.column:   # only put column if not fixed by mapper
                 titles.append(ycolumn)
-                labels.append(sms.col_to_label(ycolumn))
+                labels.append(col_to_label(ycolumn))
             titles += describe_corr(plot_ycorr)
             labels += describe_corr(plot_ycorr)
             titles += [ydatum.mapper.fullname, "vs"]
@@ -427,7 +427,7 @@ def main(argv):
             # add x column/subset.corr, if different
             if xcolumn and (xcolumn != ycolumn or not xdatum.function) and not xdatum.mapper.column:
                 titles.append(xcolumn)
-                labels.append(sms.col_to_label(xcolumn))
+                labels.append(col_to_label(xcolumn))
             if plot_xcorr != plot_ycorr:
                 titles += describe_corr(plot_xcorr)
                 labels += describe_corr(plot_xcorr)
@@ -441,7 +441,7 @@ def main(argv):
                 titles, labels = [], []
                 if ccolumn and (ccolumn != xcolumn or ccolumn != ycolumn) and cdatum.mapper.column is None:
                     titles.append(ccolumn)
-                    labels.append(sms.col_to_label(ccolumn))
+                    labels.append(col_to_label(ccolumn))
                 if plot_ccorr and (plot_ccorr != plot_xcorr or plot_ccorr != plot_ycorr):
                     titles += describe_corr(plot_ccorr)
                     labels += describe_corr(plot_ccorr)
@@ -462,20 +462,20 @@ def main(argv):
     join_corrs = not options.iter_corr and len(subset.corr) > 1 and have_corr_dependence
 
     log.info('                 : you have asked for {} plots employing {} unique datums'.format(len(all_plots),
-                                                                                                len(sms.DataAxis.all_axes)))
+                                                                                                len(DataAxis.all_axes)))
     if not len(all_plots):
         sys.exit(0)
 
     log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join subset.corr is {join_corrs}")
 
     dataframes, np = \
-        sms.get_plot_data(ms, group_cols, mytaql, ms.chan_freqs,
-                      chanslice=chanslice, subset=subset,
-                      noflags=options.noflags, noconj=options.noconj,
-                      iter_field=options.iter_field, iter_spw=options.iter_spw,
-                      iter_scan=options.iter_scan,
-                      join_corrs=join_corrs,
-                      row_chunk_size=options.row_chunk_size)
+        shadeMS.get_plot_data(ms, group_cols, mytaql, ms.chan_freqs,
+                              chanslice=chanslice, subset=subset,
+                              noflags=options.noflags, noconj=options.noconj,
+                              iter_field=options.iter_field, iter_spw=options.iter_spw,
+                              iter_scan=options.iter_scan,
+                              join_corrs=join_corrs,
+                              row_chunk_size=options.row_chunk_size)
 
     log.info(f": rendering {len(dataframes)} dataframes with {np:.3g} points into {len(all_plots)} plot types")
 
@@ -525,12 +525,12 @@ def main(argv):
         """Renders a single plot. Make this a function since we might call it in parallel"""
         log.info(f": rendering {pngname}")
 
-        if sms.create_plot(df, xdatum, ydatum, cdatum, options.xcanvas, options.ycanvas,
-                        cmap=cmap, bmap=bmap, dmap=dmap, normalize=options.normalize,
-                        xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
-                        bgcol='#'+options.bgcol.lstrip('#'),
-                        fontsize=options.fontsize,
-                        figx=options.xcanvas / 60, figy=options.ycanvas / 60):
+        if shadeMS.create_plot(df, xdatum, ydatum, cdatum, options.xcanvas, options.ycanvas,
+                               cmap=cmap, bmap=bmap, dmap=dmap, normalize=options.normalize,
+                               xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
+                               bgcol='#'+options.bgcol.lstrip('#'),
+                               fontsize=options.fontsize,
+                               figx=options.xcanvas / 60, figy=options.ycanvas / 60):
             log.info(f'                 : wrote {pngname}')
 
     for (fld, spw, scan, antenna), df in dataframes.items():
@@ -585,4 +585,4 @@ def main(argv):
 
     log.info('Total time       : %s seconds' % (elapsed))
     log.info('Finished')
-    sms.blank()
+    blank()
