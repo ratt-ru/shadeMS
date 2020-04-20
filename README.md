@@ -43,7 +43,7 @@ and is also provided at the end of this page.
 
 ### My first plot
 
-* The default settings will produce a plot of amplitude vs time. All fields, spectral windows, and correlation products will be selected, and the default [colour scale](https://colorcet.holoviz.org/) will represent the density of visibility points. To do this for your Measuremet Set simply run:
+* The default settings will produce a plot of amplitude vs time. All fields, spectral windows, and correlation products will be selected, and the default [colour scale](https://colorcet.holoviz.org/) will represent the density of visibility points. To do this for your Measurement Set simply run:
 
 ```
 $ shadems <msname>
@@ -59,13 +59,13 @@ $ shadems --xaxis FREQ --yaxis DATA <msname>
 
 ### Sergeant Colon 
 
-* For complex-valued columns a single component (`amp`, `phase`, `real` or `imag`) must be provided using the colon delimiter, as follows:
+* For complex-valued columns a single component (`amp`, `phase`, `real` or `imag`) can be provided using the colon delimiter, as follows:
 
 ```
 $ shadems --xaxis FREQ --yaxis DATA:amp <msname>
 ```
 
-* You can also use the colon operator to specify a correlation product:
+* You can also use the colon delimiter to specify a correlation product:
 
 ```
 $ shadems --xaxis FREQ --yaxis DATA:amp:XX <msname>
@@ -73,7 +73,7 @@ $ shadems --xaxis FREQ --yaxis DATA:amp:XX <msname>
 
 ### Multiple plots
 
-* The axis selection arguments can also be a comma-separated list to tell `shadems` to make multiple plots in a single session, for example:
+* The axis selection arguments can also be given a comma-separated list to tell `shadems` to make multiple plots in a single session, for example:
 
 ```
 $ shadems --xaxis FREQ,CHAN --yaxis DATA:amp,DATA:amp <msname>
@@ -103,7 +103,7 @@ $ shadems --xaxis CORRECTED_DATA:real,UV --yaxis CORRECTED_DATA:imag,CORRECTED_D
 
 ### Plotting residuals
 
-* If you want to see how well your model fits your data then you can subtract the `MODEL_DATA` column from the `CORRECTED_DATA` column prior to plotting as follows:
+* If you want to see how well your model fits your data then you can subtract the `MODEL_DATA` column from the `CORRECTED_DATA` column prior to plotting. For example, to show this residual product on a uv-distance plot:
 
 ```
 $ shadems --xaxis UV --yaxis CORRECTED_DATA-MODEL_DATA:amp --field 0 --corr XX,YY <msname>
