@@ -294,7 +294,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, xcanvas,ycanvas, cmap
 
     if cdatum is not None:
         if agg_alpha is not None:
-            log.debug(f'rasterizing alpha channel using {ared}')
+            log.debug(f'rasterizing alpha channel using {ared}(aaxis)')
             raster_alpha = canvas.points(ddf, xaxis, yaxis, agg=agg_alpha)
 
         if data_mappers.USE_COUNT_CAT:
@@ -334,6 +334,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, xcanvas,ycanvas, cmap
         if raster_alpha is not None:
             amin, amax = numpy.nanmin(raster_alpha), numpy.nanmax(raster_alpha)
             raster = raster*(raster_alpha-amin)/(amax-amin)
+            log.info(f": adjusting alpha (alpha raster was {amin} to {amax})")
         img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize)
         # overwrite alpha channel
 
