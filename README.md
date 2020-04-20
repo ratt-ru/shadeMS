@@ -1,6 +1,6 @@
 # shadeMS
 
-`shadems` is a tool for plotting interferometric visibilities or associated metadata from CASA format Measurement Sets. The primary goal is rapid visualisation of the many billions of data points produced by a typical observation with next-generation radio telescopes such as [MeerKAT](https://www.sarao.ac.za/science-engineering/meerkat/). This is achieved by using [dask-ms](https://github.com/ska-sa/dask-ms) for access the the MS tables, [datashader](https://datashader.org/) for rendering, as well as internal parallelism. `shadems` supports arbitrary axis selections for MS columns and derivatives (including two-column arithmetic operations) as well as flexible colourisation and plot customisation options.
+`shadems` is a tool for plotting interferometric visibilities or associated metadata from CASA format Measurement Sets. The primary goal is rapid visualisation of the many billions of data points produced by a typical observation with next-generation radio telescopes such as [MeerKAT](https://www.sarao.ac.za/science-engineering/meerkat/). This is achieved by using [`dask-ms`](https://github.com/ska-sa/dask-ms) for access to the MS tables, [`datashader`](https://datashader.org/) for rendering, as well as internal parallelism. `shadems` supports arbitrary axis selections for MS columns and derivatives (including two-column arithmetic operations) as well as flexible colourisation and plot customisation options.
 
 ---
 
@@ -29,6 +29,12 @@ $ pip install -e shadeMS/
 $ pip install git+https://github.com/ska-sa/dask-ms.git
 ```
 
+* As is (for now) this fork of `datashader` which fixes an bug involving layer opacities:
+
+```
+$ pip install git+https://github.com/o-smirnov/datashader
+```
+
 ---
 
 ## Operation  
@@ -43,7 +49,7 @@ and is also provided at the end of this page.
 
 ### My first plot
 
-* The default settings will produce a plot of amplitude vs time. All fields, spectral windows, and correlation products will be selected, and the default [colour scale](https://colorcet.holoviz.org/) will represent the density of visibility points. To do this for your Measurement Set simply run:
+* The default settings will produce a plot of amplitude vs time for the `DATA` column. All fields, spectral windows, and correlation products will be selected, and the default [colour scale](https://colorcet.holoviz.org/) will represent the density of visibility points. To do this for your Measurement Set simply run:
 
 ```
 $ shadems <msname>
