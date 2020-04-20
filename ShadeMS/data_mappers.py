@@ -144,7 +144,7 @@ class DataAxis(object):
         """
         # form up label
         label  = "{}_{}_{}".format(col_to_label(column or ''), function, corr)
-        minmax = tuple(minmax) or (None, None)
+        minmax = tuple(minmax) if minmax is not None else (None, None)
         key = label, minmax, ncol
         # see if this axis definition already exists, else create new one
         if key in cls.all_axes:
@@ -165,7 +165,7 @@ class DataAxis(object):
         self.function = function        # function to apply to column (see list of DataMappers below)
         self.corr     = corr if corr != "all" else None
         self.nlevels  = ncol
-        self.minmax   = vmin, vmax = tuple(minmax) or (None, None)
+        self.minmax   = vmin, vmax = tuple(minmax) if minmax is not None else (None, None)
         self.label    = label
         self._corr_reduce = None
         self.discretized_labels = None  # filled for corrs and fields and so

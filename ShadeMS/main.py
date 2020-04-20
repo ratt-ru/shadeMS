@@ -70,8 +70,19 @@ def main(argv):
                       help="""Y axis to plot. Must be given the same number of times as --xaxis. Note that X/Y can
                       employ different columns and correlations.""")
 
+    group_opts.add_argument('-a', '--aaxis', action="append",
+                      help="""Intennsity axis. Can be none, or given once, or given the same number of times as --xaxis.
+                      If none, plot intensity (a.k.a. alpha channel) is proportional to density of points. Otherwise,
+                      a reduction function (see --ared below) is applied to the given values, and the result is used
+                      to determine intensity.
+                      """)
+
+    group_opts.add_argument('--ared', action="append",
+                      help="""Alpha axis reduction function. Recognized reductions are count, any, sum, min, max,
+                      mean, std, first, last, mode. Default is mean.""")
+
     group_opts.add_argument('-c', '--colour-by', action="append",
-                      help='Colour by axis and/or column. Can be none, or given once, or given the same number of times as --xaxis.')
+                      help='Colour axis. Can be none, or given once, or given the same number of times as --xaxis.')
 
     group_opts.add_argument('-C', '--col', metavar="COLUMN", dest='col', action="append", default=[],
                       help="""Name of visibility column (default is DATA), if needed. This is used if
@@ -161,10 +172,10 @@ def main(argv):
     group_opts.add_argument('--dir',
                       help='send all plots to this output directory')
     group_opts.add_argument('--png', dest='pngname',
-                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}-{label}{_colorlabel}.png",
+                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}-{label}{_alphalabel}{_colorlabel}.png",
                       help='template for output png files, default "%(default)s"')
     group_opts.add_argument('--title',
-                             default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_title}{_Colortitle}",
+                             default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_title}{_Alphatitle}{_Colortitle}",
                       help='template for plot titles, default "%(default)s"')
     group_opts.add_argument('--xlabel',
                              default="{xname}{_xunit}",
@@ -245,6 +256,8 @@ def main(argv):
     xmaxs = get_conformal_list('xmax', float)
     ymins = get_conformal_list('ymin', float)
     ymaxs = get_conformal_list('ymax', float)
+    aaxes = get_conformal_list('aaxis')
+    areds = get_conformal_list('ared', str, 'mean')
     caxes = get_conformal_list('colour_by')
     cmins = get_conformal_list('cmin', float)
     cmaxs = get_conformal_list('cmax', float)
@@ -370,21 +383,22 @@ def main(argv):
     have_corr_dependence = False
 
     # now go create definitions
-    for xaxis, yaxis, default_column, caxis, xmin, xmax, ymin, ymax, cmin, cmax, cnum in \
-            zip(xaxes, yaxes, columns, caxes, xmins, xmaxs, ymins, ymaxs, cmins, cmaxs, cnums):
+    for xaxis, yaxis, default_column, caxis, aaxis, ared, xmin, xmax, ymin, ymax, cmin, cmax, cnum in \
+            zip(xaxes, yaxes, columns, caxes, aaxes, areds, xmins, xmaxs, ymins, ymaxs, cmins, cmaxs, cnums):
         # get axis specs
         xspecs = DataAxis.parse_datum_spec(xaxis, default_column, ms=ms)
         yspecs = DataAxis.parse_datum_spec(yaxis, default_column, ms=ms)
+        aspecs = DataAxis.parse_datum_spec(aaxis, default_column, ms=ms) if aaxis else [None] * 4
         cspecs = DataAxis.parse_datum_spec(caxis, default_column, ms=ms) if caxis else [None] * 4
         # parse axis specifications
         xfunction, xcolumn, xcorr, xitercorr = xspecs
         yfunction, ycolumn, ycorr, yitercorr = yspecs
+        afunction, acolumn, acorr, aitercorr = aspecs
         cfunction, ccolumn, ccorr, citercorr = cspecs
         # does anything here depend on correlation?
-        datum_itercorr = (xitercorr or yitercorr or citercorr)
+        datum_itercorr = (xitercorr or yitercorr or aitercorr or citercorr)
         if datum_itercorr:
             have_corr_dependence = True
-        join_corr = datum_itercorr and not options.iter_corr
 
         # do we iterate over correlations to make separate plots now?
         if datum_itercorr and options.iter_corr:
@@ -404,9 +418,11 @@ def main(argv):
         for corr in corr_list:
             plot_xcorr = corr if xcorr is None else xcorr  # False if no corr in datum, None if all, else set to iterant or to fixed value
             plot_ycorr = corr if ycorr is None else ycorr
+            plot_acorr = corr if acorr is None else acorr
             plot_ccorr = corr if ccorr is None else ccorr
             xdatum = DataAxis.register(xfunction, xcolumn, plot_xcorr, ms=ms, minmax=(xmin, xmax), subset=subset)
             ydatum = DataAxis.register(yfunction, ycolumn, plot_ycorr, ms=ms, minmax=(ymin, ymax),  subset=subset)
+            adatum = afunction and DataAxis.register(afunction, acolumn, plot_acorr, ms=ms,  subset=subset)
             cdatum = cfunction and DataAxis.register(cfunction, ccolumn, plot_ccorr, ms=ms,
                                                      minmax=(cmin, cmax), ncol=cnum, subset=subset)
 
@@ -436,6 +452,22 @@ def main(argv):
                 labels.append(xdatum.function)
             props['title'] = " ".join(titles)
             props['label'] = "_".join(labels)
+            # build up intensity label
+            if afunction:
+                titles, labels = [ared], [ared]
+                if acolumn and (acolumn != xcolumn or acolumn != ycolumn) and adatum.mapper.column is None:
+                    titles.append(acolumn)
+                    labels.append(col_to_label(acolumn))
+                if plot_acorr and (plot_acorr != plot_xcorr or plot_acorr != plot_ycorr):
+                    titles += describe_corr(plot_acorr)
+                    labels += describe_corr(plot_acorr)
+                titles += [adatum.mapper.fullname]
+                if adatum.function:
+                    labels.append(adatum.function)
+                props['alpha_title'] = " ".join(titles)
+                props['alpha_label'] = "_".join(labels)
+            else:
+                props['alpha_title'] = props['alpha_label'] = ''
             # build up color-by label
             if cfunction:
                 titles, labels = [], []
@@ -456,7 +488,7 @@ def main(argv):
             else:
                 props['color_title'] = props['color_label'] = ''
 
-            all_plots.append((props, xdatum, ydatum, cdatum))
+            all_plots.append((props, xdatum, ydatum, adatum, ared, cdatum))
             log.debug(f"adding plot for {props['title']}")
 
     join_corrs = not options.iter_corr and len(subset.corr) > 1 and have_corr_dependence
@@ -521,11 +553,12 @@ def main(argv):
     jobs = []
     executor = None
 
-    def render_single_plot(df, xdatum, ydatum, cdatum, pngname, title, xlabel, ylabel):
+    def render_single_plot(df, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel):
         """Renders a single plot. Make this a function since we might call it in parallel"""
         log.info(f": rendering {pngname}")
 
-        if shadeMS.create_plot(df, xdatum, ydatum, cdatum, options.xcanvas, options.ycanvas,
+        if shadeMS.create_plot(df, xdatum, ydatum, adatum, ared, cdatum,
+                               options.xcanvas, options.ycanvas,
                                cmap=cmap, bmap=bmap, dmap=dmap, normalize=options.normalize,
                                xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
                                bgcol='#'+options.bgcol.lstrip('#'),
@@ -546,8 +579,9 @@ def main(argv):
             keys['ant'] = ms.all_antenna[antenna]
 
         # now loop over plot types
-        for props, xdatum, ydatum, cdatum in all_plots:
+        for props, xdatum, ydatum, adatum, ared, cdatum in all_plots:
             keys.update(title=props['title'], label=props['label'],
+                        alphatitle=props['alpha_title'], alphalabel=props['alpha_label'],
                         colortitle=props['color_title'], colorlabel=props['color_label'],
                         xname=xdatum.mapper.fullname, yname=ydatum.mapper.fullname,
                         xunit=xdatum.mapper.unit, yunit=ydatum.mapper.unit)
@@ -567,12 +601,13 @@ def main(argv):
                 log.info(f'                 : created output directory {dirname}')
 
             if options.num_parallel < 2 or len(all_plots) < 2:
-                render_single_plot(df, xdatum, ydatum, cdatum, pngname, title, xlabel, ylabel)
+                render_single_plot(df, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel)
             else:
                 from concurrent.futures import ThreadPoolExecutor
                 executor = ThreadPoolExecutor(options.num_parallel)
                 log.info(f'                 : submitting job for {pngname}')
-                jobs.append(executor.submit(render_single_plot, df, xdatum, ydatum, cdatum, pngname, title, xlabel, ylabel))
+                jobs.append(executor.submit(render_single_plot, df, xdatum, ydatum, adatum, ared, cdatum,
+                                            pngname, title, xlabel, ylabel))
 
     # wait for jobs to finish
     if executor is not None:

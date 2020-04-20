@@ -16,6 +16,7 @@ import holoviews.operation.datashader
 import datashader.transfer_functions
 import numpy
 import pylab
+import textwrap
 import matplotlib.cm
 from ShadeMS import log
 
@@ -149,16 +150,6 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
         for label, value in zip(labels, values):
             ddf[label] = value
 
-        # from pandas.api.types import CategoricalDtype
-        # for axis in DataAxis.all_axes.values():
-        #     if axis.nlevels:
-        #         cat_type = CategoricalDtype(categories=range(axis.nlevels), ordered=True)
-        #         kw = {}
-        #         kw[axis.label+"_"] = cat_type
-        #         ddf.assign(**kw)
-        #
-        # ddf = dask_df.from_array(da.stack(values, axis=1), columns=labels)
-
         # now, are we iterating or concatenating? Make frame key accordingly
         dataframe_key = (fld if iter_field else None,
                          ddid if iter_spw else None,
@@ -194,8 +185,8 @@ except ImportError:
     cudf = None
 
 class count_integers(datashader.count_cat):
-    """Count of all elements in ``column``, grouped by value.
-    """
+    """Aggregator. Counts of all elements in ``column``, grouped by value of another column. Like datashader.count_cat,
+    but for normal columns."""
     _dshape = datashape.dshape(datashape.coretypes.int32)
 
     def __init__(self, column, modulo):
@@ -226,21 +217,66 @@ class count_integers(datashader.count_cat):
             return xarray.DataArray(bases[0], dims=dims, coords=coords)
         return finalize
 
-class count_cat(datashader.count_cat):
-    """Redefine here just so we can print during debugging..."""
-    @staticmethod
-    @ngjit
-    def _append(x, y, agg, field):
-#        print(x,y,field)
-        agg[y, x, int(field)] += 1
+## misconceived and misbegotten, forget for now
+# class extract_multi(datashader.reductions.category_values):
+#     """Extract multiple columns from a dataframe as a numpy array of values. Like datashader.category_values,
+#     but with two columns."""
+#     def apply(self, df):
+#         if cudf and isinstance(df, cudf.DataFrame):
+#             import cupy
+#             cols = []
+#             for column in self.columns:
+#                 nullval = numpy.nan if df[self.columns[1]].dtype.kind == 'f' else 0
+#                 cols.append(df[self.columns[0]].to_gpu_array(fillna=nullval))
+#             return cupy.stack(cols, axis=-1)
+#         else:
+#             return numpy.stack([df[col].values for col in self.columns], axis=-1)
+#
+# class by_integers(datashader.by):
+#     """Like datashader.by,
+#     but for normal columns."""
+#     def __init__(self, cat_column, reduction, modulo):
+#         super().__init__(cat_column, reduction)
+#         self.modulo = modulo
+#
+#     def validate(self, in_dshape):
+#         if not self.cat_column in in_dshape.dict:
+#             raise ValueError("specified column not found")
+#
+#         self.reduction.validate(in_dshape)
+#
+#     def out_dshape(self, input_dshape):
+#         cats = list(range(self.modulo))
+#         red_shape = self.reduction.out_dshape(input_dshape)
+#         return datashape.util.dshape(datashape.Record([(c, red_shape) for c in cats]))
+#
+#     @property
+#     def inputs(self):
+#         if self.val_column is not None:
+#             return (extract_multi(self.columns),)
+#         else:
+#             return (datashader.reductions.extract(self.columns[0]),)
+#
+#     def _build_finalize(self, dshape):
+#         def finalize(bases, cuda=False, **kwargs):
+#             dims = kwargs['dims'] + [self.cat_column]
+#
+#             coords = kwargs['coords']
+#             coords[self.cat_column] = list(range(self.modulo))
+#             return xarray.DataArray(bases[0], dims=dims, coords=coords)
+#
+#         return finalize
 
-def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, normalize,
+
+
+def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, normalize,
                 xlabel, ylabel, title, pngname, bgcol, fontsize, figx=24, figy=12):
 
     xaxis = xdatum.label
     yaxis = ydatum.label
+    aaxis = adatum and adatum.label
     caxis = cdatum and cdatum.label
-    color_key = ncolors = color_mapping = color_labels = None
+    color_key = ncolors = color_mapping = color_labels = agg_alpha = raster_alpha = None
 
     xmin, xmax = xdatum.minmax
     ymin, ymax = ydatum.minmax
@@ -249,15 +285,28 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
                                x_range=[xmin, xmax] if xmin is not None else None,
                                y_range=[ymin, ymax] if ymin is not None else None)
 
+    if aaxis is not None:
+        agg_alpha = getattr(datashader.reductions, ared, None)
+        if agg_alpha is None:
+            raise ValueError(f"unknown alpha reduction function {ared}")
+        agg_alpha = agg_alpha(aaxis)
+    ared = ared or 'count'
+
     if cdatum is not None:
+        if agg_alpha is not None:
+            log.debug(f'rasterizing alpha channel using {ared}')
+            raster_alpha = canvas.points(ddf, xaxis, yaxis, agg=agg_alpha)
+
         if data_mappers.USE_COUNT_CAT:
             color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
-            log.debug(f'making raster with count_cat, {len(color_bins)} bins')
-            raster = canvas.points(ddf, xaxis, yaxis, agg=count_cat(caxis))
+            log.debug(f'colourizing with count_cat, {len(color_bins)} bins')
+            agg = datashader.count_cat(caxis)
         else:
             color_bins = list(range(cdatum.nlevels))
-            log.debug(f'making raster with count_integer, {len(color_bins)} bins')
-            raster = canvas.points(ddf, xaxis, yaxis, agg=count_integers(caxis, cdatum.nlevels))
+            log.debug(f'colourizing with count_integer, {len(color_bins)} bins')
+            agg = count_integers(caxis, cdatum.nlevels)
+
+        raster = canvas.points(ddf, xaxis, yaxis, agg=agg)
         if not raster.data.any():
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
@@ -281,12 +330,17 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
             else:
                 color_labels = [str(bin) for bin, _ in bin_color]
             color_mapping = [col for _, col in bin_color]
-            log.info(f": shading using {ncolors} colors (values {' '.join(color_labels)})")
+            log.info(f": rendering using {ncolors} colors (values {' '.join(color_labels)})")
+        if raster_alpha is not None:
+            amin, amax = numpy.nanmin(raster_alpha), numpy.nanmax(raster_alpha)
+            raster = raster*(raster_alpha-amin)/(amax-amin)
         img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize)
+        # overwrite alpha channel
+
         rgb = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img))
     else:
-        log.debug('making raster')
-        raster = canvas.points(ddf, xaxis, yaxis)
+        log.debug(f'rasterizing using {ared}')
+        raster = canvas.points(ddf, xaxis, yaxis, agg=agg_alpha)
         if not raster.data.any():
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
@@ -317,7 +371,7 @@ def create_plot(ddf, xdatum, ydatum, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, 
     ax = fig.add_subplot(111, facecolor=bgcol)
     ax.imshow(X=rgb.data, extent=[data_xmin, data_xmax, data_ymin, data_ymax],
               aspect='auto', origin='lower')
-    ax.set_title(title,loc='left')
+    ax.set_title("\n".join(textwrap.wrap(title, 90)), loc='left')
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     # ax.plot(xmin,ymin,'.',alpha=0.0)
