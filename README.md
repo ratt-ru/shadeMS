@@ -60,18 +60,12 @@ $ shadems <msname>
 * To change the plot axes you can provide selections via the `--xaxis` / `--yaxis` (or `-x` / `-y`) options. Existing Measurement Set columns (e.g. `DATA`, `CORRECTED_DATA`, `TIME`) as well as standard subsets and derivatives and (e.g. `CHAN`, `FREQ`, `U`, `V`) can be provided. Note the capitalised convention. 
 
 ```
-$ shadems --xaxis FREQ --yaxis DATA <msname>
+$ shadems --xaxis FREQ --yaxis DATA:amp <msname>
 ```
 
 ### Sergeant Colon 
 
-* For complex-valued columns a single component (`amp`, `phase`, `real` or `imag`) can be provided using the colon delimiter, as follows:
-
-```
-$ shadems --xaxis FREQ --yaxis DATA:amp <msname>
-```
-
-* You can also use the colon delimiter to specify a correlation product:
+* For complex-valued columns such as in the `DATA` example above, a single component (`amp`, `phase`, `real` or `imag`) must be provided using the colon delimiter. You can also use the colon delimiter to specify a correlation product:
 
 ```
 $ shadems --xaxis FREQ --yaxis DATA:amp:XX <msname>
