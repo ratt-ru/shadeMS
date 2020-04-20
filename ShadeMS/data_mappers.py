@@ -190,8 +190,11 @@ class DataAxis(object):
         elif column == "ANTENNA1" or column == "ANTENNA2":
             self.discretized_labels = [name for name in ms.all_antenna.names if name in subset.ant]
 
+        # axis name
+        self.fullname = self.mapper.fullname or column or ''
+
         # if labels were set up, adjust nlevels (but only down, never up)
-        if self.discretized_labels is not None:
+        if self.discretized_labels is not None and self.nlevels is not None:
             self.nlevels = min(len(self.discretized_labels), self.nlevels)
 
         if self.function == "_":

@@ -149,18 +149,23 @@ def main(argv):
 
     group_opts = parser.add_argument_group('Rendering settings')
 
-    group_opts.add_argument('--xcanvas', type=int,
+    group_opts.add_argument('-X', '--xcanvas', type=int,
                       help='Canvas x-size in pixels (default = %(default)s)', default=1280)
-    group_opts.add_argument('--ycanvas', type=int,
+    group_opts.add_argument('-Y', '--ycanvas', type=int,
                       help='Canvas y-size in pixels (default = %(default)s)', default=900)
     group_opts.add_argument('--norm', dest='normalize', choices=['eq_hist', 'cbrt', 'log', 'linear'],
                       help='Pixel scale normalization (default = %(default)s)', default='eq_hist')
-    group_opts.add_argument('--cmap',
-                      help='Colorcet map used without --color-by  (default = %(default)s)', default='bkr')
-    group_opts.add_argument('--bmap',
-                      help='Colorcet map used when coloring by a continuous axis (default = %(default)s)', default='bkr')
-    group_opts.add_argument('--dmap',
-                      help='Colorcet map used when coloring by a discrete axis (default = %(default)s)', default='glasbey_dark')
+    group_opts.add_argument('--cmap', default='bkr',
+                      help="""Colorcet map used without --color-by  (default = %(default)s), see
+                      https://colorcet.holoviz.org""")
+    group_opts.add_argument('--bmap', default='bkr',
+                      help='Colorcet map used when coloring by a continuous axis (default = %(default)s)')
+    group_opts.add_argument('--dmap', default='glasbey_dark',
+                      help='Colorcet map used when coloring by a discrete axis (default = %(default)s)')
+    group_opts.add_argument('--spread-pix', type=int, default=0, metavar="PIX",
+                      help="""Dynamically spread rendered pixels to this size""")
+    group_opts.add_argument('--spread-thr', type=float, default=0.5, metavar="THR",
+                      help="""Threshold parameter for spreading (0 to 1, default %(default)s)""")
     group_opts.add_argument('--bgcol', dest='bgcol',
                       help='RGB hex code for background colour (default = FFFFFF)', default='FFFFFF')
     group_opts.add_argument('--fontsize', dest='fontsize',
@@ -558,12 +563,9 @@ def main(argv):
         log.info(f": rendering {pngname}")
 
         if shadeMS.create_plot(df, xdatum, ydatum, adatum, ared, cdatum,
-                               options.xcanvas, options.ycanvas,
                                cmap=cmap, bmap=bmap, dmap=dmap, normalize=options.normalize,
                                xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
-                               bgcol='#'+options.bgcol.lstrip('#'),
-                               fontsize=options.fontsize,
-                               figx=options.xcanvas / 60, figy=options.ycanvas / 60):
+                               options=options):
             log.info(f'                 : wrote {pngname}')
 
     for (fld, spw, scan, antenna), df in dataframes.items():
@@ -583,7 +585,7 @@ def main(argv):
             keys.update(title=props['title'], label=props['label'],
                         alphatitle=props['alpha_title'], alphalabel=props['alpha_label'],
                         colortitle=props['color_title'], colorlabel=props['color_label'],
-                        xname=xdatum.mapper.fullname, yname=ydatum.mapper.fullname,
+                        xname=xdatum.fullname, yname=ydatum.fullname,
                         xunit=xdatum.mapper.unit, yunit=ydatum.mapper.unit)
 
             pngname = generate_string_from_keys(options.pngname, keys, "_", "_", "-")

@@ -269,8 +269,13 @@ class count_integers(datashader.count_cat):
 
 
 
-def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, xcanvas,ycanvas, cmap, bmap, dmap, normalize,
-                xlabel, ylabel, title, pngname, bgcol, fontsize, figx=24, figy=12):
+def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, normalize,
+                xlabel, ylabel, title, pngname,
+                options=None):
+
+    figx = options.xcanvas / 60
+    figy = options.ycanvas / 60
+    bgcol = "#" + options.bgcol.lstrip("#")
 
     xaxis = xdatum.label
     yaxis = ydatum.label
@@ -281,7 +286,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, xcanvas,ycanvas, cmap
     xmin, xmax = xdatum.minmax
     ymin, ymax = ydatum.minmax
 
-    canvas = datashader.Canvas(xcanvas, ycanvas,
+    canvas = datashader.Canvas(options.xcanvas, options.ycanvas,
                                x_range=[xmin, xmax] if xmin is not None else None,
                                y_range=[ymin, ymax] if ymin is not None else None)
 
@@ -336,9 +341,6 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, xcanvas,ycanvas, cmap
             raster = raster*(raster_alpha-amin)/(amax-amin)
             log.info(f": adjusting alpha (alpha raster was {amin} to {amax})")
         img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize)
-        # overwrite alpha channel
-
-        rgb = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img))
     else:
         log.debug(f'rasterizing using {ared}')
         raster = canvas.points(ddf, xaxis, yaxis, agg=agg_alpha)
@@ -347,7 +349,11 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, xcanvas,ycanvas, cmap
             return None
         log.debug('shading')
         img = datashader.transfer_functions.shade(raster, cmap=cmap, how=normalize)
-        rgb = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img))
+
+    if options.spread_pix:
+        img = datashader.transfer_functions.dynspread(img, options.spread_thr, max_px=options.spread_pix)
+        log.info(f": spreading ({options.spread_thr} {options.spread_pix})")
+    rgb = holoviews.RGB(holoviews.operation.datashader.shade.uint32_to_uint8_xr(img))
 
     log.debug('done')
 
@@ -384,7 +390,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, xcanvas,ycanvas, cmap
 
     # set fontsize on everything rendered so far
     for textobj in fig.findobj(match=match):
-        textobj.set_fontsize(fontsize)
+        textobj.set_fontsize(options.fontsize)
 
     # colorbar?
     if color_key:
@@ -407,7 +413,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, xcanvas,ycanvas, cmap
         if color_mapping is not None:
             rot = 0
             # adjust fontsize for number of labels
-            fs = max(fontsize*min(1, 32./len(color_labels)), 6)
+            fs = max(options.fontsize*min(1, 32./len(color_labels)), 6)
             fontdict = dict(fontsize=fs)
             if max([len(lbl) for lbl in color_labels]) > 3 and len(color_labels) < 8:
                 rot = 90
