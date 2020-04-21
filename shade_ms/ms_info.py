@@ -74,7 +74,7 @@ class MSInfo(object):
         self.field = NamedList("field", table(msname +'::FIELD', ack=False).getcol("NAME"))
         log and log.info(f":   {len(self.field)} fields: {' '.join(self.field.names)}")
 
-        scan_numbers = list(set(tab.getcol("SCAN_NUMBER")))
+        scan_numbers = sorted(set(tab.getcol("SCAN_NUMBER")))
         log and log.info(f":   {len(scan_numbers)} scans, first #{scan_numbers[0]}, last #{scan_numbers[-1]}")
         all_scans = NamedList("scan", list(map(str, range(scan_numbers[-1]+1))))
         self.scan = all_scans.get_subset(scan_numbers)
