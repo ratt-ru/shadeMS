@@ -231,8 +231,14 @@ def main(argv):
 
     # figure our list of plots to make
 
-    xaxes = list(itertools.chain(*[opt.split(",") for opt in options.xaxis]))
-    yaxes = list(itertools.chain(*[opt.split(",") for opt in options.yaxis]))
+    if not options.xaxis:
+        xaxes = ['TIME'] # Default xaxis if none is specified
+    else:
+        xaxes = list(itertools.chain(*[opt.split(",") for opt in options.xaxis]))
+    if not options.yaxis:
+        yaxes = ['DATA:amp'] # Default yaxis if none is specified
+    else:
+        yaxes = list(itertools.chain(*[opt.split(",") for opt in options.yaxis]))
 
     if len(xaxes) != len(yaxes):
         parser.error("--xaxis and --yaxis must be given the same number of times")
