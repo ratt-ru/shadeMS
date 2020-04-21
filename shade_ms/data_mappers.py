@@ -109,7 +109,7 @@ class DataAxis(object):
                 if re.fullmatch(r"\d+", spec):
                     corr1 = int(spec)
                 else:
-                    corr1 = ms.corr[spec] or (spec if spec in ms.stokes else None)
+                    corr1 = ms.all_corr[spec]
                     if corr1 is None:
                         raise ValueError(f"invalid axis specification '{axis_spec}'")
                 if corr is not None:
