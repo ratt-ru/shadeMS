@@ -329,10 +329,10 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
 
 
         raster = canvas.points(ddf, xaxis, yaxis, agg=agg)
-        if not raster.data.any():
+        non_empty = numpy.array(raster.any(axis=(0, 1)))
+        if not non_empty.any():
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
-        ncolors = len(color_bins)
         # true if axis is continuous discretized
         if cdatum.discretized_delta is not None:
             # color labels are bin centres
@@ -340,11 +340,15 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             # map to colors pulled from 256 color map
             color_key = [bmap[(i*256)//cdatum.nlevels] for i in color_bins]
             color_labels = list(map(str, bin_centers))
-            log.info(f": shading using {ncolors} colors (bin centres are {' '.join(color_labels)})")
+            log.info(f": shading using {len(color_bins)} colors (bin centres are {' '.join(color_labels)})")
         # else a discrete axis
         else:
+            # discard empty bins
+            non_empty = numpy.where(non_empty)[0]
+            raster = raster[..., non_empty]
             # just use bin numbers to look up a color directly
-            color_key = [dmap[i] for i in color_bins]
+            color_bins = [color_bins[i] for i in non_empty]
+            color_key = [dmap[bin] for bin in color_bins]
             # the numbers may be out of order -- reorder for color bar purposes
             bin_color = sorted(zip(color_bins, color_key))
             if cdatum.discretized_labels and len(cdatum.discretized_labels) <= cdatum.nlevels:
@@ -352,7 +356,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             else:
                 color_labels = [str(bin) for bin, _ in bin_color]
             color_mapping = [col for _, col in bin_color]
-            log.info(f": rendering using {ncolors} colors (values {' '.join(color_labels)})")
+            log.info(f": rendering using {len(color_bins)} colors (values {' '.join(color_labels)})")
         if raster_alpha is not None:
             amin, amax = numpy.nanmin(raster_alpha), numpy.nanmax(raster_alpha)
             raster = raster*(raster_alpha-amin)/(amax-amin)
@@ -414,8 +418,8 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         import matplotlib.colors
         # discrete axis
         if color_mapping is not None:
-            norm = matplotlib.colors.Normalize(-0.5, ncolors-0.5)
-            ticks = numpy.arange(ncolors)
+            norm = matplotlib.colors.Normalize(-0.5, len(color_bins)-0.5)
+            ticks = numpy.arange(len(color_bins))
             colormap = matplotlib.colors.ListedColormap(color_mapping)
         # discretized axis
         else:
