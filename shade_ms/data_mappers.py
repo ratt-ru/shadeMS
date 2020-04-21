@@ -6,7 +6,7 @@ import math
 import re
 import argparse
 from collections import OrderedDict
-from ShadeMS import log
+from shade_ms import log
 
 USE_COUNT_CAT = 0
 COUNT_DTYPE = numpy.int16
@@ -109,7 +109,7 @@ class DataAxis(object):
                 if re.fullmatch(r"\d+", spec):
                     corr1 = int(spec)
                 else:
-                    corr1 = ms.corr[spec]
+                    corr1 = ms.corr[spec] or (spec if spec in ms.stokes else None)
                     if corr1 is None:
                         raise ValueError(f"invalid axis specification '{axis_spec}'")
                 if corr is not None:
@@ -180,11 +180,21 @@ class DataAxis(object):
         self.mapper = data_mappers[function]
 
         # columns with labels?
-        if function == 'CORR':
+        if function == 'CORR' or function == 'STOKES':
+            corrset = set(subset.corr.names)
+            corrset1 = corrset - set("IQUV")
+            if corrset1 == corrset:
+                name = "Correlation"
+            elif not corrset1:
+                name = "Stokes"
+            else:
+                name = "Correlation or Stokes"
             # special case of "corr" if corr is fixed: return constant value fixed here
+            # When corr is fixed, we're creating a mapper for a know correlation. When corr is not fixed,
+            # we're creating one for a mapper that will iterate over correlations
             if corr is not None:
-                self.mapper = DataMapper("Correlation", "", column=False, axis=-1, mapper=lambda x: corr)
-            self.discretized_labels = [name for name in ms.corr.names if name in subset.corr]
+                self.mapper = DataMapper(name, "", column=False, axis=-1, mapper=lambda x: corr)
+            self.discretized_labels = subset.corr.names
         elif column == "FIELD_ID":
             self.discretized_labels = [name for name in ms.field.names if name in subset.field]
         elif column == "ANTENNA1" or column == "ANTENNA2":

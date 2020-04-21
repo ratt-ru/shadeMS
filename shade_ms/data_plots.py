@@ -17,12 +17,24 @@ import datashader.transfer_functions
 import numpy
 import pylab
 import textwrap
+import argparse
 import matplotlib.cm
-from ShadeMS import log
+from shade_ms import log
 
 from collections import OrderedDict
 from . import data_mappers
 from .data_mappers import DataAxis
+
+
+USE_REDUCE_BY = False
+
+def add_options(parser):
+    parser.add_argument('--reduce-by',  action="store_true", help=argparse.SUPPRESS)
+
+def set_options(options):
+    global USE_REDUCE_BY
+    USE_REDUCE_BY = options.reduce_by
+
 
 def freq_to_wavel(ff):
     c = 299792458.0  # m/s
@@ -217,56 +229,54 @@ class count_integers(datashader.count_cat):
             return xarray.DataArray(bases[0], dims=dims, coords=coords)
         return finalize
 
-## misconceived and misbegotten, forget for now
-# class extract_multi(datashader.reductions.category_values):
-#     """Extract multiple columns from a dataframe as a numpy array of values. Like datashader.category_values,
-#     but with two columns."""
-#     def apply(self, df):
-#         if cudf and isinstance(df, cudf.DataFrame):
-#             import cupy
-#             cols = []
-#             for column in self.columns:
-#                 nullval = numpy.nan if df[self.columns[1]].dtype.kind == 'f' else 0
-#                 cols.append(df[self.columns[0]].to_gpu_array(fillna=nullval))
-#             return cupy.stack(cols, axis=-1)
-#         else:
-#             return numpy.stack([df[col].values for col in self.columns], axis=-1)
-#
-# class by_integers(datashader.by):
-#     """Like datashader.by,
-#     but for normal columns."""
-#     def __init__(self, cat_column, reduction, modulo):
-#         super().__init__(cat_column, reduction)
-#         self.modulo = modulo
-#
-#     def validate(self, in_dshape):
-#         if not self.cat_column in in_dshape.dict:
-#             raise ValueError("specified column not found")
-#
-#         self.reduction.validate(in_dshape)
-#
-#     def out_dshape(self, input_dshape):
-#         cats = list(range(self.modulo))
-#         red_shape = self.reduction.out_dshape(input_dshape)
-#         return datashape.util.dshape(datashape.Record([(c, red_shape) for c in cats]))
-#
-#     @property
-#     def inputs(self):
-#         if self.val_column is not None:
-#             return (extract_multi(self.columns),)
-#         else:
-#             return (datashader.reductions.extract(self.columns[0]),)
-#
-#     def _build_finalize(self, dshape):
-#         def finalize(bases, cuda=False, **kwargs):
-#             dims = kwargs['dims'] + [self.cat_column]
-#
-#             coords = kwargs['coords']
-#             coords[self.cat_column] = list(range(self.modulo))
-#             return xarray.DataArray(bases[0], dims=dims, coords=coords)
-#
-#         return finalize
+class extract_multi(datashader.reductions.category_values):
+    """Extract multiple columns from a dataframe as a numpy array of values. Like datashader.category_values,
+    but with two columns."""
+    def apply(self, df):
+        if cudf and isinstance(df, cudf.DataFrame):
+            import cupy
+            cols = []
+            for column in self.columns:
+                nullval = numpy.nan if df[self.columns[1]].dtype.kind == 'f' else 0
+                cols.append(df[self.columns[0]].to_gpu_array(fillna=nullval))
+            return cupy.stack(cols, axis=-1)
+        else:
+            return numpy.stack([df[col].values for col in self.columns], axis=-1)
 
+class by_integers(datashader.by):
+    """Like datashader.by,
+    but for normal columns."""
+    def __init__(self, cat_column, reduction, modulo):
+        super().__init__(cat_column, reduction)
+        self.modulo = modulo
+
+    def validate(self, in_dshape):
+        if not self.cat_column in in_dshape.dict:
+            raise ValueError("specified column not found")
+
+        self.reduction.validate(in_dshape)
+
+    def out_dshape(self, input_dshape):
+        cats = list(range(self.modulo))
+        red_shape = self.reduction.out_dshape(input_dshape)
+        return datashape.util.dshape(datashape.Record([(c, red_shape) for c in cats]))
+
+    @property
+    def inputs(self):
+        if self.val_column is not None:
+            return (extract_multi(self.columns),)
+        else:
+            return (datashader.reductions.extract(self.columns[0]),)
+
+    def _build_finalize(self, dshape):
+        def finalize(bases, cuda=False, **kwargs):
+            dims = kwargs['dims'] + [self.cat_column]
+
+            coords = kwargs['coords']
+            coords[self.cat_column] = list(range(self.modulo))
+            return xarray.DataArray(bases[0], dims=dims, coords=coords)
+
+        return finalize
 
 
 def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, normalize,
@@ -298,18 +308,25 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     ared = ared or 'count'
 
     if cdatum is not None:
-        if agg_alpha is not None:
+        if agg_alpha is not None and not USE_REDUCE_BY:
             log.debug(f'rasterizing alpha channel using {ared}(aaxis)')
             raster_alpha = canvas.points(ddf, xaxis, yaxis, agg=agg_alpha)
 
         if data_mappers.USE_COUNT_CAT:
             color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
             log.debug(f'colourizing with count_cat, {len(color_bins)} bins')
-            agg = datashader.count_cat(caxis)
+            if USE_REDUCE_BY and agg_alpha:
+                agg = datashader.by(caxis, agg_alpha)
+            else:
+                agg = datashader.count_cat(caxis)
         else:
             color_bins = list(range(cdatum.nlevels))
             log.debug(f'colourizing with count_integer, {len(color_bins)} bins')
-            agg = count_integers(caxis, cdatum.nlevels)
+            if USE_REDUCE_BY and agg_alpha:
+                agg = by_integers(caxis, agg_alpha, cdatum.nlevels)
+            else:
+                agg = count_integers(caxis, cdatum.nlevels)
+
 
         raster = canvas.points(ddf, xaxis, yaxis, agg=agg)
         if not raster.data.any():

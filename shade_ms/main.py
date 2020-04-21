@@ -9,7 +9,7 @@ import numpy
 import datetime
 import os
 import pkg_resources
-import ShadeMS
+import shade_ms
 import time
 import logging
 import itertools
@@ -20,12 +20,12 @@ from _collections import OrderedDict
 
 import argparse
 
-from . import shadeMS, data_mappers
+from . import data_plots, data_mappers
 
 from .data_mappers import DataAxis, col_to_label
 from .ms_info import MSInfo
 
-from ShadeMS import log, blank
+from shade_ms import log, blank
 
 try:
     __version__ = pkg_resources.require("shadems")[0].version
@@ -63,7 +63,8 @@ def main(argv):
                       help="""X axis of plot, e.g. "amp:CORRECTED_DATA" This recognizes all column names (also CHAN, FREQ, 
                       CORR, ROW, WAVEL, U, V, W, UV), and, for complex columns, keywords such as 'amp', 'phase', 'real', 'imag'. You can also 
                       specify correlations, e.g. 'DATA:phase:XX', and do two-column arithmetic with "+-*/", e.g. 
-                      'DATA-MODEL_DATA:amp'. The order of specifiers does not matter.
+                      'DATA-MODEL_DATA:amp'. Correlations may be specified by label, number, or as a Stokes parameter.
+                      The order of specifiers does not matter.
                       """)
                       
     group_opts.add_argument('-y', '--yaxis', dest='yaxis', action="append",
@@ -126,7 +127,7 @@ def main(argv):
     group_opts.add_argument('--iter-scan', action="store_true",
                       help='Separate plots per scan (default is to combine in one plot)')
     group_opts.add_argument('--iter-corr', action="store_true",
-                      help='Separate plots per correlation (default is to combine in one plot)')
+                      help='Separate plots per correlation or Stokes (default is to combine in one plot)')
 
     group_opts = parser.add_argument_group('Data subset selection')
 
@@ -143,7 +144,7 @@ def main(argv):
     group_opts.add_argument('--scan', default='all',
                       help='Scans to plot (comma-separated list, default = all)')
     group_opts.add_argument('--corr',  default='all',
-                      help='Correlations to plot, use indices or labels (comma-separated list, default is 0)')
+                      help='Correlations or Stokes to plot, use indices or labels (comma-separated list, default = all)')
     group_opts.add_argument('--chan',
                       help='Channel slice, as [start]:[stop][:step], default is to plot all channels')
 
@@ -153,8 +154,8 @@ def main(argv):
                       help='Canvas x-size in pixels (default = %(default)s)', default=1280)
     group_opts.add_argument('-Y', '--ycanvas', type=int,
                       help='Canvas y-size in pixels (default = %(default)s)', default=900)
-    group_opts.add_argument('--norm', dest='normalize', choices=['eq_hist', 'cbrt', 'log', 'linear'],
-                      help='Pixel scale normalization (default = %(default)s)', default='eq_hist')
+    group_opts.add_argument('--norm', choices=['auto', 'eq_hist', 'cbrt', 'log', 'linear'], default='auto',
+                      help="Pixel scale normalization (default is 'log' when colouring, and 'eq_hist' when not)")
     group_opts.add_argument('--cmap', default='bkr',
                       help="""Colorcet map used without --color-by  (default = %(default)s), see
                       https://colorcet.holoviz.org""")
@@ -205,6 +206,7 @@ def main(argv):
 
     # various hidden performance-testing options
     data_mappers.add_options(group_opts)
+    data_plots.add_options(group_opts)
 
     options = parser.parse_args(argv)
 
@@ -221,10 +223,11 @@ def main(argv):
     options.ms = options.ms.rstrip('/')
 
     if options.debug:
-        ShadeMS.log_console_handler.setLevel(logging.DEBUG)
+        shade_ms.log_console_handler.setLevel(logging.DEBUG)
 
-    # pass options to ShadeMS
+    # pass options to shade_ms
     data_mappers.set_options(options)
+    data_plots.set_options(options)
 
     # figure our list of plots to make
 
@@ -376,8 +379,15 @@ def main(argv):
 
     mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else ''
 
-    subset.corr = ms.corr.get_subset(options.corr)
-    log.info(f"Correlation(s)   : {' '.join(subset.corr.names)}")
+    options.corr = options.corr.upper()
+    if options.corr == "ALL":
+        subset.corr = ms.corr
+    else:
+        # recognize shortcut when it's just Stokes indices, convert to list
+        if re.fullmatch(r"[IQUV]+", options.corr):
+            options.corr = ",".join(options.corr)
+        subset.corr = ms.all_corr.get_subset(options.corr)
+    log.info(f"Corr/Stokes      : {' '.join(subset.corr.names)}")
 
     blank()
 
@@ -405,7 +415,7 @@ def main(argv):
         if datum_itercorr:
             have_corr_dependence = True
 
-        # do we iterate over correlations to make separate plots now?
+        # do we iterate over correlations/Stokes to make separate plots now?
         if datum_itercorr and options.iter_corr:
             corr_list = subset.corr.numbers
         else:
@@ -506,13 +516,13 @@ def main(argv):
     log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join subset.corr is {join_corrs}")
 
     dataframes, np = \
-        shadeMS.get_plot_data(ms, group_cols, mytaql, ms.chan_freqs,
-                              chanslice=chanslice, subset=subset,
-                              noflags=options.noflags, noconj=options.noconj,
-                              iter_field=options.iter_field, iter_spw=options.iter_spw,
-                              iter_scan=options.iter_scan,
-                              join_corrs=join_corrs,
-                              row_chunk_size=options.row_chunk_size)
+        data_plots.get_plot_data(ms, group_cols, mytaql, ms.chan_freqs,
+                                 chanslice=chanslice, subset=subset,
+                                 noflags=options.noflags, noconj=options.noconj,
+                                 iter_field=options.iter_field, iter_spw=options.iter_spw,
+                                 iter_scan=options.iter_scan,
+                                 join_corrs=join_corrs,
+                                 row_chunk_size=options.row_chunk_size)
 
     log.info(f": rendering {len(dataframes)} dataframes with {np:.3g} points into {len(all_plots)} plot types")
 
@@ -561,11 +571,13 @@ def main(argv):
     def render_single_plot(df, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel):
         """Renders a single plot. Make this a function since we might call it in parallel"""
         log.info(f": rendering {pngname}")
-
-        if shadeMS.create_plot(df, xdatum, ydatum, adatum, ared, cdatum,
-                               cmap=cmap, bmap=bmap, dmap=dmap, normalize=options.normalize,
-                               xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
-                               options=options):
+        normalize = options.norm
+        if normalize == "auto":
+            normalize = "log" if cdatum is not None else "eq_hist"
+        if data_plots.create_plot(df, xdatum, ydatum, adatum, ared, cdatum,
+                                  cmap=cmap, bmap=bmap, dmap=dmap, normalize=normalize,
+                                  xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
+                                  options=options):
             log.info(f'                 : wrote {pngname}')
 
     for (fld, spw, scan, antenna), df in dataframes.items():
