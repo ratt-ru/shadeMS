@@ -47,8 +47,9 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                   join_corrs=False,
                   row_chunk_size=100000):
 
-    ms_cols = {'FLAG', 'FLAG_ROW', 'ANTENNA1', 'ANTENNA2'}
-
+    ms_cols = {'ANTENNA1', 'ANTENNA2'}
+    if not noflags:
+        ms_cols.update({'FLAG', 'FLAG_ROW'})
     # get visibility columns
     for axis in DataAxis.all_axes.values():
         ms_cols.update(axis.columns)
@@ -83,11 +84,8 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
         antenna = None
 
         # always read flags -- easier that way
-        flag = group.FLAG
-        flag_row = group.FLAG_ROW
-        if noflags:
-            flag = da.zeros_like(flag)
-            flag_row = da.zeros_like(flag_row)
+        flag = group.FLAG if not noflags else None
+        flag_row = group.FLAG_ROW if not noflags else None
 
         baselines = numpy.array([msinfo.baseline_numbering[p,q] for p,q in zip(group.ANTENNA1.values,
                                                                                group.ANTENNA2.values)])
@@ -96,8 +94,11 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
         wavel = freq_to_wavel(freqs)
         extras = dict(chans=chans, freqs=freqs, wavel=wavel, rows=group.row, baselines=baselines)
 
-        flag = flag[dict(chan=chanslice)]
-        shape = flag.shape[:-1]
+        nchan = len(group.chan)
+        if flag is not None:
+            flag = flag[dict(chan=chanslice)]
+            nchan = flag.shape[1]
+        shape = (len(group.row), nchan)
 
         datums = OrderedDict()
 

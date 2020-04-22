@@ -48,6 +48,7 @@ _identity = lambda x:x
 data_mappers = OrderedDict(
     _     = DataMapper("", "", _identity),
     amp   = DataMapper("Amplitude", "", abs),
+    logamp = DataMapper("Log-amplitude", "", lambda x:da.log10(abs(x))),
     phase = DataMapper("Phase", "deg", lambda x:da.arctan2(da.imag(x), da.real(x))*180/math.pi),
     real  = DataMapper("Real", "", da.real),
     imag  = DataMapper("Imag", "", da.imag),
@@ -199,6 +200,8 @@ class DataAxis(object):
             self.discretized_labels = [name for name in ms.field.names if name in subset.field]
         elif column == "ANTENNA1" or column == "ANTENNA2":
             self.discretized_labels = [name for name in ms.all_antenna.names if name in subset.ant]
+        elif column == "FLAG" or column == "FLAG_ROW":
+            self.discretized_labels = ["F", "T"]
 
         # axis name
         self.fullname = self.mapper.fullname or column or ''
@@ -272,17 +275,17 @@ class DataAxis(object):
             if type(coldata) is xarray.DataArray and 'chan' in coldata.dims:
                 coldata = coldata[dict(chan=chanslice)]
             # determine flags -- start with original flags
-            if coldata.ndim == 2:
-                flag = self.ms.corr_flag_mappers[corr](flag)
-            elif coldata.ndim == 1:
-                if not self.mapper.axis:
-                    flag = flag_row
-                elif self.mapper.axis == 1:
-                    flag = da.zeros_like(coldata, bool)
-            # shapes must now match
-            if coldata.shape != flag.shape:
-                raise TypeError(f"{self.name}: unexpected column shape")
-        x0, x1 = self.minmax
+            if flag is not None:
+                if coldata.ndim == 2:
+                    flag = self.ms.corr_flag_mappers[corr](flag)
+                elif coldata.ndim == 1:
+                    if not self.mapper.axis:
+                        flag = flag_row
+                    elif self.mapper.axis == 1:
+                        flag = None
+                # shapes must now match
+                if flag is not None and coldata.shape != flag.shape:
+                    raise TypeError(f"{self.name}: unexpected column shape")
         # discretize
         if self.nlevels:
             # minmax set? discretize over that
@@ -290,15 +293,14 @@ class DataAxis(object):
                 coldata = da.floor((coldata - self.minmax[0])/self.discretized_delta)
                 coldata = da.minimum(da.maximum(coldata, 0), self.nlevels-1).astype(COUNT_DTYPE)
             else:
-                if not numpy.issubdtype(coldata.dtype, numpy.integer):
-                    raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
-                coldata = da.remainder(coldata, self.nlevels).astype(COUNT_DTYPE)
-        # # else just apply clipping # NB no longer needed as we set the canvas correctly
-        # else:
-        #     if x0 is not None:
-        #         flag = da.logical_or(flag, coldata<self.minmax[0])
-        #     if x1 is not None:
-        #         flag = da.logical_or(flag, coldata>self.minmax[1])
-        # return masked array
-        return dama.masked_array(coldata, flag)
+                if coldata.dtype is bool:
+                    if not numpy.issubdtype(coldata.dtype, numpy.integer):
+                        raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
+                    coldata = da.remainder(coldata, self.nlevels).astype(COUNT_DTYPE)
+
+        if flag is not None:
+            flag |= ~da.isfinite(coldata)
+            return dama.masked_array(coldata, flag)
+        else:
+            return dama.masked_array(coldata, ~da.isfinite(coldata))
 

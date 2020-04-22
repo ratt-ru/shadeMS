@@ -420,6 +420,10 @@ def main(argv):
         datum_itercorr = (xitercorr or yitercorr or aitercorr or citercorr)
         if datum_itercorr:
             have_corr_dependence = True
+        if "FLAG" in (xcolumn, ycolumn, acolumn, ccolumn) or "FLAG_ROW" in (xcolumn, ycolumn, acolumn, ccolumn):
+            if not options.noflags:
+                log.info(": plotting a flag column implies that flagged data will not be masked")
+                options.noflags = True
 
         # do we iterate over correlations/Stokes to make separate plots now?
         if datum_itercorr and options.iter_corr:
@@ -498,7 +502,8 @@ def main(argv):
                 if plot_ccorr and (plot_ccorr != plot_xcorr or plot_ccorr != plot_ycorr):
                     titles += describe_corr(plot_ccorr)
                     labels += describe_corr(plot_ccorr)
-                titles += [cdatum.mapper.fullname]
+                if cdatum.mapper.fullname:
+                    titles.append(cdatum.mapper.fullname)
                 if cdatum.function:
                     labels.append(cdatum.function)
                 if not cdatum.discretized_delta:
