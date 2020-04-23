@@ -175,12 +175,9 @@ $ shadems --xaxis U --yaxis V --colour-by CORRECTED_DATA:amp:XX --cmin 0 --cmax 
 ---
 
 ## Full list of arguments
-=======
-Rapid Measurement Set plotting with dask-ms and datashader.
->>>>>>> origin/master
 
 ```
-Rapid Measurement Set plotting with dask-ms and datashader. Version 0.1.0
+Rapid Measurement Set plotting with dask-ms and datashader. Version 0.2.0
 
 positional arguments:
   ms                    Measurement set
@@ -188,7 +185,6 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   -v, --version         show program's version number and exit
-<<<<<<< HEAD
 
 Plot types and data sources:
   -x XAXIS, --xaxis XAXIS
@@ -206,7 +202,7 @@ Plot types and data sources:
                         as --xaxis. Note that X/Y can employ different columns
                         and correlations.
   -a AAXIS, --aaxis AAXIS
-                        Intennsity axis. Can be none, or given once, or given
+                        Intensity axis. Can be none, or given once, or given
                         the same number of times as --xaxis. If none, plot
                         intensity (a.k.a. alpha channel) is proportional to
                         density of points. Otherwise, a reduction function
@@ -221,13 +217,13 @@ Plot types and data sources:
   -C COLUMN, --col COLUMN
                         Name of visibility column (default is DATA), if
                         needed. This is used if the axis specifications do not
-                        explicitly include a column. For multiple plots, thuis
+                        explicitly include a column. For multiple plots, this
                         can be given multiple times, or as a comma-separated
                         list. Two-column arithmetic is recognized.
   --noflags             Enable to ignore flags. Default is to omit flagged
                         data.
   --noconj              Do not show conjugate points in u,v plots (default =
-                        plot conjugates)
+                        plot conjugates).
 
 Plot axes setup:
   --xmin XMIN           Minimum x-axis value (default = data min). For
@@ -237,46 +233,17 @@ Plot axes setup:
                         last applicable setting will be used. The list may
                         include empty elements (or 'None') to not apply a
                         clip.
-  --xmax XMAX           Maximum x-axis value (default = data max)
-  --ymin YMIN           Minimum y-axis value (default = data min)
-  --ymax YMAX           Maximum y-axis value (default = data max)
+  --xmax XMAX           Maximum x-axis value (default = data max).
+  --ymin YMIN           Minimum y-axis value (default = data min).
+  --ymax YMAX           Maximum y-axis value (default = data max).
   --cmin CMIN           Minimum colouring value. Must be supplied for every
-                        non-discrete axis to be coloured by
+                        non-discrete axis to be coloured by.
   --cmax CMAX           Maximum colouring value. Must be supplied for every
-                        non-discrete axis to be coloured by
+                        non-discrete axis to be coloured by.
   --cnum CNUM           Number of steps used to discretize a continuous axis.
                         Default is 16.
 
 Options for multiple plots or combined plots:
-=======
-  -d, --debug           Enable debugging output
-
-Data selection:
-  -x XAXIS, --xaxis XAXIS
-                        X axis of plot. Use [t]ime, [f]requency, [c]hannels,
-                        [u], [v], [uv]distance, [r]eal, [i]mag, [a]mplitude,
-                        [p]hase. For multiple plots, use comma-separated list,
-                        or specify multiple times for multiple plots.
-  -y YAXIS, --yaxis YAXIS
-                        Y axis to plot. Must be given the same number of times
-                        as --xaxis.
-  -c COL, --col COL     Name of visibility column (default is DATA), if
-                        needed. You can also employ 'D-M', 'C-M', 'D/M', 'C/M'
-                        for various combinations of data, corrected and model.
-                        Can use multiple times, or use comma-separated list,
-                        for multiple plots (or else specify it just once).
-  --antenna MYANTS      Antenna(s) to plot (comma-separated list, default =
-                        all)
-  --spw MYSPWS          Spectral windows (DDIDs) to plot (comma-separated
-                        list, default = all)
-  --field MYFIELDS      Field ID(s) to plot (comma-separated list, default =
-                        all)
-  --scan MYSCANS        Scans to plot (comma-separated list, default = all)
-  --corr CORR           Correlations to plot, use indices or labels (comma-
-                        separated list, default is 0)
-
-Plot settings:
->>>>>>> origin/master
   --iter-field          Separate plots per field (default is to combine in one
                         plot)
   --iter-antenna        Separate plots per antenna (default is to combine in
@@ -285,7 +252,6 @@ Plot settings:
                         plot)
   --iter-scan           Separate plots per scan (default is to combine in one
                         plot)
-<<<<<<< HEAD
   --iter-corr           Separate plots per correlation or Stokes (default is
                         to combine in one plot)
 
@@ -314,11 +280,11 @@ Rendering settings:
   --norm {auto,eq_hist,cbrt,log,linear}
                         Pixel scale normalization (default is 'log' when
                         colouring, and 'eq_hist' when not)
-  --cmap CMAP           Colorcet map used without --color-by (default = bkr),
+  --cmap CMAP           Colorcet map used without --colour-by (default = bkr),
                         see https://colorcet.holoviz.org
-  --bmap BMAP           Colorcet map used when coloring by a continuous axis
+  --bmap BMAP           Colorcet map used when colouring by a continuous axis
                         (default = bkr)
-  --dmap DMAP           Colorcet map used when coloring by a discrete axis
+  --dmap DMAP           Colorcet map used when colouring by a discrete axis
                         (default = glasbey_dark)
   --spread-pix PIX      Dynamically spread rendered pixels to this size
   --spread-thr THR      Threshold parameter for spreading (0 to 1, default
@@ -327,25 +293,29 @@ Rendering settings:
   --fontsize FONTSIZE   Font size for all text elements (default = 20)
 
 Output settings:
-  --dir DIR             send all plots to this output directory
-  --png PNGNAME         template for output png files, default "plot-{ms}{_fie
+  --dir DIR             Send all plots to this output directory
+  -s SUFFIX, --suffix SUFFIX
+                        suffix to be included in filenames, can include
+                        {options}
+  --png PNGNAME         Template for output png files, default "plot-{ms}{_fie
                         ld}{_Spw}{_Scan}{_Ant}-{label}{_alphalabel}{_colorlabe
-                        l}.png"
-  --title TITLE         template for plot titles, default "{ms}{_field}{_Spw}{
+                        l}{_suffix}.png"
+  --title TITLE         Template for plot titles, default "{ms}{_field}{_Spw}{
                         _Scan}{_Ant}{_title}{_Alphatitle}{_Colortitle}"
-  --xlabel XLABEL       template for X axis labels, default "{xname}{_xunit}"
-  --ylabel YLABEL       template for X axis labels, default "{yname}{_yunit}"
+  --xlabel XLABEL       Template for X axis labels, default "{xname}{_xunit}"
+  --ylabel YLABEL       Template for X axis labels, default "{yname}{_yunit}"
 
 Performance & tweaking:
   -d, --debug           Enable debugging output
   -z NROWS, --row-chunk-size NROWS
-                        row chunk size for dask-ms. Larger chunks may or may
+                        Row chunk size for dask-ms. Larger chunks may or may
                         not be faster, but will certainly use more RAM.
   -j N, --num-parallel N
-                        run up to N renderers in parallel. Default is serial.
+                        Run up to N renderers in parallel. Default is serial.
                         Use -j0 to auto-set this to half the available cores
-                        (3 on this system). This is not necessarily faster, as
-                        they might all end up contending for disk I/O. This
-                        might also work against sdask-ms's own intrinsic
+                        (36 on this system). This is not necessarily faster,
+                        as they might all end up contending for disk I/O. This
+                        might also work against dask-ms's own intrinsic
                         parallelism. You have been advised.
+  --profile             Enable dask profiling output
 ```
