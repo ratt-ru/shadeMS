@@ -17,3 +17,7 @@ log_console_handler.setFormatter(formatter)
 # add the handlers to the logger
 log.addHandler(log_file_handler)
 log.addHandler(log_console_handler)
+
+
+def blank():
+    log.info('------------------------------------------------------')
