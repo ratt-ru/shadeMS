@@ -449,7 +449,7 @@ def main(argv):
             elif corrvalue is False:
                 return []
             else:
-                return [ms.corr.names[corrvalue]]
+                return [ms.all_corr.names[corrvalue]]
 
         for corr in corr_list:
             plot_xcorr = corr if xcorr is None else xcorr  # False if no corr in datum, None if all, else set to iterant or to fixed value

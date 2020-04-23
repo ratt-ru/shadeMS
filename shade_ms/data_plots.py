@@ -89,7 +89,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
 
 
         baselines = group.ANTENNA1*len(msinfo.antenna) + group.ANTENNA2
-        
+
         freqs = chan_freqs[ddid]
         chans = xarray.DataArray(range(len(freqs)), dims=("chan",))
         wavel = freq_to_wavel(freqs)
