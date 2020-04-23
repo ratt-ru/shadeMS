@@ -122,8 +122,10 @@ class DataAxis(object):
                 function = "_"
             else:
                 raise ValueError(f"invalid axis specification '{axis_spec}'")
-        column = column or data_mappers[function].column or default_column
-        has_corr_axis = column.endswith("DATA") or column.endswith("SPECTRUM") or function == "corr"
+        # if mapper has a "False" column, it's a fake column...
+        mapper_column = data_mappers[function].column
+        column = (column or mapper_column or default_column) if mapper_column is not False else None
+        has_corr_axis = (column and (column.endswith("DATA") or column.endswith("SPECTRUM"))) or function == "CORR"
         if not has_corr_axis:
             if corr is not None:
                 raise ValueError(f"'{axis_spec}': can't specify correlation when column is '{column}'")
