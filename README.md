@@ -10,11 +10,11 @@ and plot customisation options.
 
 Some example shadeMS outputs (using a MeerKAT 4k channel dataset) are given below:
 
-| | | | |
-|-|-|-|-|
-|points plotted|10 billion|5 billion|5 billion|
-|runtime|170s|250s|140s|
-||![](doc/examples/plot-ms-4k-cal-V-U-ANTENNA1-z10000.png?raw=true "uv-coverage")|![](doc/examples/plot-ms-4k-cal-CORRECTED_DATA-XX-amp-FREQ-ANTENNA1-z10000.png?raw=true "Spectrum")|![](doc/examples/plot-ms-4k-cal-J0538-4405-CORRECTED_DATA-I-imag-real-ANTENNA1-z10000.tree.png?raw=true "Phaseball")|
+| | | | | |
+|-|-|-|-|-|
+|points plotted|5 billion|10 billion|5 billion|5 billion|
+|runtime|250s|170s|250s|140s|
+||![](doc/examples/plot-ms-4k-cal-0408-65-V-U-CORRECTED_DATA-I-phase-z10000.png?raw=true "uv-phase")|![](doc/examples/plot-ms-4k-cal-V-U-ANTENNA1-z10000.png?raw=true "uv-coverage")|![](doc/examples/plot-ms-4k-cal-CORRECTED_DATA-XX-amp-FREQ-ANTENNA1-z10000.png?raw=true "Spectrum")|![](doc/examples/plot-ms-4k-cal-J0538-4405-CORRECTED_DATA-I-imag-real-ANTENNA1-z10000.tree.png?raw=true "Phaseball")|
 
 ---
 
