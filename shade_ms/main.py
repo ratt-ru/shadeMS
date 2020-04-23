@@ -185,8 +185,9 @@ def main(argv):
     # can also use "plot-{msbase}-{column}-{corr}-{xfullname}-vs-{yfullname}", let's expand on this later
     group_opts.add_argument('--dir',
                       help='send all plots to this output directory')
+    group_opts.add_argument('-s', '--suffix', help="suffix to be included in filenames, can include {options}")
     group_opts.add_argument('--png', dest='pngname',
-                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}-{label}{_alphalabel}{_colorlabel}.png",
+                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}-{label}{_alphalabel}{_colorlabel}{_suffix}.png",
                       help='template for output png files, default "%(default)s"')
     group_opts.add_argument('--title',
                              default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_title}{_Alphatitle}{_Colortitle}",
@@ -561,6 +562,9 @@ def main(argv):
     keys['scan'] = subset.scan.names if options.scan != 'all' else ''
     keys['ant'] = subset.ant.names if options.ant != 'all' else ''
     keys['spw'] = subset.spw.names if options.spw != 'all' else ''
+
+    keys['suffix'] = suffix = options.suffix.format(**options.__dict__) if options.suffix else ''
+    keys['_suffix'] = f".{suffix}" if suffix else ''
 
     def generate_string_from_keys(template, keys, listsep=" ", titlesep=" ", prefix=" "):
         """Converts list of keys into a string suitable for plot titles or filenames.
