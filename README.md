@@ -1,4 +1,4 @@
-# shadeMS
+# shadems
 
 `shadems` is a tool for plotting interferometric visibilities or associated metadata from CASA format Measurement Sets. 
 The primary goal is rapid visualisation of the many billions of data points produced by a typical observation 
@@ -175,14 +175,20 @@ $ shadems --xaxis U --yaxis V --colour-by CORRECTED_DATA:amp:XX --cmin 0 --cmax 
 ---
 
 ## Full list of arguments
+=======
+Rapid Measurement Set plotting with dask-ms and datashader.
+>>>>>>> origin/master
 
 ```
+Rapid Measurement Set plotting with dask-ms and datashader. Version 0.1.0
+
 positional arguments:
   ms                    Measurement set
 
 optional arguments:
   -h, --help            show this help message and exit
   -v, --version         show program's version number and exit
+<<<<<<< HEAD
 
 Plot types and data sources:
   -x XAXIS, --xaxis XAXIS
@@ -242,6 +248,35 @@ Plot axes setup:
                         Default is 16.
 
 Options for multiple plots or combined plots:
+=======
+  -d, --debug           Enable debugging output
+
+Data selection:
+  -x XAXIS, --xaxis XAXIS
+                        X axis of plot. Use [t]ime, [f]requency, [c]hannels,
+                        [u], [v], [uv]distance, [r]eal, [i]mag, [a]mplitude,
+                        [p]hase. For multiple plots, use comma-separated list,
+                        or specify multiple times for multiple plots.
+  -y YAXIS, --yaxis YAXIS
+                        Y axis to plot. Must be given the same number of times
+                        as --xaxis.
+  -c COL, --col COL     Name of visibility column (default is DATA), if
+                        needed. You can also employ 'D-M', 'C-M', 'D/M', 'C/M'
+                        for various combinations of data, corrected and model.
+                        Can use multiple times, or use comma-separated list,
+                        for multiple plots (or else specify it just once).
+  --antenna MYANTS      Antenna(s) to plot (comma-separated list, default =
+                        all)
+  --spw MYSPWS          Spectral windows (DDIDs) to plot (comma-separated
+                        list, default = all)
+  --field MYFIELDS      Field ID(s) to plot (comma-separated list, default =
+                        all)
+  --scan MYSCANS        Scans to plot (comma-separated list, default = all)
+  --corr CORR           Correlations to plot, use indices or labels (comma-
+                        separated list, default is 0)
+
+Plot settings:
+>>>>>>> origin/master
   --iter-field          Separate plots per field (default is to combine in one
                         plot)
   --iter-antenna        Separate plots per antenna (default is to combine in
@@ -250,6 +285,7 @@ Options for multiple plots or combined plots:
                         plot)
   --iter-scan           Separate plots per scan (default is to combine in one
                         plot)
+<<<<<<< HEAD
   --iter-corr           Separate plots per correlation or Stokes (default is
                         to combine in one plot)
 
