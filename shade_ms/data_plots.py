@@ -87,8 +87,9 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
         flag = group.FLAG if not noflags else None
         flag_row = group.FLAG_ROW if not noflags else None
 
-        baselines = numpy.array([msinfo.baseline_numbering[p,q] for p,q in zip(group.ANTENNA1.values,
-                                                                               group.ANTENNA2.values)])
+
+        baselines = group.ANTENNA1*len(msinfo.antenna) + group.ANTENNA2
+        
         freqs = chan_freqs[ddid]
         chans = xarray.DataArray(range(len(freqs)), dims=("chan",))
         wavel = freq_to_wavel(freqs)
