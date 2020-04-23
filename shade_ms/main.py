@@ -74,13 +74,13 @@ def main(argv):
                       'DATA-MODEL_DATA:amp'. Correlations may be specified by label, number, or as a Stokes parameter.
                       The order of specifiers does not matter.
                       """)
-                      
+
     group_opts.add_argument('-y', '--yaxis', dest='yaxis', action="append",
                       help="""Y axis to plot. Must be given the same number of times as --xaxis. Note that X/Y can
                       employ different columns and correlations.""")
 
     group_opts.add_argument('-a', '--aaxis', action="append",
-                      help="""Intennsity axis. Can be none, or given once, or given the same number of times as --xaxis.
+                      help="""Intensity axis. Can be none, or given once, or given the same number of times as --xaxis.
                       If none, plot intensity (a.k.a. alpha channel) is proportional to density of points. Otherwise,
                       a reduction function (see --ared below) is applied to the given values, and the result is used
                       to determine intensity.
@@ -96,13 +96,13 @@ def main(argv):
     group_opts.add_argument('-C', '--col', metavar="COLUMN", dest='col', action="append", default=[],
                       help="""Name of visibility column (default is DATA), if needed. This is used if
                       the axis specifications do not explicitly include a column. For multiple plots,
-                      thuis can be given multiple times, or as a comma-separated list. Two-column arithmetic is recognized.
+                      this can be given multiple times, or as a comma-separated list. Two-column arithmetic is recognized.
                       """)
 
     group_opts.add_argument('--noflags',
                       help='Enable to ignore flags. Default is to omit flagged data.', action='store_true')
     group_opts.add_argument('--noconj',
-                      help='Do not show conjugate points in u,v plots (default = plot conjugates)', action='store_true')
+                      help='Do not show conjugate points in u,v plots (default = plot conjugates).', action='store_true')
 
     group_opts = parser.add_argument_group('Plot axes setup')
 
@@ -112,15 +112,15 @@ def main(argv):
                       across all plots, so only the last applicable setting will be used. The list may include empty
                       elements (or 'None') to not apply a clip.""")
     group_opts.add_argument('--xmax', action='append',
-                      help='Maximum x-axis value (default = data max)')
+                      help='Maximum x-axis value (default = data max).')
     group_opts.add_argument('--ymin', action='append',
-                      help='Minimum y-axis value (default = data min)')
+                      help='Minimum y-axis value (default = data min).')
     group_opts.add_argument('--ymax', action='append',
-                      help='Maximum y-axis value (default = data max)')
+                      help='Maximum y-axis value (default = data max).')
     group_opts.add_argument('--cmin', action='append',
-                      help='Minimum colouring value. Must be supplied for every non-discrete axis to be coloured by')
+                      help='Minimum colouring value. Must be supplied for every non-discrete axis to be coloured by.')
     group_opts.add_argument('--cmax', action='append',
-                      help='Maximum colouring value. Must be supplied for every non-discrete axis to be coloured by')
+                      help='Maximum colouring value. Must be supplied for every non-discrete axis to be coloured by.')
     group_opts.add_argument('--cnum', action='append',
                       help=f'Number of steps used to discretize a continuous axis. Default is {DEFAULT_CNUM}.')
 
@@ -144,7 +144,7 @@ def main(argv):
     group_opts.add_argument('--ant-num',
                       help='Antennas to plot (comma-separated list of numbers, or a [start]:[stop][:step] slice, overrides --ant)')
     group_opts.add_argument('--baseline', default='all',
-                      help="Baselines to plot, as 'ant1-ant2'  (comma-separated list, default = all)")
+                      help="Baselines to plot, as 'ant1-ant2' (comma-separated list, default = all)")
     group_opts.add_argument('--spw', default='all',
                       help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)')
     group_opts.add_argument('--field', default='all',
@@ -165,12 +165,12 @@ def main(argv):
     group_opts.add_argument('--norm', choices=['auto', 'eq_hist', 'cbrt', 'log', 'linear'], default='auto',
                       help="Pixel scale normalization (default is 'log' when colouring, and 'eq_hist' when not)")
     group_opts.add_argument('--cmap', default='bkr',
-                      help="""Colorcet map used without --color-by  (default = %(default)s), see
+                      help="""Colorcet map used without --colour-by  (default = %(default)s), see
                       https://colorcet.holoviz.org""")
     group_opts.add_argument('--bmap', default='bkr',
-                      help='Colorcet map used when coloring by a continuous axis (default = %(default)s)')
+                      help='Colorcet map used when colouring by a continuous axis (default = %(default)s)')
     group_opts.add_argument('--dmap', default='glasbey_dark',
-                      help='Colorcet map used when coloring by a discrete axis (default = %(default)s)')
+                      help='Colorcet map used when colouring by a discrete axis (default = %(default)s)')
     group_opts.add_argument('--spread-pix', type=int, default=0, metavar="PIX",
                       help="""Dynamically spread rendered pixels to this size""")
     group_opts.add_argument('--spread-thr', type=float, default=0.5, metavar="THR",
@@ -184,33 +184,33 @@ def main(argv):
 
     # can also use "plot-{msbase}-{column}-{corr}-{xfullname}-vs-{yfullname}", let's expand on this later
     group_opts.add_argument('--dir',
-                      help='send all plots to this output directory')
+                      help='Send all plots to this output directory')
     group_opts.add_argument('-s', '--suffix', help="suffix to be included in filenames, can include {options}")
     group_opts.add_argument('--png', dest='pngname',
                              default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}-{label}{_alphalabel}{_colorlabel}{_suffix}.png",
-                      help='template for output png files, default "%(default)s"')
+                      help='Template for output png files, default "%(default)s"')
     group_opts.add_argument('--title',
                              default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_title}{_Alphatitle}{_Colortitle}",
-                      help='template for plot titles, default "%(default)s"')
+                      help='Template for plot titles, default "%(default)s"')
     group_opts.add_argument('--xlabel',
                              default="{xname}{_xunit}",
-                      help='template for X axis labels, default "%(default)s"')
+                      help='Template for X axis labels, default "%(default)s"')
     group_opts.add_argument('--ylabel',
                              default="{yname}{_yunit}",
-                             help='template for X axis labels, default "%(default)s"')
+                             help='Template for X axis labels, default "%(default)s"')
 
     group_opts = parser.add_argument_group('Performance & tweaking')
 
     group_opts.add_argument("-d", "--debug", action='store_true',
                             help="Enable debugging output")
     group_opts.add_argument('-z', '--row-chunk-size', type=int, metavar="NROWS", default=100000,
-                           help="""row chunk size for dask-ms. Larger chunks may or may not be faster, but will
+                           help="""Row chunk size for dask-ms. Larger chunks may or may not be faster, but will
                             certainly use more RAM.""")
     group_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=1,
-                             help=f"""run up to N renderers in parallel. Default is serial. Use -j0 to 
+                             help=f"""Run up to N renderers in parallel. Default is serial. Use -j0 to 
                              auto-set this to half the available cores ({DEFAULT_NUM_RENDERS} on this system).
                              This is not necessarily faster, as they might all end up contending for disk I/O. 
-                             This might also work against sdask-ms's own intrinsic parallelism. 
+                             This might also work against dask-ms's own intrinsic parallelism. 
                              You have been advised.""")
     group_opts.add_argument("--profile", action='store_true', help="Enable dask profiling output")
 
