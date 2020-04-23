@@ -26,10 +26,10 @@ usual way, i.e. ``pip install shadems``. However, at the moment we rely on devel
 
 Installation within a Python 3 [virtual environment](https://pypi.org/project/virtualenv/) is required. To begin with:
 
-    ```
-    $ virtualenv -p python3 ~/venv/shadems
-    $ source ~/venv/shadems/bin/activate
-    ```
+```
+$ virtualenv -p python3 ~/venv/shadems
+$ source ~/venv/shadems/bin/activate
+```
 
 
 Then:
