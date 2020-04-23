@@ -486,7 +486,7 @@ def main(argv):
             if xdatum.function:
                 labels.append(xdatum.function)
             props['title'] = " ".join(titles)
-            props['label'] = "_".join(labels)
+            props['label'] = "-".join(labels)
             # build up intensity label
             if afunction:
                 titles, labels = [ared], [ared]
@@ -500,7 +500,7 @@ def main(argv):
                 if adatum.function:
                     labels.append(adatum.function)
                 props['alpha_title'] = " ".join(titles)
-                props['alpha_label'] = "_".join(labels)
+                props['alpha_label'] = "-".join(labels)
             else:
                 props['alpha_title'] = props['alpha_label'] = ''
             # build up color-by label
@@ -520,7 +520,7 @@ def main(argv):
                     if not cdatum.discretized_labels or len(cdatum.discretized_labels) > cdatum.nlevels:
                         titles.append(f"(modulo {cdatum.nlevels})")
                 props['color_title'] = " ".join(titles)
-                props['color_label'] = "_".join(labels)
+                props['color_label'] = "-".join(labels)
             else:
                 props['color_title'] = props['color_label'] = ''
 
