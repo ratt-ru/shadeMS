@@ -1,42 +1,54 @@
 # shadeMS
 
-`shadems` is a tool for plotting interferometric visibilities or associated metadata from CASA format Measurement Sets. The primary goal is rapid visualisation of the many billions of data points produced by a typical observation with next-generation radio telescopes such as [MeerKAT](https://www.sarao.ac.za/science-engineering/meerkat/). This is achieved by using [`dask-ms`](https://github.com/ska-sa/dask-ms) for access to the MS tables, [`datashader`](https://datashader.org/) for rendering, as well as internal parallelism. `shadems` supports arbitrary axis selections for MS columns and derivatives (including two-column arithmetic operations) as well as flexible colourisation and plot customisation options.
+`shadems` is a tool for plotting interferometric visibilities or associated metadata from CASA format Measurement Sets. 
+The primary goal is rapid visualisation of the many billions of data points produced by a typical observation 
+with next-generation radio telescopes such as [MeerKAT](https://www.sarao.ac.za/science-engineering/meerkat/). 
+This is achieved by using [`dask-ms`](https://github.com/ska-sa/dask-ms) for access to the MS tables, [`datashader`](https://datashader.org/) 
+for rendering, as well as internal parallelism. `shadems` supports arbitrary axis selections for 
+MS columns and derivatives (including two-column arithmetic operations) as well as flexible colourisation 
+and plot customisation options.
+
+Some example shadeMS outputs (using a MeerKAT 4k channel dataset) are given below:
+
+| | | | |
+|-|-|-|-|
+|points plotted|10 billion|10 billion|5 billion|
+|runtime|170s|250s|140s|
+||![](doc/examples/plot-ms-4k-cal-V-U-ANTENNA1-z10000.png Title="uv-coverage")|![](doc/examples/plot-ms-4k-cal-CORRECTED_DATA-XX-amp-FREQ-ANTENNA1-z10000.png?raw Title="Spectrum")|![](doc/examples/plot-ms-4k-cal-J0538-4405-CORRECTED_DATA-I-imag-real-ANTENNA1-z10000.tree.png?raw=true "Phaseball")
+|
 
 ---
 
 ## Installation
 
-Installation within a Python 3 [virtual environment](https://pypi.org/project/virtualenv/) is recommended. To begin with:
+**Stable releases** will start to be available on PyPI shortly. A stable release will be installable in the 
+usual way, i.e. ``pip install shadems``. However, at the moment we rely on development versions of ``datashader`` and 
+``dask-ms``, so follow the instructions below.
 
-```
-$ virtualenv -p python3 ~/venv/shadems
-$ source ~/venv/shadems/bin/activate
-```
+Installation within a Python 3 [virtual environment](https://pypi.org/project/virtualenv/) is required. To begin with:
 
-**Stable releases** will start to be available on PyPI shortly. A stable release can be installed in the 
-usual way, i.e. ``pip install shadems``.
+    ```
+    $ virtualenv -p python3 ~/venv/shadems
+    $ source ~/venv/shadems/bin/activate
+    ```
 
-To run a **bleeding-edge development version** and have access to the latest bugfixes (and breakages):
+
+Then:
 
 * Clone and install the `shadems` repository:
 
-```
-$ cd ~/Software
-$ git clone https://github.com/IanHeywood/shadeMS.git
-$ pip install -e shadeMS/
-```
+    ```
+    $ cd ~/Software
+    $ git clone https://github.com/ratt-ru/shadeMS.git
+    $ pip install -e shadeMS/
+    ```
 
-* The latest version of `dask-ms` is also recommended:
+* The latest version of `dask-ms` and ``datashader`` needs to be installed as e.g.:
 
-```
-$ pip install git+https://github.com/ska-sa/dask-ms.git
-```
-
-* As is (for now) this fork of `datashader` which fixes an bug involving layer opacities:
-
-```
-$ pip install git+https://github.com/o-smirnov/datashader
-```
+    ```
+    $ pip install git+https://github.com/ska-sa/dask-ms.git
+    $ pip install git+https://github.com/o-smirnov/datashader
+    ```
 
 ---
 
