@@ -16,7 +16,10 @@ import itertools
 import re
 import sys
 import colorcet
-from _collections import OrderedDict
+from collections import OrderedDict
+import dask.diagnostics
+from contextlib import contextmanager
+
 
 import argparse
 
@@ -32,6 +35,11 @@ try:
 except pkg_resources.DistributionNotFound:
     __version__ = "dev"
 
+
+# empty context manager for use when profiling is off
+@contextmanager
+def nullcontext(enter_result=None):
+    yield enter_result
 
 # set default number of renderers to half the available cores
 DEFAULT_NUM_RENDERS = max(1, len(os.sched_getaffinity(0))//2)
@@ -203,6 +211,8 @@ def main(argv):
                              This is not necessarily faster, as they might all end up contending for disk I/O. 
                              This might also work against sdask-ms's own intrinsic parallelism. 
                              You have been advised.""")
+    group_opts.add_argument("--profile", action='store_true', help="Enable dask profiling output")
+
 
     # various hidden performance-testing options
     data_mappers.add_options(group_opts)
@@ -585,11 +595,22 @@ def main(argv):
         normalize = options.norm
         if normalize == "auto":
             normalize = "log" if cdatum is not None else "eq_hist"
-        if data_plots.create_plot(df, xdatum, ydatum, adatum, ared, cdatum,
-                                  cmap=cmap, bmap=bmap, dmap=dmap, normalize=normalize,
-                                  xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
-                                  options=options):
+        if options.profile:
+            context = dask.diagnostics.ResourceProfiler
+        else:
+            context = nullcontext
+        with context() as profiler:
+            result = data_plots.create_plot(df, xdatum, ydatum, adatum, ared, cdatum,
+                                      cmap=cmap, bmap=bmap, dmap=dmap, normalize=normalize,
+                                      xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
+                                      options=options)
+        if result:
             log.info(f'                 : wrote {pngname}')
+            if profiler is not None:
+                profile_file = os.path.splitext(pngname)[0] + ".prof.html"
+                dask.diagnostics.visualize(profiler, file_path=profile_file, show=False, save=True)
+                log.info(f'                 : wrote profiler info to {profile_file}')
+
 
     for (fld, spw, scan, antenna), df in dataframes.items():
         # update keys to be substituted into title and filename
