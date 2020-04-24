@@ -255,7 +255,7 @@ class DataAxis(object):
         except AttributeError:
             raise NameError("column {} not found in group".format(" or ".join(self.columns)))
 
-    def get_value(self, group, corr, extras, flag, flag_row, chanslice):
+    def get_value(self, group, corr, extras, flag, flag_row, chanslice, row_subset=None):
         coldata = self.get_column_data(group)
         # correlation may be pre-set by plot type, or may be passed to us
         corr = self.corr if self.corr is not None else corr
@@ -274,8 +274,13 @@ class DataAxis(object):
             flag = flag_row
         else:
             # apply channel slicing, if there's a channel axis in the array (and the array is a DataArray)
-            if type(coldata) is xarray.DataArray and 'chan' in coldata.dims:
-                coldata = coldata[dict(chan=chanslice)]
+            if type(coldata) is xarray.DataArray:
+                seldict = {}
+                if 'chan' in coldata.dims:
+                    seldict['chan'] = chanslice
+                if row_subset is not None and 'row' in coldata.dims:
+                    seldict['row'] = row_subset
+                coldata = coldata[seldict]
             # determine flags -- start with original flags
             if flag is not None:
                 if coldata.ndim == 2:

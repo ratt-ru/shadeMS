@@ -136,6 +136,8 @@ def main(argv):
                       help='Separate plots per scan (default is to combine in one plot)')
     group_opts.add_argument('--iter-corr', action="store_true",
                       help='Separate plots per correlation or Stokes (default is to combine in one plot)')
+    group_opts.add_argument('--iter-ant', action="store_true",
+                      help='Separate plots per antenna (default is to combine in one plot)')
 
     group_opts = parser.add_argument_group('Data subset selection')
 
@@ -542,7 +544,7 @@ def main(argv):
                                  chanslice=chanslice, subset=subset,
                                  noflags=options.noflags, noconj=options.noconj,
                                  iter_field=options.iter_field, iter_spw=options.iter_spw,
-                                 iter_scan=options.iter_scan,
+                                 iter_scan=options.iter_scan, iter_antenna=options.iter_ant,
                                  join_corrs=join_corrs,
                                  row_chunk_size=options.row_chunk_size)
 
@@ -555,7 +557,7 @@ def main(argv):
     keys['ms'] = os.path.basename(os.path.splitext(options.ms.rstrip("/"))[0])
     keys['timestamp'] = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     # dictionary of titles for these identifiers
-    titles = dict(field="", field_num="field", scan="scan", spw="spw", antenna="ant", colortitle="coloured by")
+    titles = dict(field="", field_num="field", scan="scan", spw="spw", ant="ant", colortitle="coloured by")
 
     keys['field_num'] = subset.field.numbers if options.field != 'all' else ''
     keys['field'] = subset.field.names if options.field != 'all' else ''

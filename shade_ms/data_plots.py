@@ -43,7 +43,7 @@ def freq_to_wavel(ff):
 def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                   chanslice, subset,
                   noflags, noconj,
-                  iter_field, iter_spw, iter_scan,
+                  iter_field, iter_spw, iter_scan, iter_antenna,
                   join_corrs=False,
                   row_chunk_size=100000):
 
@@ -81,12 +81,18 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
         scan    = getattr(group, 'SCAN_NUMBER', None)  # will be present if iterating over scans
 
         # TODO: antenna iteration. None forces no iteration, for now
-        antenna = None
 
-        # always read flags -- easier that way
-        flag = group.FLAG if not noflags else None
-        flag_row = group.FLAG_ROW if not noflags else None
+        if iter_antenna:
+            antennas = []
+            for ant in range(len(msinfo.antenna)):
+                sel = da.logical_or(group.ANTENNA1.data == ant, group.ANTENNA2.data == ant)
+                if sel.any():
+                    antennas.append((ant, sel))
+        else:
+            antennas = [(None, None)]
 
+        flag0 = flag = group.FLAG if not noflags else None
+        flag_row0 = flag_row = group.FLAG_ROW if not noflags else None
 
         baselines = group.ANTENNA1*len(msinfo.antenna) + group.ANTENNA2
 
@@ -96,97 +102,103 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
         extras = dict(chans=chans, freqs=freqs, wavel=wavel, rows=group.row, baselines=baselines)
 
         nchan = len(group.chan)
-        if flag is not None:
-            flag = flag[dict(chan=chanslice)]
-            nchan = flag.shape[1]
-        shape = (len(group.row), nchan)
+        if flag0 is not None:
+            flag0 = flag[dict(chan=chanslice)]
+            nchan = flag0.shape[1]
 
-        datums = OrderedDict()
+        for antenna, row_subset in antennas:
+            if row_subset is not None and flag0 is not None:
+                flag = flag0[dict(row=row_subset)]
+                flag_row = flag_row0[dict(row=row_subset)]
 
-        for corr in subset.corr.numbers:
-            # make dictionary of extra values for DataMappers
-            extras['corr'] = corr
-            # loop over datums to be computed
-            for axis in DataAxis.all_axes.values():
-                value = datums[axis.label][-1] if axis.label in datums else None
-                # a datum was already computed?
-                if value is not None:
-                    # if not joining correlations, then that's the only one we'll need, so continue
-                    if not join_corrs:
-                        continue
-                    # joining correlations, and datum has a correlation dependence: compute another one
-                    if axis.corr is None:
-                        value = None
-                if value is None:
-                    value = axis.get_value(group, corr, extras, flag=flag, flag_row=flag_row, chanslice=chanslice)
-                    # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ), and scalar to (NTIME,1)
-                    if value.ndim == 1:
-                        timefreq_axis = axis.mapper.axis or 0
-                        assert value.shape[0] == shape[timefreq_axis], \
-                               f"{axis.mapper.fullname}: size {value.shape[0]}, expected {shape[timefreq_axis]}"
-                        shape1 = [1,1]
-                        shape1[timefreq_axis] = value.shape[0]
-                        value = value.reshape(shape1)
-                        if timefreq_axis > 0:
-                            value = da.broadcast_to(value, shape)
-                        log.debug(f"axis {axis.mapper.fullname} has shape {value.shape}")
-                    # else 2D value better match expected shape
+            shape = (len(group.row[row_subset]), nchan)
+
+            datums = OrderedDict()
+
+            for corr in subset.corr.numbers:
+                # make dictionary of extra values for DataMappers
+                extras['corr'] = corr
+                # loop over datums to be computed
+                for axis in DataAxis.all_axes.values():
+                    value = datums[axis.label][-1] if axis.label in datums else None
+                    # a datum was already computed?
+                    if value is not None:
+                        # if not joining correlations, then that's the only one we'll need, so continue
+                        if not join_corrs:
+                            continue
+                        # joining correlations, and datum has a correlation dependence: compute another one
+                        if axis.corr is None:
+                            value = None
+                    if value is None:
+                        value = axis.get_value(group, corr, extras, flag=flag, flag_row=flag_row, chanslice=chanslice, row_subset=row_subset)
+                        # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ), and scalar to (NTIME,1)
+                        if value.ndim == 1:
+                            timefreq_axis = axis.mapper.axis or 0
+                            assert value.shape[0] == shape[timefreq_axis], \
+                                   f"{axis.mapper.fullname}: size {value.shape[0]}, expected {shape[timefreq_axis]}"
+                            shape1 = [1,1]
+                            shape1[timefreq_axis] = value.shape[0]
+                            value = value.reshape(shape1)
+                            if timefreq_axis > 0:
+                                value = da.broadcast_to(value, shape)
+                            log.debug(f"axis {axis.mapper.fullname} has shape {value.shape}")
+                        # else 2D value better match expected shape
+                        else:
+                            assert value.shape == shape, f"{axis.mapper.fullname}: shape {value.shape}, expected {shape}"
+                    datums.setdefault(axis.label, []).append(value)
+
+            # if joining correlations, stick all elements together. Otherwise, we'd better have one per label
+            if join_corrs:
+                datums = OrderedDict({label: da.concatenate(arrs) for label, arrs in datums.items()})
+            else:
+                assert all([len(arrs) == 1 for arrs in datums.values()])
+                datums = OrderedDict({label: arrs[0] for label, arrs in datums.items()})
+
+            # broadcast to same shape, and unravel all datums
+            datums = OrderedDict({ key: arr.ravel() for key, arr in zip(datums.keys(),
+                                                                        da.broadcast_arrays(*datums.values()))})
+
+            # if any axis needs to be conjugated, double up all of them
+            if not noconj and any([axis.conjugate for axis in DataAxis.all_axes.values()]):
+                for axis in DataAxis.all_axes.values():
+                    if axis.conjugate:
+                        datums[axis.label] = da.concatenate([datums[axis.label], -datums[axis.label]])
                     else:
-                        assert value.shape == shape, f"{axis.mapper.fullname}: shape {value.shape}, expected {shape}"
-                datums.setdefault(axis.label, []).append(value)
+                        datums[axis.label] = da.concatenate([datums[axis.label], datums[axis.label]])
 
-        # if joining correlations, stick all elements together. Otherwise, we'd better have one per label
-        if join_corrs:
-            datums = OrderedDict({label: da.concatenate(arrs) for label, arrs in datums.items()})
-        else:
-            assert all([len(arrs) == 1 for arrs in datums.values()])
-            datums = OrderedDict({label: arrs[0] for label, arrs in datums.items()})
+            labels, values = list(datums.keys()), list(datums.values())
+            np += values[0].size
 
-        # broadcast to same shape, and unravel all datums
-        datums = OrderedDict({ key: arr.ravel() for key, arr in zip(datums.keys(),
-                                                                    da.broadcast_arrays(*datums.values()))})
+            # now stack them all into a big dataframe
+            rectype = [(axis.label, numpy.int32 if axis.nlevels else numpy.float32) for axis in DataAxis.all_axes.values()]
+            recarr = da.empty_like(values[0], dtype=rectype)
+            ddf = dask_df.from_array(recarr)
+            for label, value in zip(labels, values):
+                ddf[label] = value
 
-        # if any axis needs to be conjugated, double up all of them
-        if not noconj and any([axis.conjugate for axis in DataAxis.all_axes.values()]):
-            for axis in DataAxis.all_axes.values():
-                if axis.conjugate:
-                    datums[axis.label] = da.concatenate([datums[axis.label], -datums[axis.label]])
-                else:
-                    datums[axis.label] = da.concatenate([datums[axis.label], datums[axis.label]])
+            # now, are we iterating or concatenating? Make frame key accordingly
+            dataframe_key = (fld if iter_field else None,
+                             ddid if iter_spw else None,
+                             scan if iter_scan else None,
+                             antenna)
 
-        labels, values = list(datums.keys()), list(datums.values())
-        np += values[0].size
+            # do we already have a frame for this key
+            ddf0 = output_dataframes.get(dataframe_key)
 
-        # now stack them all into a big dataframe
-        rectype = [(axis.label, numpy.int32 if axis.nlevels else numpy.float32) for axis in DataAxis.all_axes.values()]
-        recarr = da.empty_like(values[0], dtype=rectype)
-        ddf = dask_df.from_array(recarr)
-        for label, value in zip(labels, values):
-            ddf[label] = value
+            if ddf0 is None:
+                log.debug(f"first frame for {dataframe_key}")
+                output_dataframes[dataframe_key] = ddf
+            else:
+                log.debug(f"appending to frame for {dataframe_key}")
+                output_dataframes[dataframe_key] = ddf0.append(ddf)
 
-        # now, are we iterating or concatenating? Make frame key accordingly
-        dataframe_key = (fld if iter_field else None,
-                         ddid if iter_spw else None,
-                         scan if iter_scan else None,
-                         antenna)
-
-        # do we already have a frame for this key
-        ddf0 = output_dataframes.get(dataframe_key)
-
-        if ddf0 is None:
-            log.debug(f"first frame for {dataframe_key}")
-            output_dataframes[dataframe_key] = ddf
-        else:
-            log.debug(f"appending to frame for {dataframe_key}")
-            output_dataframes[dataframe_key] = ddf0.append(ddf)
-
-    # convert discrete axes into categoricals
-    if data_mappers.USE_COUNT_CAT:
-        categorical_axes = [axis.label for axis in DataAxis.all_axes.values() if axis.nlevels]
-        if categorical_axes:
-            log.info(": counting colours")
-            for key, ddf in list(output_dataframes.items()):
-                output_dataframes[key] = ddf.categorize(categorical_axes)
+        # convert discrete axes into categoricals
+        if data_mappers.USE_COUNT_CAT:
+            categorical_axes = [axis.label for axis in DataAxis.all_axes.values() if axis.nlevels]
+            if categorical_axes:
+                log.info(": counting colours")
+                for key, ddf in list(output_dataframes.items()):
+                    output_dataframes[key] = ddf.categorize(categorical_axes)
 
     log.info(": complete")
     return output_dataframes, np
