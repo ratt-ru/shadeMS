@@ -85,7 +85,8 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
         if iter_antenna:
             antennas = []
             for ant in range(len(msinfo.antenna)):
-                sel = da.logical_or(group.ANTENNA1.data == ant, group.ANTENNA2.data == ant)
+                a1, a2 = group.ANTENNA1.values, group.ANTENNA2.values
+                sel = (a1 == ant)|(a2 == ant)
                 if sel.any():
                     sel = list(numpy.arange(0, group.dims['row'])[sel])
                     antennas.append((ant, sel))
