@@ -8,13 +8,13 @@ for rendering, as well as internal parallelism. `shadems` supports arbitrary axi
 MS columns and derivatives (including two-column arithmetic operations) as well as flexible colourisation 
 and plot customisation options.
 
-Some example shadeMS outputs (using a MeerKAT 4k channel dataset) are given below:
+Some example shadeMS outputs (using a 4k channel MeerKAT dataset, and 64 channel VLA dataset) are given below:
 
-| | | | | |
-|-|-|-|-|-|
-|points plotted|5 billion|10 billion|5 billion|5 billion|
-|runtime|250s|170s|250s|140s|
-||![](doc/examples/plot-ms-4k-cal-0408-65-V-U-CORRECTED_DATA-I-phase-z10000.png?raw=true "uv-phase")|![](doc/examples/plot-ms-4k-cal-V-U-ANTENNA1-z10000.png?raw=true "uv-coverage")|![](doc/examples/plot-ms-4k-cal-CORRECTED_DATA-XX-amp-FREQ-ANTENNA1-z10000.png?raw=true "Spectrum")|![](doc/examples/plot-ms-4k-cal-J0538-4405-CORRECTED_DATA-I-imag-real-ANTENNA1-z10000.tree.png?raw=true "Phaseball")|
+| | | | | |-|
+|-|-|-|-|-|-|
+|points plotted|5 billion|10 billion|5 billion|5 billion|25 million|
+|runtime|250s|170s|250s|140s|3.5s|
+||![](doc/examples/plot-ms-4k-cal-0408-65-V-U-CORRECTED_DATA-I-phase-z10000.png?raw=true "uv-phase")|![](doc/examples/plot-ms-4k-cal-V-U-ANTENNA1-z10000.png?raw=true "uv-coverage")|![](doc/examples/plot-ms-4k-cal-CORRECTED_DATA-XX-amp-FREQ-ANTENNA1-z10000.png?raw=true "Spectrum")|![](doc/examples/plot-ms-4k-cal-J0538-4405-CORRECTED_DATA-I-imag-real-ANTENNA1-z10000.tree.png?raw=true "Phaseball")|![](doc/examples/plot-3C273-C-8424-DATA-I-imag-real-BASELINE.png?raw=true "VLA phaseball")|
 
 ---
 
