@@ -10,7 +10,7 @@ and plot customisation options.
 
 Some example shadeMS outputs (using a 4k channel MeerKAT dataset, and 64 channel VLA dataset) are given below:
 
-| | | | | |-|
+| | | | | | |
 |-|-|-|-|-|-|
 |points plotted|5 billion|10 billion|5 billion|5 billion|25 million|
 |runtime|250s|170s|250s|140s|3.5s|
