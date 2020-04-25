@@ -136,14 +136,10 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                         # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ), and scalar to (NTIME,1)
                         if value.ndim == 1:
                             timefreq_axis = axis.mapper.axis or 0
-                            assert value.shape[0] == shape[timefreq_axis], \
-                                   f"{axis.mapper.fullname}: size {value.shape[0]}, expected {shape[timefreq_axis]}"
-                            shape1 = [1,1]
-                            shape1[timefreq_axis] = value.shape[0]
-                            value = value.reshape(shape1)
-                            if timefreq_axis > 0:
-                                value = da.broadcast_to(value, shape)
-                            log.debug(f"axis {axis.mapper.fullname} has shape {value.shape}")
+                            if timefreq_axis == 0:
+                                value = value[:,None]
+                            else:
+                                value = value[None,:]
                         # else 2D value better match expected shape
                         else:
                             assert value.shape == shape, f"{axis.mapper.fullname}: shape {value.shape}, expected {shape}"
