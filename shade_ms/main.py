@@ -91,7 +91,8 @@ def main(argv):
                       mean, std, first, last, mode. Default is mean.""")
 
     group_opts.add_argument('-c', '--colour-by', action="append",
-                      help='Colour axis. Can be none, or given once, or given the same number of times as --xaxis.')
+                      help="""Colour axis. Can be none, or given once, or given the same number of times as --xaxis.
+                      All columns and variations listed under --xaxis are available for colouring by.""")
 
     group_opts.add_argument('-C', '--col', metavar="COLUMN", dest='col', action="append", default=[],
                       help="""Name of visibility column (default is DATA), if needed. This is used if
