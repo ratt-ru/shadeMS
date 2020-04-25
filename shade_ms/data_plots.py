@@ -61,7 +61,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
     output_dataframes = OrderedDict()
 
     if iter_ant:
-        antenna_subsets = zip(subset.ant.names, subset.ant.numbers)
+        antenna_subsets = zip(subset.ant.numbers, subset.ant.names)
     else:
         antenna_subsets = [(None, None)]
     taql = mytaql
