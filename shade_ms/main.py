@@ -137,7 +137,7 @@ def main(argv):
     group_opts.add_argument('--iter-corr', action="store_true",
                       help='Separate plots per correlation or Stokes (default is to combine in one plot)')
     group_opts.add_argument('--iter-ant', action="store_true",
-                            help='Separate plots per antenna (default is to combine in one plot). WARNING: this can get pretty slow.')
+                            help='Separate plots per antenna (default is to combine in one plot)')
 
     group_opts = parser.add_argument_group('Data subset selection')
 
