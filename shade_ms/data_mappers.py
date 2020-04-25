@@ -267,7 +267,11 @@ class DataAxis(object):
                 raise TypeError(f"{self.name}: unexpected column with ndim=3")
             coldata = self.ms.corr_data_mappers[corr](coldata)
         # apply mapping function
-        coldata = self.mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
+        mapper = self.mapper
+        # complex values with an identity mapper get an amp mapper assigned to them by default
+        if numpy.iscomplexobj(coldata) and mapper is data_mappers["_"]:
+            mapper = data_mappers["amp"]
+        coldata = mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
         # scalar expanded to row vector
         if numpy.isscalar(coldata):
             coldata = da.full_like(flag_row, fill_value=coldata, dtype=type(coldata))
