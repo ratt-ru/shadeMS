@@ -299,7 +299,7 @@ class DataAxis(object):
                 coldata = da.floor((coldata - self.minmax[0])/self.discretized_delta)
                 coldata = da.minimum(da.maximum(coldata, 0), self.nlevels-1).astype(COUNT_DTYPE)
             else:
-                if coldata.dtype is bool:
+                if not coldata.dtype is bool:
                     if not numpy.issubdtype(coldata.dtype, numpy.integer):
                         raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
                     coldata = da.remainder(coldata, self.nlevels).astype(COUNT_DTYPE)
