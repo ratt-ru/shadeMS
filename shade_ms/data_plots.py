@@ -455,7 +455,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     ax = fig.add_subplot(111, facecolor=bgcol)
     ax.imshow(X=rgb.data, extent=[data_xmin, data_xmax, data_ymin, data_ymax],
               aspect='auto', origin='lower')
-    ax.set_title("\n".join(textwrap.wrap(title, 90)), loc='left')
+    ax.set_title("\n".join(textwrap.wrap(title, 90)), loc='center')
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     # ax.plot(xmin,ymin,'.',alpha=0.0)
