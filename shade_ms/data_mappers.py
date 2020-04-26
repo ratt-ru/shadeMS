@@ -1,7 +1,7 @@
 import dask.array as da
 import dask.array.ma as dama
 import xarray
-import numpy
+import numpy as np
 import math
 import re
 import argparse
@@ -9,7 +9,7 @@ from collections import OrderedDict
 from shade_ms import log
 
 USE_COUNT_CAT = 0
-COUNT_DTYPE = numpy.int16
+COUNT_DTYPE = np.int16
 
 def add_options(parser):
     parser.add_argument('--count-cat', action='store_true', help=argparse.SUPPRESS)
@@ -18,7 +18,7 @@ def add_options(parser):
 def set_options(options):
     global USE_COUNT_CAT, COUNT_DTYPE
     USE_COUNT_CAT = options.count_cat
-    COUNT_DTYPE = getattr(numpy, options.count_dtype)
+    COUNT_DTYPE = getattr(np, options.count_dtype)
 
 def col_to_label(col):
     """Replaces '-' and "/" in column names with palatable characters acceptable in filenames and identifiers"""
@@ -171,12 +171,13 @@ class DataAxis(object):
         self.minmax   = vmin, vmax = tuple(minmax) if minmax is not None else (None, None)
         self.label    = label
         self._corr_reduce = None
+        self._is_discrete = None
         self.discretized_labels = None  # filled for corrs and fields and so
 
         # set up discretized continuous axis
         if self.nlevels and vmin is not None and vmax is not None:
             self.discretized_delta = delta = (vmax - vmin) / self.nlevels
-            self.discretized_bin_centers = numpy.arange(vmin + delta/2, vmax, delta)
+            self.discretized_bin_centers = np.arange(vmin + delta/2, vmax, delta)
         else:
             self.discretized_delta = self.discretized_bin_centers = None
 
@@ -204,6 +205,9 @@ class DataAxis(object):
             self.discretized_labels = [name for name in ms.all_antenna.names if name in subset.ant]
         elif column == "FLAG" or column == "FLAG_ROW":
             self.discretized_labels = ["F", "T"]
+
+        if self.discretized_labels:
+            self._is_discrete = True
 
         # axis name
         self.fullname = self.mapper.fullname or column or ''
@@ -243,6 +247,10 @@ class DataAxis(object):
             else:
                 self.columns = (column,)
 
+    @property
+    def is_discrete(self):
+        return self._is_discrete
+
     def get_column_data(self, group):
         """Given a dask group, returns dask array corresponding to column setting"""
         if not self.columns:
@@ -269,11 +277,11 @@ class DataAxis(object):
         # apply mapping function
         mapper = self.mapper
         # complex values with an identity mapper get an amp mapper assigned to them by default
-        if numpy.iscomplexobj(coldata) and mapper is data_mappers["_"]:
+        if np.iscomplexobj(coldata) and mapper is data_mappers["_"]:
             mapper = data_mappers["amp"]
         coldata = mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
         # scalar expanded to row vector
-        if numpy.isscalar(coldata):
+        if np.isscalar(coldata):
             coldata = da.full_like(flag_row, fill_value=coldata, dtype=type(coldata))
             flag = flag_row
         else:
@@ -292,17 +300,27 @@ class DataAxis(object):
                 # shapes must now match
                 if flag is not None and coldata.shape != flag.shape:
                     raise TypeError(f"{self.name}: unexpected column shape")
-        # discretize
-        if self.nlevels:
-            # minmax set? discretize over that
-            if self.discretized_delta is not None:
-                coldata = da.floor((coldata - self.minmax[0])/self.discretized_delta)
-                coldata = da.minimum(da.maximum(coldata, 0), self.nlevels-1).astype(COUNT_DTYPE)
-            else:
-                if not coldata.dtype is bool:
-                    if not numpy.issubdtype(coldata.dtype, numpy.integer):
-                        raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
-                    coldata = da.remainder(coldata, self.nlevels).astype(COUNT_DTYPE)
+        # # discretize
+        # if self.nlevels:
+
+        if coldata.dtype is bool or np.issubdtype(coldata.dtype, np.integer):
+            if self._is_discrete is False:
+                raise TypeError(f"{self.label}: column changed from continuous-valued to discrete. This is a bug, or a very weird MS.")
+            self._is_discrete = True
+        else:
+            if self._is_discrete is True:
+                raise TypeError(f"{self.label}: column chnaged from discrete to continuous-valued. This is a bug, or a very weird MS.")
+            self._is_discrete = False
+
+            # # minmax set? discretize over that
+            # if self.discretized_delta is not None:
+            #     coldata = da.floor((coldata - self.minmax[0])/self.discretized_delta)
+            #     coldata = da.minimum(da.maximum(coldata, 0), self.nlevels-1).astype(COUNT_DTYPE)
+            # else:
+            #     if not coldata.dtype is bool:
+            #         if not np.issubdtype(coldata.dtype, np.integer):
+            #             raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
+            #         coldata = da.remainder(coldata, self.nlevels).astype(COUNT_DTYPE)
 
         if flag is not None:
             flag |= ~da.isfinite(coldata)

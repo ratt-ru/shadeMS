@@ -5,7 +5,7 @@
 import matplotlib
 matplotlib.use('agg')
 
-import numpy
+import numpy as np
 import datetime
 import os
 import pkg_resources
@@ -520,11 +520,9 @@ def main(argv):
                     titles.append(cdatum.mapper.fullname)
                 if cdatum.function:
                     labels.append(cdatum.function)
-                if not cdatum.discretized_delta:
-                    if not cdatum.discretized_labels or len(cdatum.discretized_labels) > cdatum.nlevels:
-                        titles.append(f"(modulo {cdatum.nlevels})")
                 props['color_title'] = " ".join(titles)
                 props['color_label'] = "-".join(labels)
+                props['color_modulo'] = f"(modulo {cdatum.nlevels})"
             else:
                 props['color_title'] = props['color_label'] = ''
 
@@ -635,9 +633,12 @@ def main(argv):
         for props, xdatum, ydatum, adatum, ared, cdatum in all_plots:
             keys.update(title=props['title'], label=props['label'],
                         alphatitle=props['alpha_title'], alphalabel=props['alpha_label'],
-                        colortitle=props['color_title'], colorlabel=props['color_label'],
+                        colortitle=props['color_title'],
+                        colorlabel=props['color_label'],
                         xname=xdatum.fullname, yname=ydatum.fullname,
                         xunit=xdatum.mapper.unit, yunit=ydatum.mapper.unit)
+            if cdatum is not None and cdatum.is_discrete:
+                keys['colortitle'] += ' '+props['color_modulo']
 
             pngname = generate_string_from_keys(options.pngname, keys, "_", "_", "-")
             title   = generate_string_from_keys(options.title, keys, " ", " ", ", ")

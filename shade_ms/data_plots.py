@@ -15,7 +15,7 @@ import holoviews as holoviews
 import holoviews.operation.datashader
 import datashader.transfer_functions
 import datashader.reductions
-import numpy
+import numpy as np
 import pylab
 import textwrap
 import argparse
@@ -55,7 +55,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
     for axis in DataAxis.all_axes.values():
         ms_cols.update(axis.columns)
 
-    np = 0  # total number of points to plot
+    total_num_points = 0  # total number of points to plot
 
     # output dataframes, indexed by (field, spw, scan, antenna, correlation)
     # If any of these axes is not being iterated over, then the index is None
@@ -165,10 +165,10 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                         datums[axis.label] = da.concatenate([datums[axis.label], datums[axis.label]])
 
             labels, values = list(datums.keys()), list(datums.values())
-            np += values[0].size
+            total_num_points += values[0].size
 
             # now stack them all into a big dataframe
-            rectype = [(axis.label, numpy.int32 if axis.nlevels else numpy.float32) for axis in DataAxis.all_axes.values()]
+            rectype = [(axis.label, np.int32 if axis.nlevels else np.float32) for axis in DataAxis.all_axes.values()]
             recarr = da.empty_like(values[0], dtype=rectype)
             ddf = dask_df.from_array(recarr)
             for label, value in zip(labels, values):
@@ -199,7 +199,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                 output_dataframes[key] = ddf.categorize(categorical_axes)
 
     log.info(": complete")
-    return output_dataframes, np
+    return output_dataframes, total_num_points
 
 from datashader.utils import ngjit
 
@@ -249,15 +249,14 @@ class extract_multi(datashader.reductions.category_values):
             import cupy
             cols = []
             for column in self.columns:
-                nullval = numpy.nan if df[self.columns[1]].dtype.kind == 'f' else 0
+                nullval = np.nan if df[self.columns[1]].dtype.kind == 'f' else 0
                 cols.append(df[self.columns[0]].to_gpu_array(fillna=nullval))
             return cupy.stack(cols, axis=-1)
         else:
-            return numpy.stack([df[col].values for col in self.columns], axis=-1)
+            return np.stack([df[col].values for col in self.columns], axis=-1)
 
 class by_integers(datashader.by):
-    """Like datashader.by,
-    but for normal columns."""
+    """Like datashader.by, but for integer-valued columns."""
     def __init__(self, cat_column, reduction, modulo):
         super().__init__(cat_column, reduction)
         self.modulo = modulo
@@ -319,6 +318,71 @@ class by_integers(datashader.by):
 
         return finalize
 
+class by_span(by_integers):
+    """Like datashader.by, but for float-valued columns."""
+    def __init__(self, cat_column, reduction, offset, delta, nsteps):
+        super().__init__(cat_column, reduction, nsteps)
+        self.offset = offset
+        self.delta = delta
+
+    def _build_temps(self, cuda=False):
+        return tuple(by_span(self.cat_column, tmp, self.offset, self.delta, self.modulo) for tmp in self.reduction._build_temps(cuda))
+
+    def _build_bases(self, cuda=False):
+        bases = self.reduction._build_bases(cuda)
+        if len(bases) == 1 and bases[0] is self:
+            return bases
+        return tuple(by_span(self.cat_column, base, self.offset, self.delta, self.modulo) for base in bases)
+
+    def _build_append(self, dshape, schema, cuda=False):
+        f = self.reduction._build_append(dshape, schema, cuda)
+        # because we transposed, we also need to flip the
+        # order of the x/y arguments
+        if isinstance(self.reduction, datashader.reductions.m2):
+            def _categorical_append(x, y, agg, cols, tmp1, tmp2, minval=self.offset, d=self.delta, n=self.modulo):
+                _agg = agg.transpose()
+                _ind = min(max(0, int((cols[0] - minval)/d)), n-1)
+                f(y, x, _agg[_ind], cols[1], tmp1[_ind], tmp2[_ind])
+        elif self.val_column is not None:
+            def _categorical_append(x, y, agg, field, minval=self.offset, d=self.delta, n=self.modulo):
+                _agg = agg.transpose()
+                _ind = min(max(0, int((field[0] - minval)/d)), n-1)
+                f(y, x, _agg[_ind], field[1])
+        else:
+            def _categorical_append(x, y, agg, field, minval=self.offset, d=self.delta, n=self.modulo):
+                _agg = agg.transpose()
+                _ind = min(max(0, int((field - minval)/d)), n-1)
+                f(y, x, _agg[_ind])
+
+        return ngjit(_categorical_append)
+
+
+def compute_bounds(bounds, ddf):
+    """
+    Given an OrderedDict() of {axis: (min,max)}, where min/max is None for bounds that are not set,
+    computes missing bounds and returns new dict
+    """
+    # setup function to compute min/max on every column for which we don't have a min/max
+    r = ddf.map_partitions(lambda df:
+            np.array([[(np.nanmin(df[ax].values).item() if min is None else min) for ax, (min, max) in bounds.items()]+
+                      [(np.nanmax(df[ax].values).item() if max is None else max) for ax, (min, max) in bounds.items()]]),
+        ).compute()
+
+    naxis = len(bounds)
+    # setup new bounds dict based on this
+    bounds = OrderedDict({axis: (np.nanmin(r[:, i]), np.nanmax(r[:, i+naxis]))
+                          for i, axis in enumerate(bounds.keys())})
+
+    # update
+    for axis, (minval, maxval) in bounds.items():
+        if not (np.isfinite(minval) and np.isfinite(maxval)):
+            minval, maxval = -1.0, 1.0
+        elif minval == maxval:
+            minval, maxval = minval-1, minval+1
+        bounds[axis] = minval, maxval
+
+    return bounds
+
 
 def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, normalize,
                 xlabel, ylabel, title, pngname,
@@ -332,14 +396,25 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     yaxis = ydatum.label
     aaxis = adatum and adatum.label
     caxis = cdatum and cdatum.label
-    color_key = ncolors = color_mapping = color_labels = agg_alpha = raster_alpha = None
+    color_key = ncolors = color_mapping = color_labels = agg_alpha = raster_alpha = cmin = cdelta = None
 
     xmin, xmax = xdatum.minmax
     ymin, ymax = ydatum.minmax
 
-    canvas = datashader.Canvas(options.xcanvas, options.ycanvas,
-                               x_range=[xmin, xmax] if xmin is not None else None,
-                               y_range=[ymin, ymax] if ymin is not None else None)
+    # work out bounds
+    bounds = OrderedDict(((xaxis, xdatum.minmax), (yaxis, ydatum.minmax)))
+    ## for the alpha axis, we don't need the bounds in advance
+    # if aaxis:
+    #    bounds[aaxis] = adatum.minmax
+    if caxis and not cdatum.is_discrete:
+        bounds[caxis] = cdatum.minmax
+    unknown = [axis for axis, (min, max) in bounds.items() if min is None or max is None]
+
+    if unknown:
+        log.info(f": scanning axis min/max for {' '.join(unknown)}")
+        bounds = compute_bounds(bounds, ddf)
+
+    canvas = datashader.Canvas(options.xcanvas, options.ycanvas, x_range=bounds[xaxis], y_range=bounds[yaxis])
 
     if aaxis is not None:
         agg_alpha = getattr(datashader.reductions, ared, None)
@@ -362,11 +437,17 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             agg = datashader.by(caxis, agg_by)
         else:
             color_bins = list(range(cdatum.nlevels))
-            log.debug(f'colourizing with count_integer, {len(color_bins)} bins')
-            agg = by_integers(caxis, agg_by, cdatum.nlevels)
+            if cdatum.is_discrete:
+                log.debug(f'colourizing with by_integers, {len(color_bins)} bins')
+                agg = by_integers(caxis, agg_by, cdatum.nlevels)
+            else:
+                log.debug(f'colourizing with by_span, {len(color_bins)} bins')
+                cmin = bounds[caxis][0]
+                cdelta = (bounds[caxis][1] - cmin) / cdatum.nlevels
+                agg = by_span(caxis, agg_by, cmin, cdelta, cdatum.nlevels)
 
         raster = canvas.points(ddf, xaxis, yaxis, agg=agg)
-        non_empty = numpy.array(raster.any(axis=(0, 1)))
+        non_empty = np.array(raster.any(axis=(0, 1)))
         if not non_empty.any():
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
@@ -374,33 +455,27 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         # work around https://github.com/holoviz/datashader/issues/899
         # Basically, 0 is treated as a nan and masked out in _colorize(), which is not correct for float reductions.
         # Also, _colorize() does not normalize the totals somehow.
-        if numpy.issubdtype(raster.dtype, numpy.bool_):
+        if np.issubdtype(raster.dtype, np.bool_):
             pass
-        elif numpy.issubdtype(raster.dtype, numpy.integer):
+        elif np.issubdtype(raster.dtype, np.integer):
+            ## TODO: unfinished business here
+            ## normalizing the raster bleaches out all colours again (fucks with log scaling, I guess?)
             # int values: simply normalize to max total 1. Null values will be masked
-            raster = raster.astype(numpy.float32) / raster.sum(axis=2).max()
+            # raster = raster.astype(np.float32) / raster.sum(axis=2).max()
+            pass
         else:
             # float values: first rescale raster to [0.001, 1]. Not 0, because 0 is masked out in _colorize()
-            maxval = numpy.nanmax(raster)
-            offset = numpy.nanmin(raster)
+            maxval = np.nanmax(raster)
+            offset = np.nanmin(raster)
             raster = .001 + .999*(raster - offset)/(maxval - offset)
             # replace NaNs with zeroes (because when we take the total, and 1 channel is present while others are missing...)
-            raster.data[numpy.isnan(raster.data)] = 0
+            raster.data[np.isnan(raster.data)] = 0
             # now rescale so that max total is 1
             raster /= raster.sum(axis=2).max()
 
-        # true if axis is continuous discretized
-        if cdatum.discretized_delta is not None:
-            # color labels are bin centres
-            bin_centers = [cdatum.discretized_bin_centers[i] for i in color_bins]
-            # map to colors pulled from 256 color map
-            color_key = [bmap[(i*256)//cdatum.nlevels] for i in color_bins]
-            color_labels = list(map(str, bin_centers))
-            log.info(f": shading using {len(color_bins)} colors (bin centres are {' '.join(color_labels)})")
-        # else a discrete axis
-        else:
+        if cdatum.is_discrete:
             # discard empty bins
-            non_empty = numpy.where(non_empty)[0]
+            non_empty = np.where(non_empty)[0]
             raster = raster[..., non_empty]
             # just use bin numbers to look up a color directly
             color_bins = [color_bins[i] for i in non_empty]
@@ -413,9 +488,20 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
                 color_labels = [str(bin) for bin, _ in bin_color]
             color_mapping = [col for _, col in bin_color]
             log.info(f": rendering using {len(color_bins)} colors (values {' '.join(color_labels)})")
+        else:
+            # color labels are bin centres
+            bin_centers = [cmin + cdelta*(i+0.5) for i in color_bins]
+            # map to colors pulled from 256 color map
+            color_key = [bmap[(i*256)//cdatum.nlevels] for i in color_bins]
+            color_labels = list(map(str, bin_centers))
+            log.info(f": shading using {len(color_bins)} colors (bin centres are {' '.join(color_labels)})")
+
         if raster_alpha is not None:
-            amin, amax = numpy.nanmin(raster_alpha), numpy.nanmax(raster_alpha)
+            amin = adatum.minmax[0] if adatum.minmax[0] is not None else np.nanmin(raster_alpha)
+            amax = adatum.minnax[1] if adatum.minmax[1] is not None else np.nanmax(raster_alpha)
             raster = raster*(raster_alpha-amin)/(amax-amin)
+            raster[raster<0] = 0
+            raster[raster>1] = 1
             log.info(f": adjusting alpha (alpha raster was {amin} to {amax})")
         img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize)
     else:
@@ -436,10 +522,10 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
 
     # Set plot limits based on data extent or user values for axis labels
 
-    data_xmin = numpy.min(raster.coords[xaxis].values)
-    data_xmax = numpy.max(raster.coords[xaxis].values)
-    data_ymin = numpy.min(raster.coords[yaxis].values)
-    data_ymax = numpy.max(raster.coords[yaxis].values)
+    data_xmin = np.min(raster.coords[xaxis].values)
+    data_xmax = np.max(raster.coords[xaxis].values)
+    data_ymin = np.min(raster.coords[yaxis].values)
+    data_ymax = np.max(raster.coords[yaxis].values)
 
     xmin = data_xmin if xmin is None else xdatum.minmax[0]
     xmax = data_xmax if xmax is None else xdatum.minmax[1]
@@ -475,11 +561,11 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         # discrete axis
         if color_mapping is not None:
             norm = matplotlib.colors.Normalize(-0.5, len(color_bins)-0.5)
-            ticks = numpy.arange(len(color_bins))
+            ticks = np.arange(len(color_bins))
             colormap = matplotlib.colors.ListedColormap(color_mapping)
         # discretized axis
         else:
-            norm = matplotlib.colors.Normalize(cdatum.minmax[0], cdatum.minmax[1])
+            norm = matplotlib.colors.Normalize(bounds[caxis][0], bounds[caxis][1])
             colormap = matplotlib.colors.ListedColormap(color_key)
             # auto-mark colorbar, since it represents a continuous range of values
             ticks = None
