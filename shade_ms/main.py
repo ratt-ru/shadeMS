@@ -522,7 +522,7 @@ def main(argv):
                     labels.append(cdatum.function)
                 props['color_title'] = " ".join(titles)
                 props['color_label'] = "-".join(labels)
-                props['color_modulo'] = f"(modulo {cdatum.nlevels})"
+                props['color_modulo'] = f"(into {cdatum.nlevels} colours)"
             else:
                 props['color_title'] = props['color_label'] = ''
 
@@ -637,7 +637,7 @@ def main(argv):
                         colorlabel=props['color_label'],
                         xname=xdatum.fullname, yname=ydatum.fullname,
                         xunit=xdatum.mapper.unit, yunit=ydatum.mapper.unit)
-            if cdatum is not None and cdatum.is_discrete:
+            if cdatum is not None and cdatum.is_discrete and not cdatum.discretized_labels:
                 keys['colortitle'] += ' '+props['color_modulo']
 
             pngname = generate_string_from_keys(options.pngname, keys, "_", "_", "-")

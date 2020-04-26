@@ -357,32 +357,25 @@ class by_span(by_integers):
         return ngjit(_categorical_append)
 
 
-def compute_bounds(bounds, ddf):
+def compute_bounds(datums, ddf):
     """
-    Given an OrderedDict() of {axis: (min,max)}, where min/max is None for bounds that are not set,
-    computes missing bounds and returns new dict
+    Given a list of datums, computes missing bounds and updates the datums
     """
     # setup function to compute min/max on every column for which we don't have a min/max
     r = ddf.map_partitions(lambda df:
-            np.array([[(np.nanmin(df[ax].values).item() if min is None else min) for ax, (min, max) in bounds.items()]+
-                      [(np.nanmax(df[ax].values).item() if max is None else max) for ax, (min, max) in bounds.items()]]),
+            np.array([[(np.nanmin(df[d.label].values).item() if d.minmax[0] is None else d.minmax[0]) for d in datums]+
+                      [(np.nanmax(df[d.label].values).item() if d.minmax[1] is None else d.minmax[1]) for d in datums]]),
         ).compute()
 
-    naxis = len(bounds)
     # setup new bounds dict based on this
-    bounds = OrderedDict({axis: (np.nanmin(r[:, i]), np.nanmax(r[:, i+naxis]))
-                          for i, axis in enumerate(bounds.keys())})
-
-    # update
-    for axis, (minval, maxval) in bounds.items():
+    for i, d in enumerate(datums):
+        minval = np.nanmin(r[:, i])
+        maxval = np.nanmax(r[:, i + len(datums)])
         if not (np.isfinite(minval) and np.isfinite(maxval)):
             minval, maxval = -1.0, 1.0
-        elif minval == maxval:
+        elif minval >= maxval:
             minval, maxval = minval-1, minval+1
-        bounds[axis] = minval, maxval
-
-    return bounds
-
+        d.minmax = minval, maxval
 
 def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, normalize,
                 xlabel, ylabel, title, pngname,
@@ -401,20 +394,18 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     xmin, xmax = xdatum.minmax
     ymin, ymax = ydatum.minmax
 
-    # work out bounds
-    bounds = OrderedDict(((xaxis, xdatum.minmax), (yaxis, ydatum.minmax)))
+    # work out bounds of axes for which we need them
+    bounds_axes = [xdatum, ydatum]
     ## for the alpha axis, we don't need the bounds in advance
-    # if aaxis:
-    #    bounds[aaxis] = adatum.minmax
-    if caxis and not cdatum.is_discrete:
-        bounds[caxis] = cdatum.minmax
-    unknown = [axis for axis, (min, max) in bounds.items() if min is None or max is None]
+    if cdatum is not None:
+        bounds_axes.append(cdatum)
+    unknown = [d for d in bounds_axes if d.minmax[0] is None or d.minmax[1] is None]
 
     if unknown:
-        log.info(f": scanning axis min/max for {' '.join(unknown)}")
-        bounds = compute_bounds(bounds, ddf)
+        log.info(f": scanning axis min/max for {' '.join([d.label for d in unknown])}")
+        bounds = compute_bounds(unknown, ddf)
 
-    canvas = datashader.Canvas(options.xcanvas, options.ycanvas, x_range=bounds[xaxis], y_range=bounds[yaxis])
+    canvas = datashader.Canvas(options.xcanvas, options.ycanvas, x_range=xdatum.minmax, y_range=ydatum.minmax)
 
     if aaxis is not None:
         agg_alpha = getattr(datashader.reductions, ared, None)
@@ -442,8 +433,8 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
                 agg = by_integers(caxis, agg_by, cdatum.nlevels)
             else:
                 log.debug(f'colourizing with by_span, {len(color_bins)} bins')
-                cmin = bounds[caxis][0]
-                cdelta = (bounds[caxis][1] - cmin) / cdatum.nlevels
+                cmin = cdatum.minmax[0]
+                cdelta = (cdatum.minmax[1] - cmin) / cdatum.nlevels
                 agg = by_span(caxis, agg_by, cmin, cdelta, cdatum.nlevels)
 
         raster = canvas.points(ddf, xaxis, yaxis, agg=agg)
@@ -482,11 +473,14 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             color_key = [dmap[bin] for bin in color_bins]
             # the numbers may be out of order -- reorder for color bar purposes
             bin_color = sorted(zip(color_bins, color_key))
-            if cdatum.discretized_labels and len(cdatum.discretized_labels) <= cdatum.nlevels:
-                color_labels = [cdatum.discretized_labels[bin] for bin, _ in bin_color]
-            else:
-                color_labels = [str(bin) for bin, _ in bin_color]
             color_mapping = [col for _, col in bin_color]
+            if cdatum.minmax[1] >= cdatum.nlevels:
+                color_labels = [f"+{bin}" for bin, _ in bin_color]
+            else:
+                if cdatum.discretized_labels and len(cdatum.discretized_labels) <= cdatum.nlevels:
+                    color_labels = [cdatum.discretized_labels[bin] for bin, _ in bin_color]
+                else:
+                    color_labels = [f"{bin}" for bin, _ in bin_color]
             log.info(f": rendering using {len(color_bins)} colors (values {' '.join(color_labels)})")
         else:
             # color labels are bin centres
@@ -559,13 +553,13 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     if color_key:
         import matplotlib.colors
         # discrete axis
-        if color_mapping is not None:
+        if caxis is not None and cdatum.is_discrete:
             norm = matplotlib.colors.Normalize(-0.5, len(color_bins)-0.5)
             ticks = np.arange(len(color_bins))
             colormap = matplotlib.colors.ListedColormap(color_mapping)
         # discretized axis
         else:
-            norm = matplotlib.colors.Normalize(bounds[caxis][0], bounds[caxis][1])
+            norm = matplotlib.colors.Normalize(*cdatum.minmax)
             colormap = matplotlib.colors.ListedColormap(color_key)
             # auto-mark colorbar, since it represents a continuous range of values
             ticks = None
@@ -573,7 +567,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         cb = fig.colorbar(matplotlib.cm.ScalarMappable(norm=norm, cmap=colormap), ax=ax, ticks=ticks)
 
         # adjust ticks for discrete axis
-        if color_mapping is not None:
+        if caxis is not None and cdatum.is_discrete:
             rot = 0
             # adjust fontsize for number of labels
             fs = max(options.fontsize*min(1, 32./len(color_labels)), 6)
