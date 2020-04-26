@@ -14,6 +14,7 @@ import xarray
 import holoviews as holoviews
 import holoviews.operation.datashader
 import datashader.transfer_functions
+import datashader.reductions
 import numpy
 import pylab
 import textwrap
@@ -95,8 +96,9 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             flag = group.FLAG if not noflags else None
             flag_row = group.FLAG_ROW if not noflags else None
 
-
-            baselines = group.ANTENNA1*len(msinfo.antenna) + group.ANTENNA2
+            a1 = da.minimum(group.ANTENNA1.data, group.ANTENNA2.data)
+            a2 = da.maximum(group.ANTENNA1.data, group.ANTENNA2.data)
+            baselines = a1*len(msinfo.antenna) - a1*(a1-1)//2. + a2
 
             freqs = chan_freqs[ddid]
             chans = xarray.DataArray(range(len(freqs)), dims=("chan",))
@@ -260,6 +262,9 @@ class by_integers(datashader.by):
         super().__init__(cat_column, reduction)
         self.modulo = modulo
 
+    def _build_temps(self, cuda=False):
+        return tuple(by_integers(self.cat_column, tmp, self.modulo) for tmp in self.reduction._build_temps(cuda))
+
     def validate(self, in_dshape):
         if not self.cat_column in in_dshape.dict:
             raise ValueError("specified column not found")
@@ -278,13 +283,39 @@ class by_integers(datashader.by):
         else:
             return (datashader.reductions.extract(self.columns[0]),)
 
-    def _build_finalize(self, dshape):
-        def finalize(bases, cuda=False, **kwargs):
-            dims = kwargs['dims'] + [self.cat_column]
+    def _build_bases(self, cuda=False):
+        bases = self.reduction._build_bases(cuda)
+        if len(bases) == 1 and bases[0] is self:
+            return bases
+        return tuple(by_integers(self.cat_column, base, self.modulo) for base in bases)
 
-            coords = kwargs['coords']
-            coords[self.cat_column] = list(range(self.modulo))
-            return xarray.DataArray(bases[0], dims=dims, coords=coords)
+    def _build_append(self, dshape, schema, cuda=False):
+        f = self.reduction._build_append(dshape, schema, cuda)
+        # because we transposed, we also need to flip the
+        # order of the x/y arguments
+        if isinstance(self.reduction, datashader.reductions.m2):
+            def _categorical_append(x, y, agg, cols, tmp1, tmp2, mod=self.modulo):
+                _agg = agg.transpose()
+                _ind = int(cols[0]) % mod
+                f(y, x, _agg[_ind], cols[1], tmp1[_ind], tmp2[_ind])
+        elif self.val_column is not None:
+            def _categorical_append(x, y, agg, field, mod=self.modulo):
+                _agg = agg.transpose()
+                f(y, x, _agg[int(field[0]) % mod], field[1])
+        else:
+            def _categorical_append(x, y, agg, field, mod=self.modulo):
+                _agg = agg.transpose()
+                f(y, x, _agg[int(field) % mod])
+
+        return ngjit(_categorical_append)
+
+    def _build_finalize(self, dshape):
+        cats = list(range(self.modulo))
+
+        def finalize(bases, cuda=False, **kwargs):
+            kwargs['dims'] += [self.cat_column]
+            kwargs['coords'][self.cat_column] = cats
+            return self.reduction._finalize(bases, cuda=cuda, **kwargs)
 
         return finalize
 
@@ -322,27 +353,42 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             log.debug(f'rasterizing alpha channel using {ared}(aaxis)')
             raster_alpha = canvas.points(ddf, xaxis, yaxis, agg=agg_alpha)
 
+        # aggregation applied to by()
+        agg_by = agg_alpha if USE_REDUCE_BY and agg_alpha is not None else datashader.count()
+
         if data_mappers.USE_COUNT_CAT:
             color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
             log.debug(f'colourizing with count_cat, {len(color_bins)} bins')
-            if USE_REDUCE_BY and agg_alpha:
-                agg = datashader.by(caxis, agg_alpha)
-            else:
-                agg = datashader.count_cat(caxis)
+            agg = datashader.by(caxis, agg_by)
         else:
             color_bins = list(range(cdatum.nlevels))
             log.debug(f'colourizing with count_integer, {len(color_bins)} bins')
-            if USE_REDUCE_BY and agg_alpha:
-                agg = by_integers(caxis, agg_alpha, cdatum.nlevels)
-            else:
-                agg = count_integers(caxis, cdatum.nlevels)
-
+            agg = by_integers(caxis, agg_by, cdatum.nlevels)
 
         raster = canvas.points(ddf, xaxis, yaxis, agg=agg)
         non_empty = numpy.array(raster.any(axis=(0, 1)))
         if not non_empty.any():
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
+
+        # work around https://github.com/holoviz/datashader/issues/899
+        # Basically, 0 is treated as a nan and masked out in _colorize(), which is not correct for float reductions.
+        # Also, _colorize() does not normalize the totals somehow.
+        if numpy.issubdtype(raster.dtype, numpy.bool_):
+            pass
+        elif numpy.issubdtype(raster.dtype, numpy.integer):
+            # int values: simply normalize to max total 1. Null values will be masked
+            raster = raster.astype(numpy.float32) / raster.sum(axis=2).max()
+        else:
+            # float values: first rescale raster to [0.001, 1]. Not 0, because 0 is masked out in _colorize()
+            maxval = numpy.nanmax(raster)
+            offset = numpy.nanmin(raster)
+            raster = .001 + .999*(raster - offset)/(maxval - offset)
+            # replace NaNs with zeroes (because when we take the total, and 1 channel is present while others are missing...)
+            raster.data[numpy.isnan(raster.data)] = 0
+            # now rescale so that max total is 1
+            raster /= raster.sum(axis=2).max()
+
         # true if axis is continuous discretized
         if cdatum.discretized_delta is not None:
             # color labels are bin centres
