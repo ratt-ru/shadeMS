@@ -14,7 +14,7 @@ requirements = [
 "MSUtils"
 ]
 
-extras_require = {'testing': ['pytest', 'pytest-flake8']}
+extras_require = {'testing': ['pytest']}
 
 PACKAGE_NAME = 'shadems'
 __version__ = '0.2.0'
