@@ -4,5 +4,6 @@ ENV USER root
 ADD . /code
 WORKDIR /code
 RUN pip3 install pip setuptools -U
-RUN pip3 install .
-RUN python -c "import shade_ms.main"
+RUN pip3 install .[testing]
+RUN python -c 'import shade_ms.main'
+RUN py.test -vvv shade_ms
