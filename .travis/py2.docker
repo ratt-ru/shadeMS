@@ -1,5 +1,5 @@
 FROM kernsuite/base:5
-RUN docker-apt-install python-pip git
+RUN docker-apt-install python-pip git libllvm9
 ADD . /code
 ENV USER root
 WORKDIR /code
