@@ -14,6 +14,8 @@ requirements = [
 "MSUtils"
 ]
 
+extras_require = {'testing': ['pytest', 'pytest-flake8']}
+
 PACKAGE_NAME = 'shadems'
 __version__ = '0.2.0'
 
@@ -25,6 +27,7 @@ setup(name = PACKAGE_NAME,
     url = "https://github.com/IanHeywood/shadeMS",
     packages=find_packages(), 
     install_requires = requirements,
+    extras_require=extras_require,
     include_package_data = True,
     scripts=["bin/" + i for i in os.listdir("bin")],
     license=["GNU GPL v2"],
