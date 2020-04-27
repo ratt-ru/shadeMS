@@ -5,7 +5,6 @@
 import matplotlib
 matplotlib.use('agg')
 
-import numpy as np
 import datetime
 import os
 import pkg_resources
@@ -561,7 +560,7 @@ def main(argv):
     keys['field_num'] = subset.field.numbers if options.field != 'all' else ''
     keys['field'] = subset.field.names if options.field != 'all' else ''
     keys['scan'] = subset.scan.names if options.scan != 'all' else ''
-    keys['ant'] = subset.ant.names if options.ant != 'all' else ''
+    keys['ant'] = subset.ant.names if options.ant != 'all' else ''  ## TODO: also handle ant-num settings
     keys['spw'] = subset.spw.names if options.spw != 'all' else ''
 
     keys['suffix'] = suffix = options.suffix.format(**options.__dict__) if options.suffix else ''
