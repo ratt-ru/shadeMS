@@ -1,9 +1,0 @@
-FROM kernsuite/base:5
-RUN docker-apt-install python-pip git llvm llvm-runtime libllvm9
-ENV USER root
-ADD . /code
-WORKDIR /code
-RUN pip install pip setuptools -U
-RUN pip install .[testing]
-RUN python -c 'import shade_ms.main'
-RUN py.test -vvv shade_ms
