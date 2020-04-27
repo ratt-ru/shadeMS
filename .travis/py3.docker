@@ -5,4 +5,4 @@ ADD . /code
 WORKDIR /code
 RUN pip3 install pip setuptools -U
 RUN pip3 install .
-RUN python3 -c "import ShadeMS.main"
+RUN python -c "import shade_ms.main"
