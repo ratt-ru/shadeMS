@@ -5,4 +5,5 @@ ENV USER root
 ADD . /code
 WORKDIR /code
 RUN pip3 install /code
+RUN pip3 install git+https://github.com/o-smirnov/datashader.git@master
 RUN mypy --ignore-missing-import shade_ms

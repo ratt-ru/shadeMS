@@ -4,4 +4,4 @@ RUN pip3 install pycodestyle
 ADD . /code
 WORKDIR /code
 RUN pip3 install pytest
-RUN py.test --flake8
+RUN py.test --flake8 shade_ms
