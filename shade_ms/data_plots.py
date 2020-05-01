@@ -364,25 +364,25 @@ class by_span(by_integers):
         return ngjit(_categorical_append)
 
 
-def compute_bounds(datums, ddf):
+def compute_bounds(unknowns, bounds, ddf):
     """
-    Given a list of datums, computes missing bounds and updates the datums
+    Given a list of axis with unknown bounds, computes missing bounds and updates the bounds dict
     """
     # setup function to compute min/max on every column for which we don't have a min/max
     r = ddf.map_partitions(lambda df:
-            np.array([[(np.nanmin(df[d.label].values).item() if d.minmax[0] is None else d.minmax[0]) for d in datums]+
-                      [(np.nanmax(df[d.label].values).item() if d.minmax[1] is None else d.minmax[1]) for d in datums]]),
+            np.array([[(np.nanmin(df[axis].values).item() if bounds[axis][0] is None else bounds[axis][0]) for axis in unknowns]+
+                      [(np.nanmax(df[axis].values).item() if bounds[axis][1] is None else bounds[axis][1]) for axis in unknowns]]),
         ).compute()
 
     # setup new bounds dict based on this
-    for i, d in enumerate(datums):
+    for i, axis in enumerate(unknowns):
         minval = np.nanmin(r[:, i])
-        maxval = np.nanmax(r[:, i + len(datums)])
+        maxval = np.nanmax(r[:, i + len(unknowns)])
         if not (np.isfinite(minval) and np.isfinite(maxval)):
             minval, maxval = -1.0, 1.0
         elif minval >= maxval:
             minval, maxval = minval-1, minval+1
-        d.minmax = minval, maxval
+        bounds[axis] = minval, maxval
 
 def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, normalize,
                 xlabel, ylabel, title, pngname,
@@ -396,23 +396,19 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     yaxis = ydatum.label
     aaxis = adatum and adatum.label
     caxis = cdatum and cdatum.label
-    color_key = ncolors = color_mapping = color_labels = agg_alpha = raster_alpha = cmin = cdelta = None
+    color_key = color_mapping = color_labels = agg_alpha = raster_alpha = cmin = cdelta = None
 
-    xmin, xmax = xdatum.minmax
-    ymin, ymax = ydatum.minmax
+    bounds = OrderedDict({xaxis: xdatum.minmax, yaxis: ydatum.minmax})
+    if caxis:
+        bounds[caxis] = cdatum.minmax
 
-    # work out bounds of axes for which we need them
-    bounds_axes = [xdatum, ydatum]
-    ## for the alpha axis, we don't need the bounds in advance
-    if cdatum is not None:
-        bounds_axes.append(cdatum)
-    unknown = [d for d in bounds_axes if d.minmax[0] is None or d.minmax[1] is None]
+    unknown = [axis for (axis, minmax) in bounds.items() if minmax[0] is None or minmax[1] is None]
 
     if unknown:
-        log.info(f": scanning axis min/max for {' '.join([d.label for d in unknown])}")
-        bounds = compute_bounds(unknown, ddf)
+        log.info(f": scanning axis min/max for {' '.join(unknown)}")
+        compute_bounds(unknown, bounds, ddf)
 
-    canvas = datashader.Canvas(options.xcanvas, options.ycanvas, x_range=xdatum.minmax, y_range=ydatum.minmax)
+    canvas = datashader.Canvas(options.xcanvas, options.ycanvas, x_range=bounds[xaxis], y_range=bounds[yaxis])
 
     if aaxis is not None:
         agg_alpha = getattr(datashader.reductions, ared, None)
@@ -440,8 +436,8 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
                 agg = by_integers(caxis, agg_by, cdatum.nlevels)
             else:
                 log.debug(f'colourizing with by_span, {len(color_bins)} bins')
-                cmin = cdatum.minmax[0]
-                cdelta = (cdatum.minmax[1] - cmin) / cdatum.nlevels
+                cmin = bounds[caxis][0]
+                cdelta = (bounds[caxis][1] - cmin) / cdatum.nlevels
                 agg = by_span(caxis, agg_by, cmin, cdelta, cdatum.nlevels)
 
         raster = canvas.points(ddf, xaxis, yaxis, agg=agg)
@@ -488,7 +484,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             # the numbers may be out of order -- reorder for color bar purposes
             bin_color = sorted(zip(color_bins, color_key))
             color_mapping = [col for _, col in bin_color]
-            if cdatum.minmax[1] >= cdatum.nlevels:
+            if bounds[caxis][1] >= cdatum.nlevels:
                 color_labels = [f"+{bin}" for bin, _ in bin_color]
             else:
                 if cdatum.discretized_labels and len(cdatum.discretized_labels) <= cdatum.nlevels:
@@ -530,15 +526,8 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
 
     # Set plot limits based on data extent or user values for axis labels
 
-    data_xmin = np.min(raster.coords[xaxis].values)
-    data_xmax = np.max(raster.coords[xaxis].values)
-    data_ymin = np.min(raster.coords[yaxis].values)
-    data_ymax = np.max(raster.coords[yaxis].values)
-
-    xmin = data_xmin if xmin is None else xdatum.minmax[0]
-    xmax = data_xmax if xmax is None else xdatum.minmax[1]
-    ymin = data_ymin if ymin is None else ydatum.minmax[0]
-    ymax = data_ymax if ymax is None else ydatum.minmax[1]
+    xmin, xmax = bounds[xaxis]
+    ymin, ymax = bounds[yaxis]
 
     log.debug('rendering image')
 
@@ -547,7 +536,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
 
     fig = pylab.figure(figsize=(figx, figy))
     ax = fig.add_subplot(111, facecolor=bgcol)
-    ax.imshow(X=rgb.data, extent=[data_xmin, data_xmax, data_ymin, data_ymax],
+    ax.imshow(X=rgb.data, extent=[xmin, xmax, ymin, ymax],
               aspect='auto', origin='lower')
     ax.set_title("\n".join(textwrap.wrap(title, 90)), loc='center')
     ax.set_xlabel(xlabel)
@@ -573,7 +562,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             colormap = matplotlib.colors.ListedColormap(color_mapping)
         # discretized axis
         else:
-            norm = matplotlib.colors.Normalize(*cdatum.minmax)
+            norm = matplotlib.colors.Normalize(*bounds[caxis])
             colormap = matplotlib.colors.ListedColormap(color_key)
             # auto-mark colorbar, since it represents a continuous range of values
             ticks = None
