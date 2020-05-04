@@ -484,7 +484,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             # the numbers may be out of order -- reorder for color bar purposes
             bin_color = sorted(zip(color_bins, color_key))
             color_mapping = [col for _, col in bin_color]
-            if bounds[caxis][1] >= cdatum.nlevels:
+            if bounds[caxis][1] > cdatum.nlevels:
                 color_labels = [f"+{bin}" for bin, _ in bin_color]
             else:
                 if cdatum.discretized_labels and len(cdatum.discretized_labels) <= cdatum.nlevels:
