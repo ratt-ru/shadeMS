@@ -205,7 +205,7 @@ def main(argv):
 
     group_opts.add_argument("-d", "--debug", action='store_true',
                             help="Enable debugging output")
-    group_opts.add_argument('-z', '--row-chunk-size', type=int, metavar="NROWS", default=100000,
+    group_opts.add_argument('-z', '--row-chunk-size', type=int, metavar="NROWS", default=5000,
                            help="""Row chunk size for dask-ms. Larger chunks may or may not be faster, but will
                             certainly use more RAM.""")
     group_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=1,

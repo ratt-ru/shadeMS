@@ -9,7 +9,7 @@ requirements = [
 "datashader",
 "holoviews",
 "matplotlib>2.2.3; python_version >= '3.5'",
- "future-fstrings",
+"future-fstrings",
 "requests",
 "MSUtils"
 ]
@@ -17,14 +17,14 @@ requirements = [
 extras_require = {'testing': ['pytest', 'pytest-flake8']}
 
 PACKAGE_NAME = 'shadems'
-__version__ = '0.2.0'
+__version__ = '0.3.0'
 
 setup(name = PACKAGE_NAME,
     version = __version__,
     description = "Rapid Measurement Set plotting with dask-ms and datashader",
-    author = "Ian Heywood",
+    author = "Ian Heywood & RATT",
     author_email = "ian.heywood@physics.ox.ac.uk",
-    url = "https://github.com/IanHeywood/shadeMS",
+    url = "https://github.com/ratt-ru/shadeMS",
     packages=find_packages(),
     install_requires = requirements,
     extras_require=extras_require,
@@ -33,11 +33,11 @@ setup(name = PACKAGE_NAME,
     license=["GNU GPL v2"],
     python_requires=">=3.6",
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
         "Operating System :: POSIX :: Linux",
         "Programming Language :: Python",
         "Topic :: Scientific/Engineering :: Astronomy"
     ]
-     )
+)
