@@ -28,7 +28,7 @@ jobs:
         run: pip install -e .[testing]
 
       - name: Run testsuite
-        run: py.test --flake8 shade_ms/
+        run: py.test shade_ms/
 
   # deploy:
   #   needs: [test]
