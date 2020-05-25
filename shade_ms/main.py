@@ -5,7 +5,6 @@
 import matplotlib
 matplotlib.use('agg')
 
-import numpy
 import datetime
 import os
 import pkg_resources
@@ -137,6 +136,8 @@ def main(argv):
                       help='Separate plots per scan (default is to combine in one plot)')
     group_opts.add_argument('--iter-corr', action="store_true",
                       help='Separate plots per correlation or Stokes (default is to combine in one plot)')
+    group_opts.add_argument('--iter-ant', action="store_true",
+                            help='Separate plots per antenna (default is to combine in one plot)')
 
     group_opts = parser.add_argument_group('Data subset selection')
 
@@ -204,7 +205,7 @@ def main(argv):
 
     group_opts.add_argument("-d", "--debug", action='store_true',
                             help="Enable debugging output")
-    group_opts.add_argument('-z', '--row-chunk-size', type=int, metavar="NROWS", default=100000,
+    group_opts.add_argument('-z', '--row-chunk-size', type=int, metavar="NROWS", default=5000,
                            help="""Row chunk size for dask-ms. Larger chunks may or may not be faster, but will
                             certainly use more RAM.""")
     group_opts.add_argument('-j', '--num-parallel', type=int, metavar="N", default=1,
@@ -518,11 +519,9 @@ def main(argv):
                     titles.append(cdatum.mapper.fullname)
                 if cdatum.function:
                     labels.append(cdatum.function)
-                if not cdatum.discretized_delta:
-                    if not cdatum.discretized_labels or len(cdatum.discretized_labels) > cdatum.nlevels:
-                        titles.append(f"(modulo {cdatum.nlevels})")
                 props['color_title'] = " ".join(titles)
                 props['color_label'] = "-".join(labels)
+                props['color_modulo'] = f"(into {cdatum.nlevels} colours)"
             else:
                 props['color_title'] = props['color_label'] = ''
 
@@ -543,7 +542,7 @@ def main(argv):
                                  chanslice=chanslice, subset=subset,
                                  noflags=options.noflags, noconj=options.noconj,
                                  iter_field=options.iter_field, iter_spw=options.iter_spw,
-                                 iter_scan=options.iter_scan,
+                                 iter_scan=options.iter_scan, iter_ant=options.iter_ant,
                                  join_corrs=join_corrs,
                                  row_chunk_size=options.row_chunk_size)
 
@@ -561,7 +560,7 @@ def main(argv):
     keys['field_num'] = subset.field.numbers if options.field != 'all' else ''
     keys['field'] = subset.field.names if options.field != 'all' else ''
     keys['scan'] = subset.scan.names if options.scan != 'all' else ''
-    keys['ant'] = subset.ant.names if options.ant != 'all' else ''
+    keys['ant'] = subset.ant.names if options.ant != 'all' else ''  ## TODO: also handle ant-num settings
     keys['spw'] = subset.spw.names if options.spw != 'all' else ''
 
     keys['suffix'] = suffix = options.suffix.format(**options.__dict__) if options.suffix else ''
@@ -633,9 +632,12 @@ def main(argv):
         for props, xdatum, ydatum, adatum, ared, cdatum in all_plots:
             keys.update(title=props['title'], label=props['label'],
                         alphatitle=props['alpha_title'], alphalabel=props['alpha_label'],
-                        colortitle=props['color_title'], colorlabel=props['color_label'],
+                        colortitle=props['color_title'],
+                        colorlabel=props['color_label'],
                         xname=xdatum.fullname, yname=ydatum.fullname,
                         xunit=xdatum.mapper.unit, yunit=ydatum.mapper.unit)
+            if cdatum is not None and cdatum.is_discrete and not cdatum.discretized_labels:
+                keys['colortitle'] += ' '+props['color_modulo']
 
             pngname = generate_string_from_keys(options.pngname, keys, "_", "_", "-")
             title   = generate_string_from_keys(options.title, keys, " ", " ", ", ")

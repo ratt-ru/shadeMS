@@ -2,7 +2,7 @@ from MSUtils.msutils import STOKES_TYPES
 from casacore.tables import table
 import re
 import daskms
-import numpy
+import numpy as np
 from collections import OrderedDict
 from xarray import DataArray
 
