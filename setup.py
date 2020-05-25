@@ -14,6 +14,8 @@ requirements = [
 "MSUtils"
 ]
 
+extras_require = {'testing': ['pytest', 'pytest-flake8']}
+
 PACKAGE_NAME = 'shadems'
 __version__ = '0.3.0'
 
@@ -24,11 +26,12 @@ setup(name = PACKAGE_NAME,
     author_email = "ian.heywood@physics.ox.ac.uk",
     url = "https://github.com/ratt-ru/shadeMS",
     packages=find_packages(),
-    python_requires='>=3.5',
     install_requires = requirements,
+    extras_require=extras_require,
     include_package_data = True,
     scripts=["bin/" + i for i in os.listdir("bin")],
     license=["GNU GPL v2"],
+    python_requires=">=3.6",
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
@@ -37,4 +40,4 @@ setup(name = PACKAGE_NAME,
         "Programming Language :: Python",
         "Topic :: Scientific/Engineering :: Astronomy"
     ]
-     )
+)

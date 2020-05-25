@@ -98,7 +98,8 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
 
             a1 = da.minimum(group.ANTENNA1.data, group.ANTENNA2.data)
             a2 = da.maximum(group.ANTENNA1.data, group.ANTENNA2.data)
-            baselines = (a1*len(msinfo.antenna) - a1*(a1-1)//2 + a2)
+
+            baselines = a1*len(msinfo.antenna) - a1*(a1-1)//2. + a2
 
             freqs = chan_freqs[ddid]
             chans = xarray.DataArray(range(len(freqs)), dims=("chan",))
@@ -396,6 +397,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     yaxis = ydatum.label
     aaxis = adatum and adatum.label
     caxis = cdatum and cdatum.label
+
     color_key = color_mapping = color_labels = agg_alpha = raster_alpha = cmin = cdelta = None
 
     bounds = OrderedDict({xaxis: xdatum.minmax, yaxis: ydatum.minmax})

@@ -1,8 +1,10 @@
-FROM kernsuite/base:4
-RUN docker-apt-install python3-pip git
+FROM kernsuite/base:5
+RUN docker-apt-install python3-pip git libllvm9
 ENV USER root
 ADD . /code
 WORKDIR /code
 RUN pip3 install pip setuptools -U
-RUN pip3 install .
-RUN python3 -c "import ShadeMS.main"
+RUN pip3 install .[testing]
+RUN pip3 install git+https://github.com/o-smirnov/datashader.git@master
+RUN python3 -c 'import shade_ms.main'
+RUN py.test -vvv shade_ms
