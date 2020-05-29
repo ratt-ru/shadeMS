@@ -51,7 +51,7 @@ class integer_modulo(datashader.reductions.category_codes):
         self.modulo = modulo
 
     def apply(self, df):
-        return _column_discretization(df, self.column, self.modulo)
+        return _column_modulo(df, self.column, self.modulo)
 
 
 class float_discretization(integer_modulo):

@@ -249,6 +249,14 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
 
     canvas = datashader.Canvas(options.xcanvas, options.ycanvas, x_range=bounds[xaxis], y_range=bounds[yaxis])
 
+
+    if aaxis is not None:
+        agg_alpha = getattr(datashader.reductions, ared, None)
+        if agg_alpha is None:
+            raise ValueError(f"unknown alpha reduction function {ared}")
+        agg_alpha = agg_alpha(aaxis)
+    ared = ared or 'count'
+
     if aaxis is not None:
         agg_alpha = getattr(datashader.reductions, ared, None)
         if agg_alpha is None:
@@ -292,26 +300,26 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
 
-        # work around https://github.com/holoviz/datashader/issues/899
-        # Basically, 0 is treated as a nan and masked out in _colorize(), which is not correct for float reductions.
-        # Also, _colorize() does not normalize the totals somehow.
-        if np.issubdtype(raster.dtype, np.bool_):
-            pass
-        elif np.issubdtype(raster.dtype, np.integer):
-            ## TODO: unfinished business here
-            ## normalizing the raster bleaches out all colours again (fucks with log scaling, I guess?)
-            # int values: simply normalize to max total 1. Null values will be masked
-            # raster = raster.astype(np.float32) / raster.sum(axis=2).max()
-            pass
-        else:
-            # float values: first rescale raster to [0.001, 1]. Not 0, because 0 is masked out in _colorize()
-            maxval = np.nanmax(raster)
-            offset = np.nanmin(raster)
-            raster = .001 + .999*(raster - offset)/(maxval - offset)
-            # replace NaNs with zeroes (because when we take the total, and 1 channel is present while others are missing...)
-            raster.data[np.isnan(raster.data)] = 0
-            # now rescale so that max total is 1
-            raster /= raster.sum(axis=2).max()
+        # # work around https://github.com/holoviz/datashader/issues/899
+        # # Basically, 0 is treated as a nan and masked out in _colorize(), which is not correct for float reductions.
+        # # Also, _colorize() does not normalize the totals somehow.
+        # if np.issubdtype(raster.dtype, np.bool_):
+        #     pass
+        # elif np.issubdtype(raster.dtype, np.integer):
+        #     ## TODO: unfinished business here
+        #     ## normalizing the raster bleaches out all colours again (fucks with log scaling, I guess?)
+        #     # int values: simply normalize to max total 1. Null values will be masked
+        #     # raster = raster.astype(np.float32) / raster.sum(axis=2).max()
+        #     pass
+        # else:
+        #     # float values: first rescale raster to [0.001, 1]. Not 0, because 0 is masked out in _colorize()
+        #     maxval = np.nanmax(raster)
+        #     offset = np.nanmin(raster)
+        #     raster = .001 + .999*(raster - offset)/(maxval - offset)
+        #     # replace NaNs with zeroes (because when we take the total, and 1 channel is present while others are missing...)
+        #     raster.data[np.isnan(raster.data)] = 0
+        #     # now rescale so that max total is 1
+        #     raster /= raster.sum(axis=2).max()
 
         if cdatum.is_discrete:
             # discard empty bins
