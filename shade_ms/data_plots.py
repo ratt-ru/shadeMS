@@ -13,6 +13,7 @@ import holoviews as holoviews
 import holoviews.operation.datashader
 import datashader.transfer_functions
 import datashader.reductions
+from datashader.reductions import category_modulo, category_binning
 import numpy as np
 import pylab
 import textwrap
@@ -23,7 +24,7 @@ from shade_ms import log
 from collections import OrderedDict
 from . import data_mappers
 from .data_mappers import DataAxis
-from .ds_ext import by_integers, by_span
+# from .ds_ext import by_integers, by_span
 
 USE_REDUCE_BY = False
 
@@ -274,28 +275,32 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
 
         if data_mappers.USE_COUNT_CAT:
             color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
-            log.debug(f'colourizing with count_cat, {len(color_bins)} bins')
-            agg = datashader.by(caxis, agg_by)
+            log.debug(f'colourizing using {caxis} categorical, {len(color_bins)} bins')
+            category = caxis
         else:
             color_bins = list(range(cdatum.nlevels))
             if cdatum.is_discrete:
-                log.debug(f'colourizing with by_integers, {len(color_bins)} bins')
-                agg = by_integers(caxis, agg_by, cdatum.nlevels)
+                log.debug(f'colourizing using {caxis} modulo {len(color_bins)}')
+                category = category_modulo(caxis,  cdatum.nlevels)
             else:
-                log.debug(f'colourizing with by_span, {len(color_bins)} bins')
+                log.debug(f'colourizing using {caxis} with {len(color_bins)} bins')
                 cmin = bounds[caxis][0]
                 cdelta = (bounds[caxis][1] - cmin) / cdatum.nlevels
-                agg = by_span(caxis, agg_by, cmin, cdelta, cdatum.nlevels)
+                category = category_binning(caxis, cmin, cdelta, cdatum.nlevels)
 
-        raster = canvas.points(ddf, xaxis, yaxis, agg=agg)
+        raster = canvas.points(ddf, xaxis, yaxis, agg=datashader.by(category, agg_by))
+        is_integer_raster = np.issubdtype(raster.dtype, np.integer)
 
         # the by-span aggregator accumulates flagged points in an extra raster plane
-        if type(agg) is by_span:
-            flag_raster = raster[..., -1]
+        if isinstance(category, category_binning):
+            if is_integer_raster:
+                log.info(f": {raster[..., -1].data.sum():.3g} points were flagged ")
             raster = raster[...,:-1]
-            log.info(f": {flag_raster.data.sum():.3g} points were flagged ")
 
-        non_empty = np.array(raster.any(axis=(0, 1)))
+        if is_integer_raster:
+            non_empty = np.array(raster.any(axis=(0, 1)))
+        else:
+            non_empty = ~(np.isnan(raster.data).all(axis=(0, 1)))
         if not non_empty.any():
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
