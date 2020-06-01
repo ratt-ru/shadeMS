@@ -53,3 +53,30 @@ def test_dataframe_factory(test_nan_shapes):
     # Compare our lazy dataframe series vs (dask or numpy) arrays
     assert_array_equal(df['x'], x)
     assert_array_equal(df['y'], y)
+
+
+def test_dataframe_factory_multicol():
+    nrow, nfreq, ncorr = 100, 100, 4
+
+    data1a = da.arange(nrow, chunks=(10,))
+    data1b = da.zeros(dtype=float, shape=(nfreq, ncorr), chunks=(100, 4))
+    data1c = da.ones(dtype=np.int32, shape=(ncorr,), chunks=(4,))
+
+    df = dataframe_factory(("row", "chan", "corr"),
+                           data1a, ("row",),
+                           data1b, ("chan", "corr"),
+                           data1c, ("corr",))
+
+    assert isinstance(df, dd.DataFrame)
+    assert isinstance(df['x'], dd.Series)
+    assert isinstance(df['y'], dd.Series)
+    assert isinstance(df['c0'], dd.Series)
+
+
+    x, y, c0 = da.broadcast_arrays(data1a[:, None, None],
+                                   data1b[None, :, :],
+                                   data1c[None, None, :])
+
+    assert_array_equal(df['x'], x.ravel())
+    assert_array_equal(df['y'], y.ravel())
+    assert_array_equal(df['c0'], c0.ravel())
