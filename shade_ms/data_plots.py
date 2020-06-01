@@ -24,6 +24,7 @@ from shade_ms import log
 from collections import OrderedDict
 from . import data_mappers
 from .data_mappers import DataAxis
+from .dask_utils import multicol_dataframe_factory
 # from .ds_ext import by_integers, by_span
 
 USE_REDUCE_BY = False
@@ -111,14 +112,17 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                 nchan = flag.shape[1]
             shape = (len(group.row), nchan)
 
-            datums = OrderedDict()
+            arrays = OrderedDict()
+            shapes = OrderedDict()
+            ddf = None
+            num_points = 0  # counts number of new points generated
 
             for corr in subset.corr.numbers:
                 # make dictionary of extra values for DataMappers
                 extras['corr'] = corr
                 # loop over datums to be computed
                 for axis in DataAxis.all_axes.values():
-                    value = datums[axis.label][-1] if axis.label in datums else None
+                    value = arrays.get(axis.label)
                     # a datum was already computed?
                     if value is not None:
                         # if not joining correlations, then that's the only one we'll need, so continue
@@ -129,50 +133,29 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                             value = None
                     if value is None:
                         value = axis.get_value(group, corr, extras, flag=flag, flag_row=flag_row, chanslice=chanslice)
-                        # reshape values of shape NTIME to (NTIME,1) and NFREQ to (1,NFREQ), and scalar to (NTIME,1)
-                        if value.ndim == 1:
+                        num_points = max(num_points, value.size)
+                        if value.ndim == 0:
+                            shapes[axis.label] = ()
+                        elif value.ndim == 1:
                             timefreq_axis = axis.mapper.axis or 0
                             assert value.shape[0] == shape[timefreq_axis], \
                                    f"{axis.mapper.fullname}: size {value.shape[0]}, expected {shape[timefreq_axis]}"
-                            shape1 = [1,1]
-                            shape1[timefreq_axis] = value.shape[0]
-                            value = value.reshape(shape1)
-                            if timefreq_axis > 0:
-                                value = da.broadcast_to(value, shape)
-                            log.debug(f"axis {axis.mapper.fullname} has shape {value.shape}")
+                            shapes[axis.label] = ("row",) if timefreq_axis == 0 else ("chan",)
                         # else 2D value better match expected shape
                         else:
                             assert value.shape == shape, f"{axis.mapper.fullname}: shape {value.shape}, expected {shape}"
-                    datums.setdefault(axis.label, []).append(value)
-
-            # if joining correlations, stick all elements together. Otherwise, we'd better have one per label
-            if join_corrs:
-                datums = OrderedDict({label: da.concatenate(arrs) for label, arrs in datums.items()})
-            else:
-                assert all([len(arrs) == 1 for arrs in datums.values()])
-                datums = OrderedDict({label: arrs[0] for label, arrs in datums.items()})
-
-            # broadcast to same shape, and unravel all datums
-            datums = OrderedDict({ key: arr.ravel() for key, arr in zip(datums.keys(),
-                                                                        da.broadcast_arrays(*datums.values()))})
-
-            # if any axis needs to be conjugated, double up all of them
-            if not noconj and any([axis.conjugate for axis in DataAxis.all_axes.values()]):
-                for axis in DataAxis.all_axes.values():
-                    if axis.conjugate:
-                        datums[axis.label] = da.concatenate([datums[axis.label], -datums[axis.label]])
-                    else:
-                        datums[axis.label] = da.concatenate([datums[axis.label], datums[axis.label]])
-
-            labels, values = list(datums.keys()), list(datums.values())
-            total_num_points += values[0].size
-
-            # now stack them all into a big dataframe
-            rectype = [(axis.label, np.int32 if axis.nlevels else np.float32) for axis in DataAxis.all_axes.values()]
-            recarr = da.empty_like(values[0], dtype=rectype)
-            ddf = dask_df.from_array(recarr)
-            for label, value in zip(labels, values):
-                ddf[label] = value
+                            shapes[axis.label] = ("row", "chan")
+                        arrays[axis.label] = value
+                # any new data generated for this correlation? Make dataframe
+                if num_points:
+                    total_num_points += num_points
+                    df1 = multicol_dataframe_factory(("row", "chan"), arrays, shapes)
+                    # if any axis needs to be conjugated, double up all of them
+                    if not noconj and any([axis.conjugate for axis in DataAxis.all_axes.values()]):
+                        conj_arrays = {axis.label: -arrays[axis.label] if axis.conjugate else arrays[axis.label]
+                                       for axis in DataAxis.all_axes.values()}
+                        df1 = df1.append(multicol_dataframe_factory(("row", "chan"), conj_arrays, shapes))
+                    ddf = ddf.append(df1) if ddf is not None else df1
 
             # now, are we iterating or concatenating? Make frame key accordingly
             dataframe_key = (fld if iter_field else None,
@@ -249,7 +232,6 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         compute_bounds(unknown, bounds, ddf)
 
     canvas = datashader.Canvas(options.xcanvas, options.ycanvas, x_range=bounds[xaxis], y_range=bounds[yaxis])
-
 
     if aaxis is not None:
         agg_alpha = getattr(datashader.reductions, ared, None)
