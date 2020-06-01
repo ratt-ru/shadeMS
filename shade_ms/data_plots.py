@@ -24,7 +24,7 @@ from shade_ms import log
 from collections import OrderedDict
 from . import data_mappers
 from .data_mappers import DataAxis
-from .dask_utils import multicol_dataframe_factory
+from .dask_utils import dataframe_factory
 # from .ds_ext import by_integers, by_span
 
 USE_REDUCE_BY = False
@@ -149,12 +149,13 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                 # any new data generated for this correlation? Make dataframe
                 if num_points:
                     total_num_points += num_points
-                    df1 = multicol_dataframe_factory(("row", "chan"), arrays, shapes)
+                    args = (v for pair in ((array, shapes[key]) for key, array in arrays.items()) for v in pair)
+                    df1 = dataframe_factory(("row", "chan"), *args, columns=arrays.keys())
                     # if any axis needs to be conjugated, double up all of them
                     if not noconj and any([axis.conjugate for axis in DataAxis.all_axes.values()]):
-                        conj_arrays = {axis.label: -arrays[axis.label] if axis.conjugate else arrays[axis.label]
-                                       for axis in DataAxis.all_axes.values()}
-                        df1 = df1.append(multicol_dataframe_factory(("row", "chan"), conj_arrays, shapes))
+                        args = (v for pair in ((-array if DataAxis[key].conjugate else array, shapes[key])
+                                                for key, array in arrays.items()) for v in pair)
+                        df1 = df1.append(dataframe_factory(("row", "chan"), *args, columns=arrays.keys()))
                     ddf = ddf.append(df1) if ddf is not None else df1
 
             # now, are we iterating or concatenating? Make frame key accordingly
