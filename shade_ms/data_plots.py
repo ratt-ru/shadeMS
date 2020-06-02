@@ -217,6 +217,7 @@ def compute_bounds(unknowns, bounds, ddf):
 
 def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, normalize,
                 xlabel, ylabel, title, pngname,
+                min_alpha=40, saturate_percentile=None, saturate_alpha=None,
                 options=None):
 
     figx = options.xcanvas / 60
@@ -350,7 +351,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             raster[raster<0] = 0
             raster[raster>1] = 1
             log.info(f": adjusting alpha (alpha raster was {amin} to {amax})")
-        img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize)
+        img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize, min_alpha=min_alpha)
     else:
         log.debug(f'rasterizing using {ared}')
         raster = canvas.points(ddf, xaxis, yaxis, agg=agg_alpha)
@@ -358,7 +359,27 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
         log.debug('shading')
-        img = datashader.transfer_functions.shade(raster, cmap=cmap, how=normalize)
+        img = datashader.transfer_functions.shade(raster, cmap=cmap, how=normalize, min_alpha=min_alpha)
+
+    # resaturate if needed
+    if saturate_alpha is not None or saturate_percentile is not None:
+        # get alpha channel
+        imgval = img.values
+        alpha = (imgval >> 24)&255
+        nulls = alpha<min_alpha
+        alpha -= min_alpha
+        #if percentile if specified, use that to override saturate_alpha
+        if saturate_alpha is None:
+            saturate_alpha = np.percentile(alpha[~nulls], saturate_percentile)
+            log.debug(f"using saturation alpha {saturate_alpha} from {saturate_percentile}th percentile")
+        else:
+            log.debug(f"using explicit saturation alpha {saturate_alpha}")
+        # rescale alpha from [min_alpha, saturation_alpha] to [min_alpha, 255]
+        saturation_factor = (255. - min_alpha) / (saturate_alpha - min_alpha)
+        alpha = min_alpha + alpha*saturation_factor
+        alpha[nulls] = 0
+        alpha[alpha>255] = 255
+        imgval[:] = (imgval & 0xFFFFFF) | alpha.astype(np.uint32)<<24
 
     if options.spread_pix:
         img = datashader.transfer_functions.dynspread(img, options.spread_thr, max_px=options.spread_pix)

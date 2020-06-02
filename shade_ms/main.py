@@ -173,6 +173,14 @@ def main(argv):
                       help='Colorcet map used when colouring by a continuous axis (default = %(default)s)')
     group_opts.add_argument('--dmap', default='glasbey_dark',
                       help='Colorcet map used when colouring by a discrete axis (default = %(default)s)')
+    group_opts.add_argument('--min-alpha', default=40, type=int, metavar="0-255",
+                      help="""Minimum alpha value used in rendering the canvas. Increase to saturate colour at
+                      the expense of dynamic range. Default is %(default)s.""")
+    group_opts.add_argument('--saturate-perc', default=95, type=int, metavar="0-100",
+                      help="""Saturate colors so that the range [min-alpha, X] is mapped to [min-alpha, 255],
+                              where X is the given percentile. Default is %(default)s.""")
+    group_opts.add_argument('--saturate-alpha', default=None, type=int, metavar="0-255",
+                      help="""Saturate colors as above, but with a fixed value of X. Overrides --saturate-perc.""")
     group_opts.add_argument('--spread-pix', type=int, default=0, metavar="PIX",
                       help="""Dynamically spread rendered pixels to this size""")
     group_opts.add_argument('--spread-thr', type=float, default=0.5, metavar="THR",
@@ -606,6 +614,9 @@ def main(argv):
         with context() as profiler:
             result = data_plots.create_plot(df, xdatum, ydatum, adatum, ared, cdatum,
                                       cmap=cmap, bmap=bmap, dmap=dmap, normalize=normalize,
+                                      min_alpha=options.min_alpha,
+                                      saturate_alpha=options.saturate_alpha,
+                                      saturate_percentile=options.saturate_perc,
                                       xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
                                       options=options)
         if result:
