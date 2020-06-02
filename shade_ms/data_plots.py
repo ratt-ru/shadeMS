@@ -156,8 +156,9 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                     if not noconj and any([axis.conjugate for axis in DataAxis.all_axes.values()]):
                         args = (v for pair in ((-array if DataAxis[key].conjugate else array, shapes[key])
                                                 for key, array in arrays.items()) for v in pair)
-                        df1 = df1.append(dataframe_factory(("row", "chan"), *args, columns=arrays.keys()))
-                    ddf = ddf.append(df1) if ddf is not None else df1
+                        df2 = dataframe_factory(("row", "chan"), *args, columns=arrays.keys())
+                        df1 = dask_df.concat([df1, df2], axis=0)
+                    ddf = dask_df.concat([ddf, df1], axis=0) if ddf is not None else df1
 
             # now, are we iterating or concatenating? Make frame key accordingly
             dataframe_key = (fld if iter_field else None,
@@ -173,7 +174,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                 output_dataframes[dataframe_key] = ddf
             else:
                 log.debug(f"appending to frame for {dataframe_key}")
-                output_dataframes[dataframe_key] = ddf0.append(ddf)
+                output_dataframes[dataframe_key] = dask_df.concat([ddf0, ddf], axis=0)
 
     # convert discrete axes into categoricals
     if data_mappers.USE_COUNT_CAT:
