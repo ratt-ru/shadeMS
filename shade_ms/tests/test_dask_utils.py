@@ -12,13 +12,13 @@ from shade_ms.dask_utils import dataframe_factory
 def test_dataframe_factory(test_nan_shapes):
     nrow, nfreq = 100, 100
 
-    data1a = da.arange(nrow, chunks=(10,))
+    data1a = da.random.random(size=nrow, chunks=(10,))
 
     # Generate nan chunk shapes in data1a if requested
     if test_nan_shapes:
         data1a = data1a[da.where(data1a > 4)]
 
-    data1b = da.zeros(dtype=float, shape=(nfreq,), chunks=(100,))
+    data1b = da.random.random(size=(nfreq,), chunks=(100,))
 
     df = dataframe_factory(("row", "chan"),
                            data1a, ("row",),
@@ -58,9 +58,9 @@ def test_dataframe_factory(test_nan_shapes):
 def test_dataframe_factory_multicol():
     nrow, nfreq, ncorr = 100, 100, 4
 
-    data1a = da.arange(nrow, chunks=(10,))
-    data1b = da.zeros(dtype=float, shape=(nfreq, ncorr), chunks=(100, 4))
-    data1c = da.ones(dtype=np.int32, shape=(ncorr,), chunks=(4,))
+    data1a = da.random.random(size=nrow, chunks=(10,))
+    data1b = da.random.random(size=(nfreq, ncorr), chunks=(100, 4))
+    data1c = da.random.random(size=(ncorr,), chunks=(4,))
 
     df = dataframe_factory(("row", "chan", "corr"),
                            data1a, ("row",),
