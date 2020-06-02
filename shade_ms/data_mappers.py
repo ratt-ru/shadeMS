@@ -282,7 +282,7 @@ class DataAxis(object):
         coldata = mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
         # scalar expanded to row vector
         if np.isscalar(coldata):
-            coldata = da.array(coldata, shape=())
+            coldata = da.array(coldata)
             flag = None
         else:
             # apply channel slicing, if there's a channel axis in the array (and the array is a DataArray)

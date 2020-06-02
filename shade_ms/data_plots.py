@@ -133,6 +133,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                             value = None
                     if value is None:
                         value = axis.get_value(group, corr, extras, flag=flag, flag_row=flag_row, chanslice=chanslice)
+                        print(axis.label, value.compute().min(), value.compute().max())
                         num_points = max(num_points, value.size)
                         if value.ndim == 0:
                             shapes[axis.label] = ()
@@ -181,6 +182,12 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             log.info(": counting colours")
             for key, ddf in list(output_dataframes.items()):
                 output_dataframes[key] = ddf.categorize(categorical_axes)
+
+    print("===")
+    for ddf in output_dataframes.values():
+        for axis in DataAxis.all_axes.values():
+            value = ddf[axis.label].values.compute()
+            print(axis.label, value.min(), value.max())
 
     log.info(": complete")
     return output_dataframes, total_num_points
