@@ -12,7 +12,7 @@ from shade_ms.dask_utils import dataframe_factory
 def test_dataframe_factory(test_nan_shapes):
     nrow, nfreq = 100, 100
 
-    data1a = da.random.random(size=nrow, chunks=(10,))
+    data1a = da.arange(nrow, chunks=(10,))
 
     # Generate nan chunk shapes in data1a if requested
     if test_nan_shapes:
@@ -53,6 +53,10 @@ def test_dataframe_factory(test_nan_shapes):
     # Compare our lazy dataframe series vs (dask or numpy) arrays
     assert_array_equal(df['x'], x)
     assert_array_equal(df['y'], y)
+    assert_array_equal(df['x'].min(), data1a.min())
+    assert_array_equal(df['y'].min(), data1b.min())
+    assert_array_equal(df['x'].max(), data1a.max())
+    assert_array_equal(df['y'].max(), data1b.max())
 
 
 def test_dataframe_factory_multicol():
@@ -80,3 +84,10 @@ def test_dataframe_factory_multicol():
     assert_array_equal(df['x'], x.ravel())
     assert_array_equal(df['y'], y.ravel())
     assert_array_equal(df['c0'], c0.ravel())
+
+    assert_array_equal(df['x'].min(), data1a.min())
+    assert_array_equal(df['x'].max(), data1a.max())
+    assert_array_equal(df['y'].min(), data1b.min())
+    assert_array_equal(df['y'].max(), data1b.max())
+    assert_array_equal(df['c0'].min(), data1c.min())
+    assert_array_equal(df['c0'].max(), data1c.max())
