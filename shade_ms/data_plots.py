@@ -99,7 +99,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             a1 = da.minimum(group.ANTENNA1.data, group.ANTENNA2.data)
             a2 = da.maximum(group.ANTENNA1.data, group.ANTENNA2.data)
 
-            baselines = a1*len(msinfo.antenna) - a1*(a1-1)//2. + a2
+            baselines = a1*len(msinfo.antenna) - a1*(a1-1)//2 + a2
 
             freqs = chan_freqs[ddid]
             chans = xarray.DataArray(range(len(freqs)), dims=("chan",))
@@ -133,7 +133,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                             value = None
                     if value is None:
                         value = axis.get_value(group, corr, extras, flag=flag, flag_row=flag_row, chanslice=chanslice)
-                        print(axis.label, value.compute().min(), value.compute().max())
+                        # print(axis.label, value.compute().min(), value.compute().max())
                         num_points = max(num_points, value.size)
                         if value.ndim == 0:
                             shapes[axis.label] = ()
@@ -184,11 +184,11 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             for key, ddf in list(output_dataframes.items()):
                 output_dataframes[key] = ddf.categorize(categorical_axes)
 
-    print("===")
-    for ddf in output_dataframes.values():
-        for axis in DataAxis.all_axes.values():
-            value = ddf[axis.label].values.compute()
-            print(axis.label, value.min(), value.max())
+    # print("===")
+    # for ddf in output_dataframes.values():
+    #     for axis in DataAxis.all_axes.values():
+    #         value = ddf[axis.label].values.compute()
+    #         print(axis.label, np.nanmin(value), np.nanmax(value))
 
     log.info(": complete")
     return output_dataframes, total_num_points
@@ -282,7 +282,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         raster = canvas.points(ddf, xaxis, yaxis, agg=datashader.by(category, agg_by))
         is_integer_raster = np.issubdtype(raster.dtype, np.integer)
 
-        # the by-span aggregator accumulates flagged points in an extra raster plane
+        # the binning aggregator accumulates flagged points in an extra raster plane
         if isinstance(category, category_binning):
             if is_integer_raster:
                 log.info(f": {raster[..., -1].data.sum():.3g} points were flagged ")
