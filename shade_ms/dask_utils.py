@@ -90,6 +90,7 @@ def dataframe_factory(out_ind, *arginds, columns=None):
 
     bcast = da.blockwise(np.broadcast_arrays, out_ind,
                          *blockargs,
+                         subok=True,
                          align_arrays=not have_nan_chunks,
                          meta=meta,
                          dtype=dtype)
