@@ -1,4 +1,5 @@
 import dask.array as da
+import dask.array.core
 import dask.array.ma as dama
 import xarray
 import numpy as np
@@ -168,20 +169,22 @@ class DataAxis(object):
         self.function = function        # function to apply to column (see list of DataMappers below)
         self.corr     = corr if corr != "all" else None
         self.nlevels  = ncol
-        self.minmax   = vmin, vmax = tuple(minmax) if minmax is not None else (None, None)
+        self.minmax   = tuple(minmax) if minmax is not None else (None, None)
         self.label    = label
         self._corr_reduce = None
         self._is_discrete = None
-        self.discretized_labels = None  # filled for corrs and fields and so
-
-        # set up discretized continuous axis
-        if self.nlevels and vmin is not None and vmax is not None:
-            self.discretized_delta = delta = (vmax - vmin) / self.nlevels
-            self.discretized_bin_centers = np.arange(vmin + delta/2, vmax, delta)
-        else:
-            self.discretized_delta = self.discretized_bin_centers = None
-
         self.mapper = data_mappers[function]
+
+        # if set, axis is discrete and labelled
+        self.discretized_labels = None
+
+        # for discrete axes: if a subset of N indices is explicitly selected for plotting, then this
+        # is a list of the selected indices, of length N
+        self.subset_indices = None
+        # ...and this is a dask array that maps selected indices into bins 0...N-1, and all other values into bin N
+        self.subset_remapper = None
+        # ...and this is the maximum valid index in MS
+        maxind = None
 
         # columns with labels?
         if function == 'CORR' or function == 'STOKES':
@@ -198,13 +201,35 @@ class DataAxis(object):
             # we're creating one for a mapper that will iterate over correlations
             if corr is not None:
                 self.mapper = DataMapper(name, "", column=False, axis=-1, mapper=lambda x: corr)
-            self.discretized_labels = subset.corr.names
+            self.subset_indices = subset.corr
+            maxind = ms.all_corr.numbers[-1]
         elif column == "FIELD_ID":
-            self.discretized_labels = [name for name in ms.field.names if name in subset.field]
+            self.subset_indices = subset.field
+            maxind = ms.field.numbers[-1]
         elif column == "ANTENNA1" or column == "ANTENNA2":
-            self.discretized_labels = [name for name in ms.all_antenna.names if name in subset.ant]
+            self.subset_indices = subset.ant
+            maxind = ms.antenna.numbers[-1]
+        elif column == "SCAN_NUMBER":
+            self.subset_indices = subset.scan
+            maxind = ms.scan.numbers[-1]
+        elif function == "BASELINE":
+            self.subset_indices = subset.baseline
+            maxind = ms.baseline.numbers[-1]
         elif column == "FLAG" or column == "FLAG_ROW":
             self.discretized_labels = ["F", "T"]
+
+        # make a remapper
+        if self.subset_indices is not None:
+            # If last index of subset is max index anyway, mapping is 1:1 -- no remapper needed
+            # Otherwise map indices in subset into their ordinal numbers in the subset (0...N-1),
+            # and all other indices to N
+            if len(self.subset_indices) < maxind+1:
+                remapper = np.full(maxind+1, len(self.subset_indices))
+                for i, index in  enumerate(self.subset_indices.numbers):
+                    remapper[index] = i
+                self.subset_remapper = da.array(remapper)
+            self.discretized_labels = self.subset_indices.names
+            self.subset_indices = self.subset_indices.numbers
 
         if self.discretized_labels:
             self._is_discrete = True
@@ -280,7 +305,7 @@ class DataAxis(object):
         if np.iscomplexobj(coldata) and mapper is data_mappers["_"]:
             mapper = data_mappers["amp"]
         coldata = mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
-        # scalar expanded to row vector
+        # scalar is just a scalar
         if np.isscalar(coldata):
             coldata = da.array(coldata)
             flag = None
@@ -307,24 +332,24 @@ class DataAxis(object):
             if self._is_discrete is False:
                 raise TypeError(f"{self.label}: column changed from continuous-valued to discrete. This is a bug, or a very weird MS.")
             self._is_discrete = True
+            # do we need to apply a remapping?
+            if self.subset_remapper is not None:
+                if type(coldata) is not dask.array.core.Array:  # could be xarray backed by dask array
+                    coldata = coldata.data
+                coldata = self.subset_remapper[coldata]
+                bad_bins = da.greater_equal(coldata, len(self.subset_indices))
+                if flag is None:
+                    flag = bad_bins
+                else:
+                    flag = da.logical_or(flag, bad_bins)
         else:
             if self._is_discrete is True:
                 raise TypeError(f"{self.label}: column chnaged from discrete to continuous-valued. This is a bug, or a very weird MS.")
             self._is_discrete = False
 
-            # # minmax set? discretize over that
-            # if self.discretized_delta is not None:
-            #     coldata = da.floor((coldata - self.minmax[0])/self.discretized_delta)
-            #     coldata = da.minimum(da.maximum(coldata, 0), self.nlevels-1).astype(COUNT_DTYPE)
-            # else:
-            #     if not coldata.dtype is bool:
-            #         if not np.issubdtype(coldata.dtype, np.integer):
-            #             raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
-            #         coldata = da.remainder(coldata, self.nlevels).astype(COUNT_DTYPE)
-
+        bad_data = da.logical_not(da.isfinite(coldata))
         if flag is not None:
-            flag |= ~da.isfinite(coldata)
-            return dama.masked_array(coldata, flag)
+            return dama.masked_array(coldata, da.logical_or(flag, bad_data))
         else:
-            return dama.masked_array(coldata, ~da.isfinite(coldata))
+            return dama.masked_array(coldata, bad_data)
 

@@ -79,15 +79,26 @@ class MSInfo(object):
         all_scans = NamedList("scan", list(map(str, range(scan_numbers[-1]+1))))
         self.scan = all_scans.get_subset(scan_numbers)
 
-        self.all_antenna = NamedList("antenna", table(msname +'::ANTENNA', ack=False).getcol("NAME"))
+        antnames = table(msname +'::ANTENNA', ack=False).getcol("NAME")
+        self.all_antenna = antnames = NamedList("antenna", antnames)
 
-        self.antenna = self.all_antenna.get_subset(list(set(tab.getcol("ANTENNA1"))|set(tab.getcol("ANTENNA2"))))
+        ant1col = tab.getcol("ANTENNA1")
+        ant2col = tab.getcol("ANTENNA2")
+        self.antenna = self.all_antenna.get_subset(list(set(ant1col)|set(ant2col)))
 
-        baselines = [(p,q) for p in self.antenna.numbers for q in self.antenna.numbers if p <= q]
-        self.baseline_numbering = { (p, q): i for i, (p, q) in enumerate(baselines)}
-        self.baseline_numbering.update({ (q, p): i for i, (p, q) in enumerate(baselines)})
+        log and log.info(f":   {len(self.antenna)}/{len(self.all_antenna)} antennas: {self.antenna.str_list()}")
 
-        log and log.info(f":   {len(self.antenna)} antennas: {self.antenna.str_list()}")
+        # list of all possible baselines
+        blnames = [f"{a1}-{a2}" for i1, a1 in enumerate(antnames) for a2 in antnames[i1:]]
+        self.all_baseline = NamedList("baseline", blnames)
+
+        # baselines actually present
+        a1 = np.minimum(ant1col, ant2col)
+        a2 = np.maximum(ant1col, ant2col)
+        bls = sorted(set(self.baseline_number(a1, a2)))
+        self.baseline = NamedList("baseline", [blnames[b] for b in bls], bls)
+
+        log and log.info(f":   {len(self.baseline)}/{len(self.all_baseline)} baselines present")
 
         pol_tab = table(msname + '::POLARIZATION', ack=False)
 
@@ -137,6 +148,7 @@ class MSInfo(object):
 
         log and log.info(f":   corrs/Stokes {' '.join(self.all_corr.names)}")
 
-    def baseline_number(self, ant1, ant2):
-        a1 = DataArray.minimum(ant1, ant2)
-        a2 = DataArray.maximum(ant1, ant2)
+    def baseline_number(self, a1, a2):
+        """Returns baseline number, for a1<=a2"""
+        return a1 * len(self.all_antenna) - a1 * (a1 - 1) // 2 + a2 - a1
+

@@ -18,6 +18,7 @@ import numpy as np
 import pylab
 import textwrap
 import argparse
+import itertools
 import matplotlib.cm
 from shade_ms import log
 
@@ -98,8 +99,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
 
             a1 = da.minimum(group.ANTENNA1.data, group.ANTENNA2.data)
             a2 = da.maximum(group.ANTENNA1.data, group.ANTENNA2.data)
-
-            baselines = a1*len(msinfo.antenna) - a1*(a1-1)//2 + a2
+            baselines = msinfo.baseline_number(a1, a2)
 
             freqs = chan_freqs[ddid]
             chans = xarray.DataArray(range(len(freqs)), dims=("chan",))
@@ -231,16 +231,25 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
 
     color_key = color_mapping = color_labels = agg_alpha = raster_alpha = cmin = cdelta = None
 
+    # do we need to compute any axis min/max?
     bounds = OrderedDict({xaxis: xdatum.minmax, yaxis: ydatum.minmax})
-    if caxis:
-        bounds[caxis] = cdatum.minmax
-
-    unknown = [axis for (axis, minmax) in bounds.items() if minmax[0] is None or minmax[1] is None]
+    unknown = []
+    for datum in xdatum, ydatum, cdatum:
+        if datum is not None:
+            bounds[datum.label] = datum.minmax
+            if datum.minmax[0] is None or datum.minmax[1] is None:
+                unknown.append(datum.label)
 
     if unknown:
         log.info(f": scanning axis min/max for {' '.join(unknown)}")
         compute_bounds(unknown, bounds, ddf)
 
+    # adjust bounds for discrete axes
+    for datum in xdatum, ydatum:
+        if datum.is_discrete:
+            bounds[datum.label] = bounds[datum.label][0]-0.5, bounds[datum.label][0]+0.5
+
+    # create rendering canvas. TODO: https://github.com/ratt-ru/shadeMS/issues/42
     canvas = datashader.Canvas(options.xcanvas, options.ycanvas, x_range=bounds[xaxis], y_range=bounds[yaxis])
 
     if aaxis is not None:
@@ -265,15 +274,31 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         # aggregation applied to by()
         agg_by = agg_alpha if USE_REDUCE_BY and agg_alpha is not None else datashader.count()
 
+        # color_bins will be a list of colors to use. If the subset is known, then we preferentially
+        # pick colours by subset, i.e. we try to preserve the mapping from index to specific color.
+        # color_labels will be set from discretized_labels, or from range of column values, if axis is discrete
+        color_labels = cdatum.discretized_labels
         if data_mappers.USE_COUNT_CAT:
-            color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
+            if cdatum.subset_indices is not None:
+                color_bins = cdatum.subset_indices
+            else:
+                color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
             log.debug(f'colourizing using {caxis} categorical, {len(color_bins)} bins')
             category = caxis
+            if color_labels is None:
+                color_labels = list(map(str,color_bins))
         else:
             color_bins = list(range(cdatum.nlevels))
             if cdatum.is_discrete:
+                if cdatum.subset_indices is not None:
+                    num_categories = len(cdatum.subset_indices)
+                    color_bins = cdatum.subset_indices[:cdatum.nlevels]
+                else:
+                    num_categories = int(bounds[caxis][1]) + 1
                 log.debug(f'colourizing using {caxis} modulo {len(color_bins)}')
-                category = category_modulo(caxis,  cdatum.nlevels)
+                category = category_modulo(caxis, len(color_bins))
+                if color_labels is None:
+                    color_labels = list(map(str, range(num_categories)))
             else:
                 log.debug(f'colourizing using {caxis} with {len(color_bins)} bins')
                 cmin = bounds[caxis][0]
@@ -297,44 +322,27 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
 
-        # # work around https://github.com/holoviz/datashader/issues/899
-        # # Basically, 0 is treated as a nan and masked out in _colorize(), which is not correct for float reductions.
-        # # Also, _colorize() does not normalize the totals somehow.
-        # if np.issubdtype(raster.dtype, np.bool_):
-        #     pass
-        # elif np.issubdtype(raster.dtype, np.integer):
-        #     ## TODO: unfinished business here
-        #     ## normalizing the raster bleaches out all colours again (fucks with log scaling, I guess?)
-        #     # int values: simply normalize to max total 1. Null values will be masked
-        #     # raster = raster.astype(np.float32) / raster.sum(axis=2).max()
-        #     pass
-        # else:
-        #     # float values: first rescale raster to [0.001, 1]. Not 0, because 0 is masked out in _colorize()
-        #     maxval = np.nanmax(raster)
-        #     offset = np.nanmin(raster)
-        #     raster = .001 + .999*(raster - offset)/(maxval - offset)
-        #     # replace NaNs with zeroes (because when we take the total, and 1 channel is present while others are missing...)
-        #     raster.data[np.isnan(raster.data)] = 0
-        #     # now rescale so that max total is 1
-        #     raster /= raster.sum(axis=2).max()
-
         if cdatum.is_discrete:
             # discard empty bins
             non_empty = np.where(non_empty)[0]
             raster = raster[..., non_empty]
-            # just use bin numbers to look up a color directly
+            # get bin numbers corresponding to non-empty bins
             color_bins = [color_bins[i] for i in non_empty]
+            # get list of color labels corresponding to each bin (may be multiple)
+            color_labels = [color_labels[i::cdatum.nlevels] for i in non_empty]
             color_key = [dmap[bin] for bin in color_bins]
             # the numbers may be out of order -- reorder for color bar purposes
-            bin_color = sorted(zip(color_bins, color_key))
-            color_mapping = [col for _, col in bin_color]
-            if bounds[caxis][1] > cdatum.nlevels:
-                color_labels = [f"+{bin}" for bin, _ in bin_color]
-            else:
-                if cdatum.discretized_labels and len(cdatum.discretized_labels) <= cdatum.nlevels:
-                    color_labels = [cdatum.discretized_labels[bin] for bin, _ in bin_color]
+            bin_color_label = sorted(zip(color_bins, color_key, color_labels))
+            color_mapping = [col for _, col, _ in bin_color_label]
+            # generate labels
+            color_labels = []
+            for _, _, labels in bin_color_label:
+                if len(labels) == 1:
+                    color_labels.append(labels[0])
+                elif len(labels) == 2:
+                    color_labels.append(f"{labels[0]},{labels[1]}")
                 else:
-                    color_labels = [f"{bin}" for bin, _ in bin_color]
+                    color_labels.append(f"{labels[0]},{labels[1]},...")
             log.info(f": rendering using {len(color_bins)} colors (values {' '.join(color_labels)})")
         else:
             # color labels are bin centres

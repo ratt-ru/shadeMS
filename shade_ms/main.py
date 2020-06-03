@@ -357,20 +357,24 @@ def main(argv):
         raise NotImplementedError("iteration over antennas not currently supported")
 
     if options.baseline != 'all':
-        subset.baseline = OrderedDict()
+        bls = set()
+        a1a2 = set()
         for blspec in options.baseline.split(","):
             match = re.fullmatch(r"(\w+)-(\w+)", blspec)
             ant1 = match and ms.antenna[match.group(1)]
             ant2 = match and ms.antenna[match.group(2)]
             if ant1 is None or ant2 is None:
                 raise ValueError("invalid baseline '{blspec}'")
-            subset.baseline[blspec] = (ant1, ant2)
+            a1a2.add((ant1, ant2))
+            bls.add(ms.baseline_number(ant1, ant2))
         # group_cols.append('ANTENNA1')
-        log.info(f"Baseline(s)      : {' '.join(subset.baseline.keys())}")
+        subset.baseline = ms.all_baseline.get_subset(sorted(bls))
+        log.info(f"Baseline(s)      : {' '.join(subset.baseline.names)}")
         mytaql.append("||".join([f'(ANTENNA1=={ant1}&&ANTENNA2=={ant2})||(ANTENNA1=={ant2}&&ANTENNA2=={ant1})'
-                                 for ant1, ant2 in subset.baseline.values()]))
+                                 for ant1, ant2 in a1a2]))
     else:
         log.info('Baseline(s)      : all')
+        subset.baseline = ms.baseline
 
     if options.field != 'all':
         subset.field = ms.field.get_subset(options.field)
