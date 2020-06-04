@@ -218,6 +218,7 @@ def compute_bounds(unknowns, bounds, ddf):
 def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, normalize,
                 xlabel, ylabel, title, pngname,
                 min_alpha=40, saturate_percentile=None, saturate_alpha=None,
+                minmax_cache=None,
                 options=None):
 
     figx = options.xcanvas / 60
@@ -246,6 +247,9 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     if unknown:
         log.info(f": scanning axis min/max for {' '.join(unknown)}")
         compute_bounds(unknown, bounds, ddf)
+        # populate cache
+        if minmax_cache is not None:
+            minmax_cache.update([(label, bounds[label]) for label in unknown])
 
     # adjust bounds for discrete axes
     canvas_sizes = []
@@ -255,7 +259,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             size = int(bounds[datum.label][1]) - int(bounds[datum.label][0]) + 1
         canvas_sizes.append(size)
 
-    # create rendering canvas. 
+    # create rendering canvas.
     canvas = datashader.Canvas(canvas_sizes[0], canvas_sizes[1], x_range=bounds[xaxis], y_range=bounds[yaxis])
 
     if aaxis is not None:

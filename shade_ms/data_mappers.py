@@ -134,7 +134,7 @@ class DataAxis(object):
         return function, column, corr, (has_corr_axis and corr is None)
 
     @classmethod
-    def register(cls, function, column, corr, ms, minmax=None, ncol=None, subset=None):
+    def register(cls, function, column, corr, ms, minmax=None, ncol=None, subset=None, minmax_cache=None):
         """
         Registers a data axis, which ultimately ends up as a column in the assembled dataframe.
         For multiple plots, we want to reuse the same information (assuming the same
@@ -145,6 +145,8 @@ class DataAxis(object):
         Corr selects a correlation (or a Stokes product such as I, Q,...)
         minmax sets axis clipping levels
         ncol discretizes the axis into N colours between min and max
+        minmax_cache provides a dict of cached min/max values, which will be looked up via the label, if minmax
+                     is not explicitly set
         """
         # form up label
         label  = "{}_{}_{}".format(col_to_label(column or ''), function, corr)
@@ -154,6 +156,11 @@ class DataAxis(object):
         if key in cls.all_axes:
             return cls.all_axes[key]
         else:
+            # see if minmax should be loaded
+            if (minmax is None or tuple(minmax) == (None,None)) and minmax_cache and label in minmax_cache:
+                log.info(f"loading {label} min/max from cache")
+                minmax = minmax_cache[label]
+
             label0, i = label, 0
             while label in cls.all_labels:
                 i += 1

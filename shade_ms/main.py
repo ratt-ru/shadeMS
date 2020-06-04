@@ -1,6 +1,4 @@
 # -*- coding: future_fstrings -*-
-# ian.heywood@physics.ox.ac.uk
-
 
 import matplotlib
 matplotlib.use('agg')
@@ -15,10 +13,9 @@ import itertools
 import re
 import sys
 import colorcet
-from collections import OrderedDict
 import dask.diagnostics
 from contextlib import contextmanager
-
+import json
 
 import argparse
 
@@ -123,6 +120,20 @@ def main(argv):
                       help='Maximum colouring value. Must be supplied for every non-discrete axis to be coloured by.')
     group_opts.add_argument('--cnum', action='append',
                       help=f'Number of steps used to discretize a continuous axis. Default is {DEFAULT_CNUM}.')
+
+    group_opts.add_argument('--xlim-load', action='store_true',
+                      help=f'Load x-axis limits from limits file, if available.')
+    group_opts.add_argument('--ylim-load', action='store_true',
+                      help=f'Load y-axis limits from limits file, if available.')
+    group_opts.add_argument('--clim-load', action='store_true',
+                      help=f'Load colour axis limits from limits file, if available.')
+    group_opts.add_argument('--lim-file', default="{ms}-minmax-cache.json",
+                            help="""Name of limits file to save/load. '{ms}' will be substituted for MS base name.
+                                    Default is '%(default)s'.""")
+    group_opts.add_argument('--no-lim-save', action="store_false", dest="lim_save",
+                            help="""Do not save auto-computed limits to limits file. Default is to save.""")
+    group_opts.add_argument('--lim-save-reset', action="store_true",
+                            help="""Reset limits file when saving. Default adds to existing file.""")
 
     group_opts = parser.add_argument_group('Options for multiple plots or combined plots')
 
@@ -422,6 +433,25 @@ def main(argv):
 
     blank()
 
+    # check minmax cache
+    msbase = os.path.splitext(os.path.basename(options.ms))[0]
+    cache_file = options.lim_file.format(ms=msbase)
+    if options.dir and not "/" in cache_file:
+        cache_file = os.path.join(options.dir, cache_file)
+
+    # try to load the minmax cache file
+    if not os.path.exists(cache_file):
+        minmax_cache = {}
+    else:
+        log.info(f"loading minmax cache from {cache_file}")
+        try:
+            minmax_cache = json.load(open(cache_file, "rt"))
+            if type(minmax_cache) is not dict:
+                raise TypeError("cache cotent is not a dict")
+        except Exception as exc:
+            log.error(f"error reading cache file: {exc}. Minmax cache will be reset.")
+            minmax_cache = {}
+
     # figure out list of plots to make
     all_plots = []
 
@@ -470,11 +500,14 @@ def main(argv):
             plot_ycorr = corr if ycorr is None else ycorr
             plot_acorr = corr if acorr is None else acorr
             plot_ccorr = corr if ccorr is None else ccorr
-            xdatum = DataAxis.register(xfunction, xcolumn, plot_xcorr, ms=ms, minmax=(xmin, xmax), subset=subset)
-            ydatum = DataAxis.register(yfunction, ycolumn, plot_ycorr, ms=ms, minmax=(ymin, ymax),  subset=subset)
-            adatum = afunction and DataAxis.register(afunction, acolumn, plot_acorr, ms=ms,  subset=subset)
+            xdatum = DataAxis.register(xfunction, xcolumn, plot_xcorr, ms=ms, minmax=(xmin, xmax), subset=subset,
+                                       minmax_cache=minmax_cache if options.xlim_load else None)
+            ydatum = DataAxis.register(yfunction, ycolumn, plot_ycorr, ms=ms, minmax=(ymin, ymax), subset=subset,
+                                       minmax_cache=minmax_cache if options.ylim_load else None)
+            adatum = afunction and DataAxis.register(afunction, acolumn, plot_acorr, ms=ms, subset=subset)
             cdatum = cfunction and DataAxis.register(cfunction, ccolumn, plot_ccorr, ms=ms,
-                                                     minmax=(cmin, cmax), ncol=cnum, subset=subset)
+                                                     minmax=(cmin, cmax), ncol=cnum, subset=subset,
+                                                     minmax_cache=minmax_cache if options.clim_load else None)
 
             # figure out plot properties -- basically construct a descriptive name and label
             # looks complicated, but we're just trying to figure out what to put in the plot title...
@@ -539,6 +572,10 @@ def main(argv):
 
             all_plots.append((props, xdatum, ydatum, adatum, ared, cdatum))
             log.debug(f"adding plot for {props['title']}")
+
+    # reset minmax cache if requested
+    if options.lim_save_reset:
+        minmax_cache = {}
 
     join_corrs = not options.iter_corr and len(subset.corr) > 1 and have_corr_dependence
 
@@ -622,6 +659,7 @@ def main(argv):
                                       saturate_alpha=options.saturate_alpha,
                                       saturate_percentile=options.saturate_perc,
                                       xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
+                                      minmax_cache=minmax_cache,
                                       options=options)
         if result:
             log.info(f'                 : wrote {pngname}')
@@ -687,5 +725,14 @@ def main(argv):
     elapsed = str(round((clock_stop-clock_start), 2))
 
     log.info('Total time       : %s seconds' % (elapsed))
+
+    if minmax_cache and options.lim_save:
+        # ensure floats, because in64s and such cause errors
+        minmax_cache = {axis: list(map(float, minmax)) for axis, minmax in minmax_cache.items()}
+
+        with open(cache_file, "wt") as file:
+            json.dump(minmax_cache, file, sort_keys=True, indent=4, separators=(',', ': '))
+        log.info(f"Saved minmax cache to {cache_file} (disable with --no-lim-save)")
+
     log.info('Finished')
     blank()
