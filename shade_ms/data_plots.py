@@ -247,7 +247,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     # adjust bounds for discrete axes
     for datum in xdatum, ydatum:
         if datum.is_discrete:
-            bounds[datum.label] = bounds[datum.label][0]-0.5, bounds[datum.label][0]+0.5
+            bounds[datum.label] = bounds[datum.label][0]-0.5, bounds[datum.label][1]+0.5
 
     # create rendering canvas. TODO: https://github.com/ratt-ru/shadeMS/issues/42
     canvas = datashader.Canvas(options.xcanvas, options.ycanvas, x_range=bounds[xaxis], y_range=bounds[yaxis])
