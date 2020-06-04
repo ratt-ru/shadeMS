@@ -238,19 +238,25 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         if datum is not None:
             bounds[datum.label] = datum.minmax
             if datum.minmax[0] is None or datum.minmax[1] is None:
-                unknown.append(datum.label)
+                if datum.is_discrete and datum.subset_indices is not None:
+                    bounds[datum.label] = 0, len(datum.subset_indices)-1
+                else:
+                    unknown.append(datum.label)
 
     if unknown:
         log.info(f": scanning axis min/max for {' '.join(unknown)}")
         compute_bounds(unknown, bounds, ddf)
 
     # adjust bounds for discrete axes
-    for datum in xdatum, ydatum:
+    canvas_sizes = []
+    for datum, size in (xdatum, options.xcanvas), (ydatum, options.ycanvas):
         if datum.is_discrete:
             bounds[datum.label] = bounds[datum.label][0]-0.5, bounds[datum.label][1]+0.5
+            size = int(bounds[datum.label][1]) - int(bounds[datum.label][0]) + 1
+        canvas_sizes.append(size)
 
-    # create rendering canvas. TODO: https://github.com/ratt-ru/shadeMS/issues/42
-    canvas = datashader.Canvas(options.xcanvas, options.ycanvas, x_range=bounds[xaxis], y_range=bounds[yaxis])
+    # create rendering canvas. 
+    canvas = datashader.Canvas(canvas_sizes[0], canvas_sizes[1], x_range=bounds[xaxis], y_range=bounds[yaxis])
 
     if aaxis is not None:
         agg_alpha = getattr(datashader.reductions, ared, None)
@@ -409,7 +415,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     fig = pylab.figure(figsize=(figx, figy))
     ax = fig.add_subplot(111, facecolor=bgcol)
     ax.imshow(X=rgb.data, extent=[xmin, xmax, ymin, ymax],
-              aspect='auto', origin='lower')
+              aspect='auto', origin='lower', interpolation='nearest')
     ax.set_title("\n".join(textwrap.wrap(title, 90)), loc='center')
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
