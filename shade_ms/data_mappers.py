@@ -28,7 +28,7 @@ def col_to_label(col):
 
 class DataMapper(object):
     """This class defines a mapping from a dask group to an array of real values to be plotted"""
-    def __init__(self, fullname, unit, mapper, column=None, extras=[], conjugate=False, axis=None):
+    def __init__(self, fullname, unit, mapper, column=None, extras=[], conjugate=False, axis=None, const=False):
         """
         :param fullname:    full name of parameter (real, amplitude, etc.)
         :param unit:        unit string
@@ -37,11 +37,15 @@ class DataMapper(object):
         :param extras:      extra arguments needed by mapper (e.g. ["freqs", "wavel"])
         :param conjugate:   sets conjugation flag
         :param axis:        which axis the parameter represets (0 time, 1 freq), if 1-dimensional
+        :param const:       if True, axis is constant (does not depend on MS rows)
         """
         assert mapper is not None
         self.fullname, self.unit, self.mapper, self.column, self.extras = fullname, unit, mapper, column, extras
         self.conjugate = conjugate
         self.axis = axis
+        # if
+        self.const = const
+
 
 _identity = lambda x:x
 
@@ -56,10 +60,10 @@ data_mappers = OrderedDict(
     TIME  = DataMapper("time", "s", axis=0, column="TIME", mapper=_identity),
     ROW   = DataMapper("row number", "", column=False, axis=0, extras=["rows"], mapper=lambda x,rows: rows),
     BASELINE = DataMapper("baseline", "", column=False, axis=0, extras=["baselines"], mapper=lambda x,baselines: baselines),
-    CORR  = DataMapper("correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr),
-    CHAN  = DataMapper("channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
-    FREQ  = DataMapper("frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
-    WAVEL = DataMapper("wavelength", "m", column=False, axis=1, extras=["wavel"], mapper=lambda x, wavel: wavel),
+    CORR  = DataMapper("correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr, const=True),
+    CHAN  = DataMapper("channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans, const=True),
+    FREQ  = DataMapper("frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs, const=True),
+    WAVEL = DataMapper("wavelength", "m", column=False, axis=1, extras=["wavel"], mapper=lambda x, wavel: wavel, const=True),
     UV    = DataMapper("uv-distance", "wavelengths", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel),
     U     = DataMapper("u", "wavelengths", column="UVW", extras=["wavel"],
@@ -177,6 +181,8 @@ class DataAxis(object):
         self.corr     = corr if corr != "all" else None
         self.nlevels  = ncol
         self.minmax   = tuple(minmax) if minmax is not None else (None, None)
+        self._minmax_autorange = (self.minmax == (None, None))
+
         self.label    = label
         self._corr_reduce = None
         self._is_discrete = None
@@ -312,6 +318,11 @@ class DataAxis(object):
         if np.iscomplexobj(coldata) and mapper is data_mappers["_"]:
             mapper = data_mappers["amp"]
         coldata = mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
+        # for a constant axis, compute minmax on the fly
+        if mapper.const and self._minmax_autorange:
+            min1, max1 = coldata.data.min(), coldata.data.max()
+            self.minmax = min(self.minmax[0], min1) if self.minmax[0] is not None else min1, \
+                          min(self.minmax[1], max1) if self.minmax[1] is not None else max1
         # scalar is just a scalar
         if np.isscalar(coldata):
             coldata = da.array(coldata)
