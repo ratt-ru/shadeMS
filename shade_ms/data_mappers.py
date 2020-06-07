@@ -241,10 +241,12 @@ class DataAxis(object):
 
         # make a remapper
         if self.subset_indices is not None:
-            # If last index of subset is max index anyway, mapping is 1:1 -- no remapper needed
-            # Otherwise map indices in subset into their ordinal numbers in the subset (0...N-1),
-            # and all other indices to N
-            if len(self.subset_indices) < maxind+1:
+            # if the mapping from indices to bins 1:1?
+            subind = np.array(self.subset_indices.numbers)
+            identity = subind[0] == 0 and ((subind[1:]-subind[:-1]) == 1).all()
+            # If mapping is not 1:1, or subset is short of full set, then we need a remapper.
+            # Map indices in subset into their ordinal numbers in the subset (0...N-1), and all other indices to N
+            if len(self.subset_indices) < maxind+1 or not identity:
                 remapper = np.full(maxind+1, len(self.subset_indices))
                 for i, index in enumerate(self.subset_indices.numbers):
                     remapper[index] = i

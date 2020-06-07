@@ -156,8 +156,9 @@ def main(argv):
                       help='Antennas to plot (comma-separated list of names, default = all)')
     group_opts.add_argument('--ant-num',
                       help='Antennas to plot (comma-separated list of numbers, or a [start]:[stop][:step] slice, overrides --ant)')
-    group_opts.add_argument('--baseline', default='all',
-                      help="Baselines to plot, as 'ant1-ant2' (comma-separated list, default = all)")
+    group_opts.add_argument('--baseline', default='noauto',
+                      help="Baselines to plot, as 'ant1-ant2' (comma-separated list, default of 'noauto' omits "
+                           "auto-correlations, use 'all' to select all)")
     group_opts.add_argument('--spw', default='all',
                       help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)')
     group_opts.add_argument('--field', default='all',
@@ -367,7 +368,14 @@ def main(argv):
     if options.iter_antenna:
         raise NotImplementedError("iteration over antennas not currently supported")
 
-    if options.baseline != 'all':
+    if options.baseline == 'all':
+        log.info('Baseline(s)      : all')
+        subset.baseline = ms.baseline
+    elif options.baseline == 'noauto':
+        log.info('Baseline(s)      : all except autocorrelations')
+        subset.baseline = ms.all_baseline.get_subset([i for i in ms.baseline.numbers if ms.baseline_lengths[i]!=0])
+        mytaql.append("ANTENNA1!=ANTENNA2")
+    else:
         bls = set()
         a1a2 = set()
         for blspec in options.baseline.split(","):
@@ -383,9 +391,6 @@ def main(argv):
         log.info(f"Baseline(s)      : {' '.join(subset.baseline.names)}")
         mytaql.append("||".join([f'(ANTENNA1=={ant1}&&ANTENNA2=={ant2})||(ANTENNA1=={ant2}&&ANTENNA2=={ant1})'
                                  for ant1, ant2 in a1a2]))
-    else:
-        log.info('Baseline(s)      : all')
-        subset.baseline = ms.baseline
 
     if options.field != 'all':
         subset.field = ms.field.get_subset(options.field)
