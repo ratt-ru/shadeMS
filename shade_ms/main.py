@@ -139,8 +139,6 @@ def main(argv):
 
     group_opts.add_argument('--iter-field', action="store_true",
                       help='Separate plots per field (default is to combine in one plot)')
-    group_opts.add_argument('--iter-antenna', action="store_true",
-                      help='Separate plots per antenna (default is to combine in one plot)')
     group_opts.add_argument('--iter-spw', action="store_true",
                       help='Separate plots per spw (default is to combine in one plot)')
     group_opts.add_argument('--iter-scan', action="store_true",
@@ -149,6 +147,8 @@ def main(argv):
                       help='Separate plots per correlation or Stokes (default is to combine in one plot)')
     group_opts.add_argument('--iter-ant', action="store_true",
                             help='Separate plots per antenna (default is to combine in one plot)')
+    group_opts.add_argument('--iter-baseline', action="store_true",
+                            help='Separate plots per baseline (default is to combine in one plot)')
 
     group_opts = parser.add_argument_group('Data subset selection')
 
@@ -209,10 +209,10 @@ def main(argv):
                       help='Send all plots to this output directory')
     group_opts.add_argument('-s', '--suffix', help="suffix to be included in filenames, can include {options}")
     group_opts.add_argument('--png', dest='pngname',
-                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}-{label}{_alphalabel}{_colorlabel}{_suffix}.png",
+                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}{_Baseline}-{label}{_alphalabel}{_colorlabel}{_suffix}.png",
                       help='Template for output png files, default "%(default)s"')
     group_opts.add_argument('--title',
-                             default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_title}{_Alphatitle}{_Colortitle}",
+                             default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_Baseline}{_title}{_Alphatitle}{_Colortitle}",
                       help='Template for plot titles, default "%(default)s"')
     group_opts.add_argument('--xlabel',
                              default="{xname}{_xunit}",
@@ -252,6 +252,8 @@ def main(argv):
     dmap = getattr(colorcet, options.dmap, None)
     if dmap is None:
         parser.error(f"unknown --dmap {options.dmap}")
+    if options.iter_ant and options.iter_baseline:
+        parser.error("cannot combine --iter-ant and --iter-baseline")
 
     options.ms = options.ms.rstrip('/')
 
@@ -360,13 +362,11 @@ def main(argv):
         else:
             subset.ant = ms.antenna.get_subset(options.ant)
         log.info(f"Antenna name(s)  : {' '.join(subset.ant.names)}")
-        mytaql.append("||".join([f'ANTENNA1=={ant}||ANTENNA2=={ant}' for ant in subset.ant.numbers]))
+        antnum_set = f"[{','.join(map(str, subset.ant.numbers))}]"
+        mytaql.append(f"ANTENNA1 IN {antnum_set} && ANTENNA2 IN {antnum_set}")
     else:
         subset.ant = ms.antenna
         log.info('Antenna(s)       : all')
-
-    if options.iter_antenna:
-        raise NotImplementedError("iteration over antennas not currently supported")
 
     if options.baseline == 'all':
         log.info('Baseline(s)      : all')
@@ -379,13 +379,20 @@ def main(argv):
         bls = set()
         a1a2 = set()
         for blspec in options.baseline.split(","):
-            match = re.fullmatch(r"(\w+)-(\w+)", blspec)
+            match = re.fullmatch(r"(\w+)-(\w*|[*])", blspec)
             ant1 = match and ms.antenna[match.group(1)]
-            ant2 = match and ms.antenna[match.group(2)]
+            ant2 = match and (ms.antenna[match.group(2)] if match.group(2) not in ['', '*'] else '*')
             if ant1 is None or ant2 is None:
                 raise ValueError("invalid baseline '{blspec}'")
-            a1a2.add((ant1, ant2))
-            bls.add(ms.baseline_number(ant1, ant2))
+            if ant2 == '*':
+                ant2set = ms.all_antenna.numbers
+            else:
+                ant2set = [ant2]
+            # loop
+            for ant2 in ant2set:
+                a1, a2 = min(ant1, ant2), max(ant1, ant2)
+                a1a2.add((a1, a2))
+                bls.add(ms.baseline_number(a1, a2))
         # group_cols.append('ANTENNA1')
         subset.baseline = ms.all_baseline.get_subset(sorted(bls))
         log.info(f"Baseline(s)      : {' '.join(subset.baseline.names)}")
@@ -600,6 +607,7 @@ def main(argv):
                                  noflags=options.noflags, noconj=options.noconj,
                                  iter_field=options.iter_field, iter_spw=options.iter_spw,
                                  iter_scan=options.iter_scan, iter_ant=options.iter_ant,
+                                 iter_baseline=options.iter_baseline,
                                  join_corrs=join_corrs,
                                  row_chunk_size=options.row_chunk_size)
 
@@ -677,7 +685,7 @@ def main(argv):
                 log.info(f'                 : wrote profiler info to {profile_file}')
 
 
-    for (fld, spw, scan, antenna), df in dataframes.items():
+    for (fld, spw, scan, antenna_or_baseline), df in dataframes.items():
         # update keys to be substituted into title and filename
         if fld is not None:
             keys['field_num'] = fld
@@ -686,8 +694,11 @@ def main(argv):
             keys['spw'] = spw
         if scan is not None:
             keys['scan'] = scan
-        if antenna is not None:
-            keys['ant'] = ms.all_antenna[antenna]
+        if antenna_or_baseline is not None:
+            if options.iter_ant:
+                keys['ant'] = ms.all_antenna[antenna_or_baseline]
+            else:
+                keys['baseline'] = ms.all_baseline[antenna_or_baseline]
 
         # now loop over plot types
         for props, xdatum, ydatum, adatum, ared, cdatum in all_plots:

@@ -47,7 +47,7 @@ def freq_to_wavel(ff):
 def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                   chanslice, subset,
                   noflags, noconj,
-                  iter_field, iter_spw, iter_scan, iter_ant,
+                  iter_field, iter_spw, iter_scan, iter_ant, iter_baseline,
                   join_corrs=False,
                   row_chunk_size=100000):
 
@@ -74,6 +74,10 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
         if antenna is not None:
             taql = f"({mytaql})&&(ANTENNA1=={antenna} || ANTENNA2=={antenna})" if mytaql else \
                     f"(ANTENNA1=={antenna} || ANTENNA2=={antenna})"
+        # add baselines to group columns
+        if iter_baseline:
+            group_cols = list(group_cols) + ["ANTENNA1", "ANTENNA2"]
+
         # get MS data
         msdata = daskms.xds_from_ms(msinfo.msname, columns=list(ms_cols), group_cols=group_cols, taql_where=taql,
                                     chunks=dict(row=row_chunk_size))
@@ -88,12 +92,20 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
 
         # iterate over groups
         for group in msdata:
+            if not len(group.row):
+                continue
             ddid     =  group.DATA_DESC_ID  # always present
-            fld      =  group.FIELD_ID # always present
+            fld      =  group.FIELD_ID      # always present
             if fld not in subset.field or ddid not in subset.spw:
                 log.debug(f"field {fld} ddid {ddid} not in selection, skipping")
                 continue
             scan    = getattr(group, 'SCAN_NUMBER', None)  # will be present if iterating over scans
+            ant1    = getattr(group, 'ANTENNA1', None)   # will be present if iterating over baselines
+            ant2    = getattr(group, 'ANTENNA2', None)   # will be present if iterating over baselines
+            if ant1 is not None and ant2 is not None:
+                baseline = msinfo.baseline_number(ant1, ant2)
+            else:
+                baseline = None
 
             # always read flags -- easier that way
             flag = group.FLAG if not noflags else None
@@ -166,7 +178,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             dataframe_key = (fld if iter_field else None,
                              ddid if iter_spw else None,
                              scan if iter_scan else None,
-                             antenna)
+                             antenna if antenna is not None else baseline)
 
             # do we already have a frame for this key
             ddf0 = output_dataframes.get(dataframe_key)
@@ -200,10 +212,11 @@ def compute_bounds(unknowns, bounds, ddf):
     Given a list of axis with unknown bounds, computes missing bounds and updates the bounds dict
     """
     # setup function to compute min/max on every column for which we don't have a min/max
-    r = ddf.map_partitions(lambda df:
-            np.array([[(np.nanmin(df[axis].values).item() if bounds[axis][0] is None else bounds[axis][0]) for axis in unknowns]+
-                      [(np.nanmax(df[axis].values).item() if bounds[axis][1] is None else bounds[axis][1]) for axis in unknowns]]),
-        ).compute()
+    with np.errstate(all='ignore'):
+        r = ddf.map_partitions(lambda df:
+                np.array([[(np.nanmin(df[axis].values).item() if bounds[axis][0] is None else bounds[axis][0]) for axis in unknowns]+
+                          [(np.nanmax(df[axis].values).item() if bounds[axis][1] is None else bounds[axis][1]) for axis in unknowns]]),
+            ).compute()
 
     # setup new bounds dict based on this
     for i, axis in enumerate(unknowns):
