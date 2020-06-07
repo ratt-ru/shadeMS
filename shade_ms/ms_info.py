@@ -2,9 +2,9 @@ from MSUtils.msutils import STOKES_TYPES
 from casacore.tables import table
 import re
 import daskms
+import math
 import numpy as np
 from collections import OrderedDict
-from xarray import DataArray
 
 class NamedList(object):
     """Holds a list of names (e.g. field names), and provides common indexing and subset operations"""
@@ -79,8 +79,10 @@ class MSInfo(object):
         all_scans = NamedList("scan", list(map(str, range(scan_numbers[-1]+1))))
         self.scan = all_scans.get_subset(scan_numbers)
 
-        antnames = table(msname +'::ANTENNA', ack=False).getcol("NAME")
+        anttab = table(msname +'::ANTENNA', ack=False)
+        antnames = anttab.getcol("NAME")
         self.all_antenna = antnames = NamedList("antenna", antnames)
+        self.antpos = anttab.getcol("POSITION")
 
         ant1col = tab.getcol("ANTENNA1")
         ant2col = tab.getcol("ANTENNA2")
@@ -89,14 +91,29 @@ class MSInfo(object):
         log and log.info(f":   {len(self.antenna)}/{len(self.all_antenna)} antennas: {self.antenna.str_list()}")
 
         # list of all possible baselines
+        nant = len(antnames)
         blnames = [f"{a1}-{a2}" for i1, a1 in enumerate(antnames) for a2 in antnames[i1:]]
         self.all_baseline = NamedList("baseline", blnames)
+
+        # list of baseline lengths
+        self.baseline_lengths = [math.sqrt(((pos1-pos2)**2).sum())
+                                 for i1, pos1 in enumerate(self.antpos) for pos2 in self.antpos[i1:]]
+
+        # sort order to put baselines by length
+        sorted_by_length = sorted([(x, i) for i, x in enumerate(self.baseline_lengths)])
+        self.baseline_sorted_index  = [i for _, i in sorted_by_length]
+        self.baseline_sorted_length = [x for x, _ in sorted_by_length]
 
         # baselines actually present
         a1 = np.minimum(ant1col, ant2col)
         a2 = np.maximum(ant1col, ant2col)
-        bls = sorted(set(self.baseline_number(a1, a2)))
+        bl_set = set(self.baseline_number(a1, a2))
+        bls = sorted(bl_set)
         self.baseline = NamedList("baseline", [blnames[b] for b in bls], bls)
+
+        # make list of baselines present, in meters
+        blm = [i for i in self.baseline_sorted_index if i in bl_set]
+        self.baseline_m = NamedList("baseline_m", [f"{int(round(self.baseline_lengths[b]))}m" for b in blm], blm)
 
         log and log.info(f":   {len(self.baseline)}/{len(self.all_baseline)} baselines present")
 

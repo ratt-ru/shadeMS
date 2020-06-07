@@ -28,14 +28,16 @@ from .data_mappers import DataAxis
 from .dask_utils import dataframe_factory
 # from .ds_ext import by_integers, by_span
 
-USE_REDUCE_BY = False
+USE_REDUCE_BY = True
 
 def add_options(parser):
-    parser.add_argument('--reduce-by',  action="store_true", help=argparse.SUPPRESS)
+    # parser.add_argument('--reduce-by',  action="store_true", help=argparse.SUPPRESS)
+    pass
 
 def set_options(options):
-    global USE_REDUCE_BY
-    USE_REDUCE_BY = options.reduce_by
+    # global USE_REDUCE_BY
+    # USE_REDUCE_BY = options.reduce_by
+    pass
 
 
 def freq_to_wavel(ff):
@@ -420,9 +422,10 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     ax = fig.add_subplot(111, facecolor=bgcol)
     ax.imshow(X=rgb.data, extent=[xmin, xmax, ymin, ymax],
               aspect='auto', origin='lower', interpolation='nearest')
-    ax.set_title("\n".join(textwrap.wrap(title, 90)), loc='center')
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
+
+    ax.set_title("\n".join(textwrap.wrap(title, 90)), loc='center', fontdict=dict(fontsize=options.fontsize))
+    ax.set_xlabel(xlabel, fontdict=dict(fontsize=options.fontsize))
+    ax.set_ylabel(ylabel, fontdict=dict(fontsize=options.fontsize))
     # ax.plot(xmin,ymin,'.',alpha=0.0)
     # ax.plot(xmax,ymax,'.',alpha=0.0)
 
@@ -430,9 +433,48 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     ax.set_xlim([xmin - dx/100, xmax + dx/100])
     ax.set_ylim([ymin - dy/100, ymax + dy/100])
 
-    # set fontsize on everything rendered so far
-    for textobj in fig.findobj(match=match):
-        textobj.set_fontsize(options.fontsize)
+    def decimate_list(x, maxel):
+        """Helper function to reduce a list to < given max number of elements, dividing it by decimal factors of 2 and 5"""
+        factors = 2, 5, 10
+        base = divisor = 1
+        while len(x)//divisor > maxel:
+            for fac in factors:
+                divisor = fac*base
+                if len(x)//divisor <= maxel:
+                    break
+            base *= 10
+        return x[::divisor]
+
+    ax.tick_params(labelsize=options.fontsize*0.66)
+
+    # max # of tickmarks and labels to draw for discrete axes
+    MAXLABELS = 64   # if we have up to this many labels, show them all
+    MAXLABELS1 = 32  # if we have >MAXLABELS to show, then sparsify and get below this number
+    MAXTICKS = 300   # if total number of points is within this range, draw them as minor tickmarks
+
+    # do we have discrete labels to put on the axes?
+    if xdatum.discretized_labels is not None:
+        n = len(xdatum.discretized_labels)
+        ticks_labels = list(enumerate(xdatum.discretized_labels))
+        if n > MAXLABELS:
+            ticks_labels = decimate_list(ticks_labels, MAXLABELS1)         # enforce max number of tick labels
+        labels = [label for _, label in ticks_labels]
+        rot = 90 if max([len(label) for label in xdatum.discretized_labels])*n > 60 else 0
+        ax.set_xticks([x[0] for x in ticks_labels])
+        ax.set_xticklabels(labels, rotation=rot)
+        if len(ticks_labels) < n and n <= MAXTICKS:
+            ax.set_xticks(range(n), minor=True)
+
+    if ydatum.discretized_labels is not None:
+        n = len(ydatum.discretized_labels)
+        ticks_labels = list(enumerate(ydatum.discretized_labels))
+        if n > MAXLABELS:
+            ticks_labels = decimate_list(ticks_labels, MAXLABELS1)         # enforce max number of tick labels
+        labels = [label for _, label in ticks_labels]
+        ax.set_yticks([y[0] for y in ticks_labels])
+        ax.set_yticklabels(labels)
+        if len(ticks_labels) < n and n <= MAXTICKS:
+            ax.set_yticks(range(n), minor=True)
 
     # colorbar?
     if color_key:
@@ -455,12 +497,14 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         if caxis is not None and cdatum.is_discrete:
             rot = 0
             # adjust fontsize for number of labels
-            fs = max(options.fontsize*min(1, 32./len(color_labels)), 6)
+            fs = max(options.fontsize*min(0.8, 20./len(color_labels)), 6)
             fontdict = dict(fontsize=fs)
             if max([len(lbl) for lbl in color_labels]) > 3 and len(color_labels) < 8:
                 rot = 90
                 fontdict['verticalalignment'] ='center'
             cb.ax.set_yticklabels(color_labels, rotation=rot, fontdict=fontdict)
+        else:
+            cb.ax.tick_params(labelsize=options.fontsize*0.8)
 
     fig.savefig(pngname, bbox_inches='tight')
 

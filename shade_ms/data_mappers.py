@@ -6,6 +6,7 @@ import numpy as np
 import math
 import re
 import argparse
+from . import ms_info
 from collections import OrderedDict
 from shade_ms import log
 
@@ -60,6 +61,7 @@ data_mappers = OrderedDict(
     TIME  = DataMapper("time", "s", axis=0, column="TIME", mapper=_identity),
     ROW   = DataMapper("row number", "", column=False, axis=0, extras=["rows"], mapper=lambda x,rows: rows),
     BASELINE = DataMapper("baseline", "", column=False, axis=0, extras=["baselines"], mapper=lambda x,baselines: baselines),
+    BASELINE_M = DataMapper("baseline", "", column=False, axis=0, extras=["baselines"], mapper=lambda x,baselines: baselines),
     CORR  = DataMapper("correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr, const=True),
     CHAN  = DataMapper("channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans, const=True),
     FREQ  = DataMapper("frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs, const=True),
@@ -228,6 +230,12 @@ class DataAxis(object):
         elif function == "BASELINE":
             self.subset_indices = subset.baseline
             maxind = ms.baseline.numbers[-1]
+        elif function == "BASELINE_M":
+            bl_subset = set(subset.baseline.numbers)   # active baselines
+            numbers = [i for i in ms.baseline_m.numbers if i in bl_subset]
+            names = [bl for i, bl in zip(ms.baseline_m.numbers, ms.baseline_m.names) if i in bl_subset]
+            self.subset_indices = ms_info.NamedList("baseline_m", names, numbers)
+            maxind = ms.baseline.numbers[-1]
         elif column == "FLAG" or column == "FLAG_ROW":
             self.discretized_labels = ["F", "T"]
 
@@ -238,7 +246,7 @@ class DataAxis(object):
             # and all other indices to N
             if len(self.subset_indices) < maxind+1:
                 remapper = np.full(maxind+1, len(self.subset_indices))
-                for i, index in  enumerate(self.subset_indices.numbers):
+                for i, index in enumerate(self.subset_indices.numbers):
                     remapper[index] = i
                 self.subset_remapper = da.array(remapper)
             self.discretized_labels = self.subset_indices.names

@@ -199,7 +199,7 @@ def main(argv):
     group_opts.add_argument('--bgcol', dest='bgcol',
                       help='RGB hex code for background colour (default = FFFFFF)', default='FFFFFF')
     group_opts.add_argument('--fontsize', dest='fontsize',
-                      help='Font size for all text elements (default = 20)', default=20)
+                      help='Font size for all text elements (default = 20)', default=16)
 
     group_opts = parser.add_argument_group('Output settings')
 
@@ -520,7 +520,9 @@ def main(argv):
                 labels.append(col_to_label(ycolumn))
             titles += describe_corr(plot_ycorr)
             labels += describe_corr(plot_ycorr)
-            titles += [ydatum.mapper.fullname, "vs"]
+            if ydatum.mapper.fullname:
+                titles += [ydatum.mapper.fullname]
+            titles += ["vs"]
             if ydatum.function:
                 labels.append(ydatum.function)
             # add x column/subset.corr, if different
@@ -530,7 +532,8 @@ def main(argv):
             if plot_xcorr != plot_ycorr:
                 titles += describe_corr(plot_xcorr)
                 labels += describe_corr(plot_xcorr)
-            titles += [xdatum.mapper.fullname]
+            if xdatum.mapper.fullname:
+                titles += [xdatum.mapper.fullname]
             if xdatum.function:
                 labels.append(xdatum.function)
             props['title'] = " ".join(titles)
