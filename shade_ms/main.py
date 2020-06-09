@@ -627,6 +627,7 @@ def main(argv):
     keys['scan'] = subset.scan.names if options.scan != 'all' else ''
     keys['ant'] = subset.ant.names if options.ant != 'all' else ''  ## TODO: also handle ant-num settings
     keys['spw'] = subset.spw.names if options.spw != 'all' else ''
+    keys['baseline'] = None
 
     keys['suffix'] = suffix = options.suffix.format(**options.__dict__) if options.suffix else ''
     keys['_suffix'] = f".{suffix}" if suffix else ''
@@ -697,7 +698,7 @@ def main(argv):
         if antenna_or_baseline is not None:
             if options.iter_ant:
                 keys['ant'] = ms.all_antenna[antenna_or_baseline]
-            else:
+            elif options.iter_ant:
                 keys['baseline'] = ms.all_baseline[antenna_or_baseline]
 
         # now loop over plot types

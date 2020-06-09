@@ -99,10 +99,10 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             if fld not in subset.field or ddid not in subset.spw:
                 log.debug(f"field {fld} ddid {ddid} not in selection, skipping")
                 continue
-            scan    = getattr(group, 'SCAN_NUMBER', None)  # will be present if iterating over scans
-            ant1    = getattr(group, 'ANTENNA1', None)   # will be present if iterating over baselines
-            ant2    = getattr(group, 'ANTENNA2', None)   # will be present if iterating over baselines
-            if ant1 is not None and ant2 is not None:
+            scan = getattr(group, 'SCAN_NUMBER', None)  # will be present if iterating over scans
+            if iter_baseline:
+                ant1    = getattr(group, 'ANTENNA1', None)   # will be present if iterating over baselines
+                ant2    = getattr(group, 'ANTENNA2', None)   # will be present if iterating over baselines
                 baseline = msinfo.baseline_number(ant1, ant2)
             else:
                 baseline = None
@@ -168,8 +168,9 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                     df1 = dataframe_factory(("row", "chan"), *args, columns=arrays.keys())
                     # if any axis needs to be conjugated, double up all of them
                     if not noconj and any([axis.conjugate for axis in DataAxis.all_axes.values()]):
-                        args = (v for pair in ((-array if DataAxis[key].conjugate else array, shapes[key])
-                                                for key, array in arrays.items()) for v in pair)
+                        arr_shape = [(-arrays[axis.label] if axis.conjugate else arrays[axis.label], shapes[axis.label])
+                                                for axis in DataAxis.all_axes.values()]
+                        args = (v for pair in arr_shape  for v in pair)
                         df2 = dataframe_factory(("row", "chan"), *args, columns=arrays.keys())
                         df1 = dask_df.concat([df1, df2], axis=0)
                     ddf = dask_df.concat([ddf, df1], axis=0) if ddf is not None else df1
