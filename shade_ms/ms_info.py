@@ -28,7 +28,7 @@ class NamedList(object):
         elif type(item) is slice:
             return self.names[item]
         else:
-            return self.names[self.numindex[item]]
+            return self.names[item] # self.numindex[item]]
 
     def get_subset(self, subset, allow_numeric_indices=True):
         """Extracts subset using a comma-separated string or list of indices"""
