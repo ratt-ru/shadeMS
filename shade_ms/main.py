@@ -541,7 +541,7 @@ def main(argv):
             if xcolumn and (xcolumn != ycolumn or not xdatum.function) and not xdatum.mapper.column:
                 titles.append(xcolumn)
                 labels.append(col_to_label(xcolumn))
-            if plot_xcorr != plot_ycorr:
+            if plot_xcorr is not plot_ycorr:
                 titles += describe_corr(plot_xcorr)
                 labels += describe_corr(plot_xcorr)
             if xdatum.mapper.fullname:
@@ -556,7 +556,8 @@ def main(argv):
                 if acolumn and (acolumn != xcolumn or acolumn != ycolumn) and adatum.mapper.column is None:
                     titles.append(acolumn)
                     labels.append(col_to_label(acolumn))
-                if plot_acorr and (plot_acorr != plot_xcorr or plot_acorr != plot_ycorr):
+                if plot_acorr is not None and plot_acorr is not False and \
+                        (plot_acorr is not plot_xcorr or plot_acorr is not plot_ycorr):
                     titles += describe_corr(plot_acorr)
                     labels += describe_corr(plot_acorr)
                 titles += [adatum.mapper.fullname]
@@ -572,7 +573,8 @@ def main(argv):
                 if ccolumn and (ccolumn != xcolumn or ccolumn != ycolumn) and cdatum.mapper.column is None:
                     titles.append(ccolumn)
                     labels.append(col_to_label(ccolumn))
-                if plot_ccorr and (plot_ccorr != plot_xcorr or plot_ccorr != plot_ycorr):
+                if plot_ccorr is not None and plot_ccorr is not False and \
+                        (plot_ccorr is not plot_xcorr or plot_ccorr is not plot_ycorr):
                     titles += describe_corr(plot_ccorr)
                     labels += describe_corr(plot_ccorr)
                 if cdatum.mapper.fullname:
