@@ -417,7 +417,7 @@ def main(argv):
         log.info(f'SPW(s)           : all')
 
     if options.scan != 'all':
-        subset.scan = ms.scan.get_subset(options.scan)
+        subset.scan = ms.scan.get_subset(options.scan, allow_numeric_indices=False)
         log.info(f"Scan(s)          : {' '.join(subset.scan.names)}")
         mytaql.append("||".join([f'SCAN_NUMBER=={n}' for n in subset.scan.numbers]))
     else:

@@ -14,6 +14,7 @@ class NamedList(object):
         self.names = names
         self.numbers = numbers or range(len(self.names))
         self.map = dict(zip(names, self.numbers))
+        self.numindex = {num: i for i, num in enumerate(self.numbers)}
 
     def __len__(self):
         return len(self.names)
@@ -22,27 +23,32 @@ class NamedList(object):
         return name in self.map if type(name) is str else name in self.numbers
 
     def __getitem__(self, item, default=None):
-        return self.map.get(item, default) if type(item) is str else self.names[item]
+        if type(item) is str:
+            return self.map.get(item, default)
+        elif type(item) is slice:
+            return self.names[item]
+        else:
+            return self.names[self.numindex[item]]
 
-    def get_subset(self, subset):
+    def get_subset(self, subset, allow_numeric_indices=True):
         """Extracts subset using a comma-separated string or list of indices"""
         if type(subset) in (list, tuple):
-            return NamedList(self.label, [self.names[x] for x in subset], subset)
+            return NamedList(self.label, [self.names[x] for x in subset], [self.numbers[x] for x in subset])
         elif type(subset) is str:
             if subset == "all":
                 return self
-            numbers = []
+            ind = []
             for x in subset.split(","):
-                if re.fullmatch('\d+', x):
+                if allow_numeric_indices and re.fullmatch('\d+', x):
                     x = int(x)
-                    if x < 0 or x >= len(self):
+                    if x not in self.numindex:
                         raise ValueError(f"invalid {self.label} number {x}")
-                    numbers.append(x)
+                    ind.append(self.numindex[x])
                 elif x in self.map:
-                    numbers.append(self.map[x])
+                    ind.append(self.numindex[self.map[x]])
                 else:
                     raise ValueError(f"invalid {self.label} '{x}'")
-            return NamedList(self.label, [self.names[x] for x in numbers], numbers)
+            return NamedList(self.label, [self.names[x] for x in ind], [self.numbers[x] for x in ind])
         else:
             raise TypeError(f"unknown subset of type {type(subset)}")
 
@@ -75,7 +81,7 @@ class MSInfo(object):
         log and log.info(f":   {len(self.field)} fields: {' '.join(self.field.names)}")
 
         scan_numbers = sorted(set(tab.getcol("SCAN_NUMBER")))
-        log and log.info(f":   {len(scan_numbers)} scans, first #{scan_numbers[0]}, last #{scan_numbers[-1]}")
+        log and log.info(f":   {len(scan_numbers)} scans: {' '.join(map(str, scan_numbers))}")
         all_scans = NamedList("scan", list(map(str, range(scan_numbers[-1]+1))))
         self.scan = all_scans.get_subset(scan_numbers)
 
