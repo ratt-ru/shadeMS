@@ -9,6 +9,7 @@ requirements = [
 "datashader @ git+ssh://git@github.com/o-smirnov/datashader.git",
 "holoviews",
 "matplotlib>2.2.3; python_version >= '3.5'",
+"cmasher",
 "future-fstrings",
 "requests",
 "MSUtils"

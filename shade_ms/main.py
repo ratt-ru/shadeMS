@@ -12,7 +12,6 @@ import logging
 import itertools
 import re
 import sys
-import colorcet
 import dask.diagnostics
 from contextlib import contextmanager
 import json
@@ -181,10 +180,12 @@ def main(argv):
     group_opts.add_argument('--cmap', default='bkr',
                       help="""Colorcet map used without --colour-by  (default = %(default)s), see
                       https://colorcet.holoviz.org""")
-    group_opts.add_argument('--bmap', default='bkr',
+    group_opts.add_argument('--bmap', default='pride',
                       help='Colorcet map used when colouring by a continuous axis (default = %(default)s)')
     group_opts.add_argument('--dmap', default='glasbey_dark',
                       help='Colorcet map used when colouring by a discrete axis (default = %(default)s)')
+    group_opts.add_argument('--dmap-preserve', action='store_true',
+                      help='Preserve colour assignments in discrete axes even when discrete values are missing.')
     group_opts.add_argument('--min-alpha', default=40, type=int, metavar="0-255",
                       help="""Minimum alpha value used in rendering the canvas. Increase to saturate colour at
                       the expense of dynamic range. Default is %(default)s.""")
@@ -243,15 +244,10 @@ def main(argv):
 
     options = parser.parse_args(argv)
 
-    cmap = getattr(colorcet, options.cmap, None)
-    if cmap is None:
-        parser.error(f"unknown --cmap {options.cmap}")
-    bmap = getattr(colorcet, options.bmap, None)
-    if bmap is None:
-        parser.error(f"unknown --bmap {options.bmap}")
-    dmap = getattr(colorcet, options.dmap, None)
-    if dmap is None:
-        parser.error(f"unknown --dmap {options.dmap}")
+    cmap = data_plots.get_colormap(options.cmap)
+    bmap = data_plots.get_colormap(options.bmap)
+    dmap = data_plots.get_colormap(options.dmap)
+
     if options.iter_ant and options.iter_baseline:
         parser.error("cannot combine --iter-ant and --iter-baseline")
 

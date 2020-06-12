@@ -21,6 +21,9 @@ import argparse
 import itertools
 import matplotlib.cm
 from shade_ms import log
+import colorcet
+import cmasher
+import matplotlib.cm
 
 from collections import OrderedDict
 from . import data_mappers
@@ -34,10 +37,27 @@ def add_options(parser):
     # parser.add_argument('--reduce-by',  action="store_true", help=argparse.SUPPRESS)
     pass
 
+
 def set_options(options):
     # global USE_REDUCE_BY
     # USE_REDUCE_BY = options.reduce_by
     pass
+
+
+def get_colormap(cmap_name):
+    cmap = getattr(colorcet, cmap_name, None)
+    if cmap:
+        log.info(f"using colourmap colorcet.{cmap_name}")
+        return cmap
+    cmap = getattr(cmasher, cmap_name, None)
+    if cmap:
+        log.info(f"using colourmap cmasher.{cmap_name}")
+    else:
+        cmap = getattr(matplotlib.cm, cmap_name, None)
+        if cmap is None:
+            raise ValueError(f"unknown colourmap {cmap_name}")
+        log.info(f"using colourmap matplotplib.cm.{cmap_name}")
+    return [ f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}" for r,g,b in cmap.colors ]
 
 
 def freq_to_wavel(ff):
@@ -316,7 +336,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         else:
             color_bins = list(range(cdatum.nlevels))
             if cdatum.is_discrete:
-                if cdatum.subset_indices is not None:
+                if cdatum.subset_indices is not None and options.dmap_preserve:
                     num_categories = len(cdatum.subset_indices)
                     color_bins = cdatum.subset_indices[:cdatum.nlevels]
                 else:
@@ -353,10 +373,13 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             non_empty = np.where(non_empty)[0]
             raster = raster[..., non_empty]
             # get bin numbers corresponding to non-empty bins
-            color_bins = [color_bins[i] for i in non_empty]
+            if options.dmap_preserve:
+                color_bins = [color_bins[bin] for bin in non_empty]
+            else:
+                color_bins = [color_bins[i] for i, _ in enumerate(non_empty)]
             # get list of color labels corresponding to each bin (may be multiple)
             color_labels = [color_labels[i::cdatum.nlevels] for i in non_empty]
-            color_key = [dmap[bin] for bin in color_bins]
+            color_key = [dmap[bin%len(dmap)] for bin in color_bins]
             # the numbers may be out of order -- reorder for color bar purposes
             bin_color_label = sorted(zip(color_bins, color_key, color_labels))
             color_mapping = [col for _, col, _ in bin_color_label]
@@ -373,8 +396,8 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         else:
             # color labels are bin centres
             bin_centers = [cmin + cdelta*(i+0.5) for i in color_bins]
-            # map to colors pulled from 256 color map
-            color_key = [bmap[(i*256)//cdatum.nlevels] for i in color_bins]
+            # map to colors pulled from color map
+            color_key = [bmap[(i*len(bmap))//cdatum.nlevels] for i in color_bins]
             color_labels = list(map(str, bin_centers))
             log.info(f": shading using {len(color_bins)} colors (bin centres are {' '.join(color_labels)})")
 

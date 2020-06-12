@@ -330,7 +330,10 @@ class DataAxis(object):
         coldata = mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
         # for a constant axis, compute minmax on the fly
         if mapper.const and self._minmax_autorange:
-            min1, max1 = coldata.data.min(), coldata.data.max()
+            if np.isscalar(coldata):
+                min1 = max1 = coldata
+            else:
+                min1, max1 = coldata.data.min(), coldata.data.max()
             self.minmax = min(self.minmax[0], min1) if self.minmax[0] is not None else min1, \
                           min(self.minmax[1], max1) if self.minmax[1] is not None else max1
         # scalar is just a scalar
