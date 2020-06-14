@@ -31,16 +31,11 @@ from .data_mappers import DataAxis
 from .dask_utils import dataframe_factory
 # from .ds_ext import by_integers, by_span
 
-USE_REDUCE_BY = True
-
 def add_options(parser):
-    # parser.add_argument('--reduce-by',  action="store_true", help=argparse.SUPPRESS)
     pass
 
 
 def set_options(options):
-    # global USE_REDUCE_BY
-    # USE_REDUCE_BY = options.reduce_by
     pass
 
 
@@ -266,7 +261,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     aaxis = adatum and adatum.label
     caxis = cdatum and cdatum.label
 
-    color_key = color_mapping = color_labels = agg_alpha = raster_alpha = cmin = cdelta = None
+    color_key = color_mapping = color_labels = color_minmax = agg_alpha = cmin = cdelta = None
 
     # do we need to compute any axis min/max?
     bounds = OrderedDict({xaxis: xdatum.minmax, yaxis: ydatum.minmax})
@@ -299,26 +294,14 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     canvas = datashader.Canvas(canvas_sizes[0], canvas_sizes[1], x_range=bounds[xaxis], y_range=bounds[yaxis])
 
     if aaxis is not None:
-        agg_alpha = getattr(datashader.reductions, ared, None)
+        agg_alpha = getattr(datashader.reductions, ared, None) if ared else datashader.reductions.count
         if agg_alpha is None:
             raise ValueError(f"unknown alpha reduction function {ared}")
         agg_alpha = agg_alpha(aaxis)
-    ared = ared or 'count'
-
-    if aaxis is not None:
-        agg_alpha = getattr(datashader.reductions, ared, None)
-        if agg_alpha is None:
-            raise ValueError(f"unknown alpha reduction function {ared}")
-        agg_alpha = agg_alpha(aaxis)
-    ared = ared or 'count'
 
     if cdatum is not None:
-        if agg_alpha is not None and not USE_REDUCE_BY:
-            log.debug(f'rasterizing alpha channel using {ared}(aaxis)')
-            raster_alpha = canvas.points(ddf, xaxis, yaxis, agg=agg_alpha)
-
         # aggregation applied to by()
-        agg_by = agg_alpha if USE_REDUCE_BY and agg_alpha is not None else datashader.count()
+        agg_by = agg_alpha if agg_alpha else datashader.count()
 
         # color_bins will be a list of colors to use. If the subset is known, then we preferentially
         # pick colours by subset, i.e. we try to preserve the mapping from index to specific color.
@@ -400,21 +383,19 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             color_key = [bmap[(i*len(bmap))//cdatum.nlevels] for i in color_bins]
             color_labels = list(map(str, bin_centers))
             log.info(f": shading using {len(color_bins)} colors (bin centres are {' '.join(color_labels)})")
-
-        if raster_alpha is not None:
-            amin = adatum.minmax[0] if adatum.minmax[0] is not None else np.nanmin(raster_alpha)
-            amax = adatum.minnax[1] if adatum.minmax[1] is not None else np.nanmax(raster_alpha)
-            raster = raster*(raster_alpha-amin)/(amax-amin)
-            raster[raster<0] = 0
-            raster[raster>1] = 1
-            log.info(f": adjusting alpha (alpha raster was {amin} to {amax})")
         img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize, min_alpha=min_alpha)
+        # set color_minmax for colorbar
+        color_minmax = bounds[caxis]
     else:
         log.debug(f'rasterizing using {ared}')
         raster = canvas.points(ddf, xaxis, yaxis, agg=agg_alpha)
         if not raster.data.any():
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
+        # get min/max cor colorbar
+        if aaxis:
+            color_minmax = np.nanmin(raster), np.nanmax(raster)
+            color_key = cmap
         log.debug('shading')
         img = datashader.transfer_functions.shade(raster, cmap=cmap, how=normalize, min_alpha=min_alpha)
 
@@ -514,7 +495,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             ax.set_yticks(range(n), minor=True)
 
     # colorbar?
-    if color_key:
+    if color_minmax:
         import matplotlib.colors
         # discrete axis
         if caxis is not None and cdatum.is_discrete:
@@ -523,7 +504,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             colormap = matplotlib.colors.ListedColormap(color_mapping)
         # discretized axis
         else:
-            norm = matplotlib.colors.Normalize(*bounds[caxis])
+            norm = matplotlib.colors.Normalize(*color_minmax)
             colormap = matplotlib.colors.ListedColormap(color_key)
             # auto-mark colorbar, since it represents a continuous range of values
             ticks = None

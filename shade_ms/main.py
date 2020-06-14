@@ -78,7 +78,7 @@ def main(argv):
                       help="""Intensity axis. Can be none, or given once, or given the same number of times as --xaxis.
                       If none, plot intensity (a.k.a. alpha channel) is proportional to density of points. Otherwise,
                       a reduction function (see --ared below) is applied to the given values, and the result is used
-                      to determine intensity.
+                      to determine intensity. All columns and variations listed under --xaxis are available for --aaxis.
                       """)
 
     group_opts.add_argument('--ared', action="append",
@@ -86,8 +86,8 @@ def main(argv):
                       mean, std, first, last, mode. Default is mean.""")
 
     group_opts.add_argument('-c', '--colour-by', action="append",
-                      help="""Colour axis. Can be none, or given once, or given the same number of times as --xaxis.
-                      All columns and variations listed under --xaxis are available for colouring by.""")
+                      help="""Colour (a.k.a. category) axis. Can be none, or given once, or given the same number of 
+                      times as --xaxis. All columns and variations listed under --xaxis are available for colouring by.""")
 
     group_opts.add_argument('-C', '--col', metavar="COLUMN", dest='col', action="append", default=[],
                       help="""Name of visibility column (default is DATA), if needed. This is used if
