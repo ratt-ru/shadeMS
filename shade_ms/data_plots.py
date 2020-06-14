@@ -408,18 +408,21 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         alpha = (imgval >> 24)&255
         nulls = alpha<min_alpha
         alpha -= min_alpha
-        #if percentile if specified, use that to override saturate_alpha
-        if saturate_alpha is None:
-            saturate_alpha = np.percentile(alpha[~nulls], saturate_percentile)
-            log.debug(f"using saturation alpha {saturate_alpha} from {saturate_percentile}th percentile")
-        else:
-            log.debug(f"using explicit saturation alpha {saturate_alpha}")
-        # rescale alpha from [min_alpha, saturation_alpha] to [min_alpha, 255]
-        saturation_factor = (255. - min_alpha) / (saturate_alpha - min_alpha)
-        alpha = min_alpha + alpha*saturation_factor
-        alpha[nulls] = 0
-        alpha[alpha>255] = 255
-        imgval[:] = (imgval & 0xFFFFFF) | alpha.astype(np.uint32)<<24
+        if nulls.all():
+            log.debug(f"alpha<min_alpha for entire plot -- all data below lower clip perhaps?")
+        else:    
+            #if percentile if specified, use that to override saturate_alpha
+            if saturate_alpha is None:
+                saturate_alpha = np.percentile(alpha[~nulls], saturate_percentile)
+                log.debug(f"using saturation alpha {saturate_alpha} from {saturate_percentile}th percentile")
+            else:
+                log.debug(f"using explicit saturation alpha {saturate_alpha}")
+            # rescale alpha from [min_alpha, saturation_alpha] to [min_alpha, 255]
+            saturation_factor = (255. - min_alpha) / (saturate_alpha - min_alpha)
+            alpha = min_alpha + alpha*saturation_factor
+            alpha[nulls] = 0
+            alpha[alpha>255] = 255
+            imgval[:] = (imgval & 0xFFFFFF) | alpha.astype(np.uint32)<<24
 
     if options.spread_pix:
         img = datashader.transfer_functions.dynspread(img, options.spread_thr, max_px=options.spread_pix)
