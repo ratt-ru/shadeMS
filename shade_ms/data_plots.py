@@ -394,10 +394,12 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             return None
         # get min/max cor colorbar
         if aaxis:
-            color_minmax = np.nanmin(raster), np.nanmax(raster)
+            amin, amax = adatum.minmax
+            color_minmax = (amin if amin is not None else np.nanmin(raster)), \
+                           (amax if amax is not None else np.nanmax(raster))
             color_key = cmap
         log.debug('shading')
-        img = datashader.transfer_functions.shade(raster, cmap=cmap, how=normalize, min_alpha=min_alpha)
+        img = datashader.transfer_functions.shade(raster, cmap=cmap, how=normalize, span=color_minmax, min_alpha=min_alpha)
 
     # resaturate if needed
     if saturate_alpha is not None or saturate_percentile is not None:

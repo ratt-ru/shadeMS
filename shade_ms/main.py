@@ -106,17 +106,21 @@ def main(argv):
                       help="""Minimum x-axis value (default = data min). For multiple plots, you can give this 
                       multiple times, or use a comma-separated list, but note that the clipping is the same per axis 
                       across all plots, so only the last applicable setting will be used. The list may include empty
-                      elements (or 'None') to not apply a clip.""")
+                      elements (or 'None') to not apply a clip. Default computes clips from data min/max.""")
     group_opts.add_argument('--xmax', action='append',
-                      help='Maximum x-axis value (default = data max).')
+                      help='Maximum x-axis value.')
     group_opts.add_argument('--ymin', action='append',
-                      help='Minimum y-axis value (default = data min).')
+                      help='Minimum y-axis value.')
     group_opts.add_argument('--ymax', action='append',
-                      help='Maximum y-axis value (default = data max).')
+                      help='Maximum y-axis value.')
+    group_opts.add_argument('--amin', action='append',
+                      help='Minimum intensity-axis value.')
+    group_opts.add_argument('--amax', action='append',
+                      help='Maximum intensity-axis value.')
     group_opts.add_argument('--cmin', action='append',
-                      help='Minimum colouring value. Must be supplied for every non-discrete axis to be coloured by.')
+                      help='Minimum value to be coloured by.')
     group_opts.add_argument('--cmax', action='append',
-                      help='Maximum colouring value. Must be supplied for every non-discrete axis to be coloured by.')
+                      help='Maximum value to be coloured by.')
     group_opts.add_argument('--cnum', action='append',
                       help=f'Number of steps used to discretize a continuous axis. Default is {DEFAULT_CNUM}.')
 
@@ -176,7 +180,8 @@ def main(argv):
     group_opts.add_argument('-Y', '--ycanvas', type=int,
                       help='Canvas y-size in pixels (default = %(default)s)', default=900)
     group_opts.add_argument('--norm', choices=['auto', 'eq_hist', 'cbrt', 'log', 'linear'], default='auto',
-                      help="Pixel scale normalization (default is 'log' when colouring, and 'eq_hist' when not)")
+                      help="Pixel scale normalization (default is 'log' with caxis, 'linear' with aaxis, and "
+                           "'eq_hist' when neither is in use.)")
     group_opts.add_argument('--cmap', default='bkr',
                       help="""Colorcet map used without --colour-by  (default = %(default)s), see
                       https://colorcet.holoviz.org""")
@@ -302,6 +307,8 @@ def main(argv):
     ymins = get_conformal_list('ymin', float)
     ymaxs = get_conformal_list('ymax', float)
     aaxes = get_conformal_list('aaxis')
+    amins = get_conformal_list('amin', float)
+    amaxs = get_conformal_list('amax', float)
     areds = get_conformal_list('ared', str, 'mean')
     caxes = get_conformal_list('colour_by')
     cmins = get_conformal_list('cmin', float)
@@ -313,8 +320,10 @@ def main(argv):
         parser.error("--xmin/--xmax must be either both set, or neither")
     if any([(a is None)^(b is None) for a, b in zip(ymins, ymaxs)]):
         parser.error("--xmin/--xmax must be either both set, or neither")
-    if any([(a is None)^(b is None) for a, b in zip(ymins, ymaxs)]):
+    if any([(a is None)^(b is None) for a, b in zip(cmins, cmaxs)]):
         parser.error("--cmin/--cmax must be either both set, or neither")
+    if any([(a is None)^(b is None) for a, b in zip(amins, amaxs)]):
+        parser.error("--amin/--amax must be either both set, or neither")
 
     # check chan slice
     def parse_slice_spec(spec, name):
@@ -467,8 +476,8 @@ def main(argv):
     have_corr_dependence = False
 
     # now go create definitions
-    for xaxis, yaxis, default_column, caxis, aaxis, ared, xmin, xmax, ymin, ymax, cmin, cmax, cnum in \
-            zip(xaxes, yaxes, columns, caxes, aaxes, areds, xmins, xmaxs, ymins, ymaxs, cmins, cmaxs, cnums):
+    for xaxis, yaxis, default_column, caxis, aaxis, ared, xmin, xmax, ymin, ymax, amin, amax, cmin, cmax, cnum in \
+        zip(xaxes, yaxes, columns, caxes, aaxes, areds, xmins, xmaxs, ymins, ymaxs, amins, amaxs, cmins, cmaxs, cnums):
         # get axis specs
         xspecs = DataAxis.parse_datum_spec(xaxis, default_column, ms=ms)
         yspecs = DataAxis.parse_datum_spec(yaxis, default_column, ms=ms)
@@ -512,7 +521,8 @@ def main(argv):
                                        minmax_cache=minmax_cache if options.xlim_load else None)
             ydatum = DataAxis.register(yfunction, ycolumn, plot_ycorr, ms=ms, minmax=(ymin, ymax), subset=subset,
                                        minmax_cache=minmax_cache if options.ylim_load else None)
-            adatum = afunction and DataAxis.register(afunction, acolumn, plot_acorr, ms=ms, subset=subset)
+            adatum = afunction and DataAxis.register(afunction, acolumn, plot_acorr, ms=ms,
+                                                     minmax=(amin, amax), subset=subset)
             cdatum = cfunction and DataAxis.register(cfunction, ccolumn, plot_ccorr, ms=ms,
                                                      minmax=(cmin, cmax), ncol=cnum, subset=subset,
                                                      minmax_cache=minmax_cache if options.clim_load else None)
@@ -662,7 +672,7 @@ def main(argv):
         log.info(f": rendering {pngname}")
         normalize = options.norm
         if normalize == "auto":
-            normalize = "log" if cdatum is not None else "eq_hist"
+            normalize = "log" if cdatum is not None else ("eq_hist" if adatum is None else 'linear')
         if options.profile:
             context = dask.diagnostics.ResourceProfiler
         else:
