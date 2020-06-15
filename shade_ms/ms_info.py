@@ -70,6 +70,9 @@ class MSInfo(object):
 
         self.valid_columns = set(tab.colnames())
 
+        # indexing columns are read into memory in their entirety up front
+        self.indexing_columns = dict()
+
         spw_tab = daskms.xds_from_table(msname + '::SPECTRAL_WINDOW', columns=['CHAN_FREQ'])
         self.chan_freqs = spw_tab[0].CHAN_FREQ   # important for this to be an xarray
         self.nspw = self.chan_freqs.shape[0]
@@ -80,7 +83,8 @@ class MSInfo(object):
         self.field = NamedList("field", table(msname +'::FIELD', ack=False).getcol("NAME"))
         log and log.info(f":   {len(self.field)} fields: {' '.join(self.field.names)}")
 
-        scan_numbers = sorted(set(tab.getcol("SCAN_NUMBER")))
+        self.indexing_columns["SCAN_NUMBER"] = tab.getcol("SCAN_NUMBER")
+        scan_numbers = sorted(set(self.indexing_columns["SCAN_NUMBER"]))
         log and log.info(f":   {len(scan_numbers)} scans: {' '.join(map(str, scan_numbers))}")
         all_scans = NamedList("scan", list(map(str, range(scan_numbers[-1]+1))))
         self.scan = all_scans.get_subset(scan_numbers)
@@ -90,8 +94,8 @@ class MSInfo(object):
         self.all_antenna = antnames = NamedList("antenna", antnames)
         self.antpos = anttab.getcol("POSITION")
 
-        ant1col = tab.getcol("ANTENNA1")
-        ant2col = tab.getcol("ANTENNA2")
+        ant1col = self.indexing_columns["ANTENNA1"] = tab.getcol("ANTENNA1")
+        ant2col = self.indexing_columns["ANTENNA2"] = tab.getcol("ANTENNA2")
         self.antenna = self.all_antenna.get_subset(list(set(ant1col)|set(ant2col)))
 
         log and log.info(f":   {len(self.antenna)}/{len(self.all_antenna)} antennas: {self.antenna.str_list()}")

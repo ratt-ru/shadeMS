@@ -609,7 +609,7 @@ def main(argv):
 
     log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join subset.corr is {join_corrs}")
 
-    dataframes, np = \
+    dataframes, index_subsets, np = \
         data_plots.get_plot_data(ms, group_cols, mytaql, ms.chan_freqs,
                                  chanslice=chanslice, subset=subset,
                                  noflags=options.noflags, noconj=options.noconj,
@@ -667,7 +667,7 @@ def main(argv):
     jobs = []
     executor = None
 
-    def render_single_plot(df, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel):
+    def render_single_plot(df, subset, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel):
         """Renders a single plot. Make this a function since we might call it in parallel"""
         log.info(f": rendering {pngname}")
         normalize = options.norm
@@ -678,7 +678,7 @@ def main(argv):
         else:
             context = nullcontext
         with context() as profiler:
-            result = data_plots.create_plot(df, xdatum, ydatum, adatum, ared, cdatum,
+            result = data_plots.create_plot(df, subset, xdatum, ydatum, adatum, ared, cdatum,
                                       cmap=cmap, bmap=bmap, dmap=dmap, normalize=normalize,
                                       min_alpha=options.min_alpha,
                                       saturate_alpha=options.saturate_alpha,
@@ -695,6 +695,7 @@ def main(argv):
 
 
     for (fld, spw, scan, antenna_or_baseline), df in dataframes.items():
+        subset = index_subsets[fld, spw, scan, antenna_or_baseline]
         # update keys to be substituted into title and filename
         if fld is not None:
             keys['field_num'] = fld
@@ -735,12 +736,12 @@ def main(argv):
                 log.info(f'                 : created output directory {dirname}')
 
             if options.num_parallel < 2 or len(all_plots) < 2:
-                render_single_plot(df, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel)
+                render_single_plot(df, subset, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel)
             else:
                 from concurrent.futures import ThreadPoolExecutor
                 executor = ThreadPoolExecutor(options.num_parallel)
                 log.info(f'                 : submitting job for {pngname}')
-                jobs.append(executor.submit(render_single_plot, df, xdatum, ydatum, adatum, ared, cdatum,
+                jobs.append(executor.submit(render_single_plot, df, subset, xdatum, ydatum, adatum, ared, cdatum,
                                             pngname, title, xlabel, ylabel))
 
     # wait for jobs to finish

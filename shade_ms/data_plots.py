@@ -67,6 +67,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                   row_chunk_size=100000):
 
     ms_cols = {'ANTENNA1', 'ANTENNA2'}
+    ms_cols.update(msinfo.indexing_columns.keys())
     if not noflags:
         ms_cols.update({'FLAG', 'FLAG_ROW'})
     # get visibility columns
@@ -75,9 +76,12 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
 
     total_num_points = 0  # total number of points to plot
 
-    # output dataframes, indexed by (field, spw, scan, antenna, correlation)
-    # If any of these axes is not being iterated over, then the index is None
+    # output dataframes, indexed by (field, spw, scan, antenna_or_baseline)
+    # If any of these axes is not being iterated over, then the index at that position is None
     output_dataframes = OrderedDict()
+
+    # output subsets of indexing columns, indexed by same tuple
+    output_subsets = OrderedDict()
 
     if iter_ant:
         antenna_subsets = zip(subset.ant.numbers, subset.ant.names)
@@ -146,6 +150,18 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             ddf = None
             num_points = 0  # counts number of new points generated
 
+            # Make frame key -- data subset corresponds to this frame
+            dataframe_key = (fld if iter_field else None,
+                             ddid if iter_spw else None,
+                             scan if iter_scan else None,
+                             antenna if antenna is not None else baseline)
+
+            # update subsets of MS indexing columns that we've seen for this dataframe
+            output_subset1 = output_subsets.setdefault(dataframe_key,
+                                                {column:set() for column in msinfo.indexing_columns.keys()})
+            for column, _ in msinfo.indexing_columns.items():
+                output_subset1[column].update(getattr(group, column).compute().data)
+
             for corr in subset.corr.numbers:
                 # make dictionary of extra values for DataMappers
                 extras['corr'] = corr
@@ -190,12 +206,6 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                         df1 = dask_df.concat([df1, df2], axis=0)
                     ddf = dask_df.concat([ddf, df1], axis=0) if ddf is not None else df1
 
-            # now, are we iterating or concatenating? Make frame key accordingly
-            dataframe_key = (fld if iter_field else None,
-                             ddid if iter_spw else None,
-                             scan if iter_scan else None,
-                             antenna if antenna is not None else baseline)
-
             # do we already have a frame for this key
             ddf0 = output_dataframes.get(dataframe_key)
 
@@ -221,7 +231,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
     #         print(axis.label, np.nanmin(value), np.nanmax(value))
 
     log.info(": complete")
-    return output_dataframes, total_num_points
+    return output_dataframes, output_subsets, total_num_points
 
 def compute_bounds(unknowns, bounds, ddf):
     """
@@ -246,7 +256,7 @@ def compute_bounds(unknowns, bounds, ddf):
 
 
 
-def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, normalize,
+def create_plot(ddf, index_subsets, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, normalize,
                 xlabel, ylabel, title, pngname,
                 min_alpha=40, saturate_percentile=None, saturate_alpha=None,
                 minmax_cache=None,
@@ -261,7 +271,7 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     aaxis = adatum and adatum.label
     caxis = cdatum and cdatum.label
 
-    color_key = color_mapping = color_labels = color_minmax = agg_alpha = cmin = cdelta = None
+    color_key = color_labels = color_minmax = agg_alpha = None
 
     # do we need to compute any axis min/max?
     bounds = OrderedDict({xaxis: xdatum.minmax, yaxis: ydatum.minmax})
@@ -303,36 +313,71 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         # aggregation applied to by()
         agg_by = agg_alpha if agg_alpha else datashader.count()
 
-        # color_bins will be a list of colors to use. If the subset is known, then we preferentially
-        # pick colours by subset, i.e. we try to preserve the mapping from index to specific color.
-        # color_labels will be set from discretized_labels, or from range of column values, if axis is discrete
-        color_labels = cdatum.discretized_labels
+        # figure out mapping from raster planes to colours
+        # after this if-else block, category will be an aggregator instance yielding N categories,
+        # color_key will be a list of N colors, and color_label will be a list of N textual labels
+
         if data_mappers.USE_COUNT_CAT:
-            if cdatum.subset_indices is not None:
-                color_bins = cdatum.subset_indices
-            else:
-                color_bins = [int(x) for x in getattr(ddf.dtypes, caxis).categories]
-            log.debug(f'colourizing using {caxis} categorical, {len(color_bins)} bins')
+            cats = getattr(ddf.dtypes, caxis).categories
+            log.debug(f'colourizing using {caxis} categorical, {len(cats)} bins')
             category = caxis
-            if color_labels is None:
-                color_labels = list(map(str,color_bins))
+            color_key = dmap[:len(cats)]
+            color_labels = list(map(str, cats))
         else:
-            color_bins = list(range(cdatum.nlevels))
             if cdatum.is_discrete:
-                if cdatum.subset_indices is not None and options.dmap_preserve:
-                    num_categories = len(cdatum.subset_indices)
-                    color_bins = cdatum.subset_indices[:cdatum.nlevels]
+                # make dictionary from index to label, omitting values that are not in the MS subset to begin with
+                if cdatum.discretized_labels:
+                    active_subset = OrderedDict(enumerate(cdatum.discretized_labels))
+                # else make up integer labels on the spot
                 else:
-                    num_categories = int(bounds[caxis][1]) + 1
-                log.debug(f'colourizing using {caxis} modulo {len(color_bins)}')
-                category = category_modulo(caxis, len(color_bins))
-                if color_labels is None:
-                    color_labels = list(map(str, range(num_categories)))
+                    active_subset = OrderedDict(enumerate(map(str, range(bounds[caxis][1]+1))))
+                # Check if the subset needs to be refined, because it is known to be smaller for this dataframe
+                if cdatum.columns[0] in index_subsets and len(cdatum.columns) == 1:
+                    df_index_subset = index_subsets[cdatum.columns[0]]
+                    if cdatum.subset_remapper is not None:
+                        remapper = cdatum.subset_remapper.compute()
+                        df_index_subset = set(remapper[x] for x in df_index_subset)
+                    active_subset = OrderedDict((idx, active_subset[idx]) for idx in df_index_subset)
+                    log.debug(f"subset of indices for this axis is a priori {list(active_subset.keys())}")
+                # max known index
+                max_index = max(active_subset.keys())
+                num_colors = min(cdatum.nlevels, len(dmap))
+                color_key = dmap[:num_colors]
+                # if we have fewer indices than colour levels, and the max index is sensible, we'll aggregate to one
+                # raster slice per index value directly
+                if len(active_subset) <= num_colors and max_index < max(num_colors, 256):
+                    num_colors = max_index+1
+                    log.debug(f"aggregating directly into {max_index+1} categories")
+                    category = category_modulo(caxis, max_index+1)
+                    color_label_list = {idx: [value] for idx, value in active_subset.items()}
+                else:
+                    log.debug(f"aggregating modulo {num_colors} categories")
+                    category = category_modulo(caxis, num_colors)
+                    # each slice maps to, potentially, multiple labels from the subset
+                    color_label_list = {i: [active_subset[idx] for idx in range(i, max_index+1, num_colors) if idx in active_subset]
+                                        for i in range(num_colors)}
+                    # and colors just come from the bottom of the colormap
+                    color_dict = dict(enumerate(options.dmap[:num_colors]))
+                # convert lists of color labels into strings
+                color_labels = ['']*num_colors
+                for i, labels in color_label_list.items():
+                    if len(labels) < 3:
+                        color_labels[i] = ",".join(labels)
+                    else:
+                        color_labels[i] = ",".join(labels[:2] + ["..."])
+            # else we discretize a span of values
             else:
-                log.debug(f'colourizing using {caxis} with {len(color_bins)} bins')
+                num_colors = min(cdatum.nlevels, len(bmap))
+                log.debug(f'colourizing using {caxis} with {num_colors} bins')
                 cmin = bounds[caxis][0]
-                cdelta = (bounds[caxis][1] - cmin) / cdatum.nlevels
-                category = category_binning(caxis, cmin, cdelta, cdatum.nlevels)
+                cdelta = (bounds[caxis][1] - cmin) / num_colors
+                category = category_binning(caxis, cmin, cdelta, num_colors)
+                # color labels are bin centres
+                bin_centers = [cmin + cdelta*(i+0.5) for i in range(num_colors)]
+                # map to colors pulled from entire extent of color map
+                color_key = [bmap[(i*len(bmap))//num_colors] for i in range(num_colors)]
+                color_labels = [str(bin) for bin in bin_centers]
+                log.info(f": aggregating using {num_colors} bins at {' '.join(color_labels)})")
 
         raster = canvas.points(ddf, xaxis, yaxis, agg=datashader.by(category, agg_by))
         is_integer_raster = np.issubdtype(raster.dtype, np.integer)
@@ -351,38 +396,17 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
             log.info(": no valid data in plot. Check your flags and/or plot limits.")
             return None
 
-        if cdatum.is_discrete:
-            # discard empty bins
+        if cdatum.is_discrete and not data_mappers.USE_COUNT_CAT:
+            # discard empty planes
             non_empty = np.where(non_empty)[0]
             raster = raster[..., non_empty]
-            # get bin numbers corresponding to non-empty bins
+            # compress colours to bottom of colormap, unless asked to preserve assignments
             if options.dmap_preserve:
-                color_bins = [color_bins[bin] for bin in non_empty]
+                color_key = [color_key[bin] for bin in non_empty]
             else:
-                color_bins = [color_bins[i] for i, _ in enumerate(non_empty)]
-            # get list of color labels corresponding to each bin (may be multiple)
-            color_labels = [color_labels[i::cdatum.nlevels] for i in non_empty]
-            color_key = [dmap[bin%len(dmap)] for bin in color_bins]
-            # the numbers may be out of order -- reorder for color bar purposes
-            bin_color_label = sorted(zip(color_bins, color_key, color_labels))
-            color_mapping = [col for _, col, _ in bin_color_label]
-            # generate labels
-            color_labels = []
-            for _, _, labels in bin_color_label:
-                if len(labels) == 1:
-                    color_labels.append(labels[0])
-                elif len(labels) == 2:
-                    color_labels.append(f"{labels[0]},{labels[1]}")
-                else:
-                    color_labels.append(f"{labels[0]},{labels[1]},...")
-            log.info(f": rendering using {len(color_bins)} colors (values {' '.join(color_labels)})")
-        else:
-            # color labels are bin centres
-            bin_centers = [cmin + cdelta*(i+0.5) for i in color_bins]
-            # map to colors pulled from color map
-            color_key = [bmap[(i*len(bmap))//cdatum.nlevels] for i in color_bins]
-            color_labels = list(map(str, bin_centers))
-            log.info(f": shading using {len(color_bins)} colors (bin centres are {' '.join(color_labels)})")
+                color_key = color_key[:len(non_empty)]
+            color_labels =  [color_labels[bin] for bin in non_empty]
+
         img = datashader.transfer_functions.shade(raster, color_key=color_key, how=normalize, min_alpha=min_alpha)
         # set color_minmax for colorbar
         color_minmax = bounds[caxis]
@@ -437,9 +461,6 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
     ymin, ymax = bounds[yaxis]
 
     log.debug('rendering image')
-
-    def match(artist):
-        return artist.__module__ == 'matplotlib.text'
 
     fig = pylab.figure(figsize=(figx, figy))
     ax = fig.add_subplot(111, facecolor=bgcol)
@@ -504,9 +525,9 @@ def create_plot(ddf, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, nor
         import matplotlib.colors
         # discrete axis
         if caxis is not None and cdatum.is_discrete:
-            norm = matplotlib.colors.Normalize(-0.5, len(color_bins)-0.5)
-            ticks = np.arange(len(color_bins))
-            colormap = matplotlib.colors.ListedColormap(color_mapping)
+            norm = matplotlib.colors.Normalize(-0.5, len(color_key)-0.5)
+            ticks = np.arange(len(color_key))
+            colormap = matplotlib.colors.ListedColormap(color_key)
         # discretized axis
         else:
             norm = matplotlib.colors.Normalize(*color_minmax)
