@@ -160,7 +160,11 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             output_subset1 = output_subsets.setdefault(dataframe_key,
                                                 {column:set() for column in msinfo.indexing_columns.keys()})
             for column, _ in msinfo.indexing_columns.items():
-                output_subset1[column].update(getattr(group, column).compute().data)
+                value = getattr(group, column)
+                if np.isscalar(value):
+                    output_subset1[column].add(value)
+                else:
+                    output_subset1[column].update(value.compute().data)
 
             for corr in subset.corr.numbers:
                 # make dictionary of extra values for DataMappers
