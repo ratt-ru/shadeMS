@@ -707,7 +707,7 @@ def main(argv):
         if antenna_or_baseline is not None:
             if options.iter_ant:
                 keys['ant'] = ms.all_antenna[antenna_or_baseline]
-            elif options.iter_ant:
+            elif options.iter_baseline:
                 keys['baseline'] = ms.all_baseline[antenna_or_baseline]
 
         # now loop over plot types
