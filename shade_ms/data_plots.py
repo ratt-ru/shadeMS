@@ -80,6 +80,9 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
     # If any of these axes is not being iterated over, then the index at that position is None
     output_dataframes = OrderedDict()
 
+    # number of rows per each dataframe
+    output_rows = OrderedDict()
+
     # output subsets of indexing columns, indexed by same tuple
     output_subsets = OrderedDict()
 
@@ -126,6 +129,25 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             else:
                 baseline = None
 
+            # Make frame key -- data subset corresponds to this frame
+            dataframe_key = (fld if iter_field else None,
+                             ddid if iter_spw else None,
+                             scan if iter_scan else None,
+                             antenna if antenna is not None else baseline)
+
+            # update subsets of MS indexing columns that we've seen for this dataframe
+            output_subset1 = output_subsets.setdefault(dataframe_key,
+                                                {column:set() for column in msinfo.indexing_columns.keys()})
+            for column, _ in msinfo.indexing_columns.items():
+                value = getattr(group, column)
+                if np.isscalar(value):
+                    output_subset1[column].add(value)
+                else:
+                    output_subset1[column].update(value.compute().data)
+
+            # number of rows in dataframe
+            nrows0 = output_rows.setdefault(dataframe_key, 0)
+
             # always read flags -- easier that way
             flag = group.FLAG if not noflags else None
             flag_row = group.FLAG_ROW if not noflags else None
@@ -150,21 +172,6 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             ddf = None
             num_points = 0  # counts number of new points generated
 
-            # Make frame key -- data subset corresponds to this frame
-            dataframe_key = (fld if iter_field else None,
-                             ddid if iter_spw else None,
-                             scan if iter_scan else None,
-                             antenna if antenna is not None else baseline)
-
-            # update subsets of MS indexing columns that we've seen for this dataframe
-            output_subset1 = output_subsets.setdefault(dataframe_key,
-                                                {column:set() for column in msinfo.indexing_columns.keys()})
-            for column, _ in msinfo.indexing_columns.items():
-                value = getattr(group, column)
-                if np.isscalar(value):
-                    output_subset1[column].add(value)
-                else:
-                    output_subset1[column].update(value.compute().data)
 
             for corr in subset.corr.numbers:
                 # make dictionary of extra values for DataMappers
