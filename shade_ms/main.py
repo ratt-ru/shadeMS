@@ -1,6 +1,4 @@
 # -*- coding: future_fstrings -*-
-# ian.heywood@physics.ox.ac.uk
-
 
 import matplotlib
 matplotlib.use('agg')
@@ -14,11 +12,9 @@ import logging
 import itertools
 import re
 import sys
-import colorcet
-from collections import OrderedDict
 import dask.diagnostics
 from contextlib import contextmanager
-
+import json
 
 import argparse
 
@@ -82,7 +78,7 @@ def main(argv):
                       help="""Intensity axis. Can be none, or given once, or given the same number of times as --xaxis.
                       If none, plot intensity (a.k.a. alpha channel) is proportional to density of points. Otherwise,
                       a reduction function (see --ared below) is applied to the given values, and the result is used
-                      to determine intensity.
+                      to determine intensity. All columns and variations listed under --xaxis are available for --aaxis.
                       """)
 
     group_opts.add_argument('--ared', action="append",
@@ -90,8 +86,8 @@ def main(argv):
                       mean, std, first, last, mode. Default is mean.""")
 
     group_opts.add_argument('-c', '--colour-by', action="append",
-                      help="""Colour axis. Can be none, or given once, or given the same number of times as --xaxis.
-                      All columns and variations listed under --xaxis are available for colouring by.""")
+                      help="""Colour (a.k.a. category) axis. Can be none, or given once, or given the same number of 
+                      times as --xaxis. All columns and variations listed under --xaxis are available for colouring by.""")
 
     group_opts.add_argument('-C', '--col', metavar="COLUMN", dest='col', action="append", default=[],
                       help="""Name of visibility column (default is DATA), if needed. This is used if
@@ -110,26 +106,42 @@ def main(argv):
                       help="""Minimum x-axis value (default = data min). For multiple plots, you can give this 
                       multiple times, or use a comma-separated list, but note that the clipping is the same per axis 
                       across all plots, so only the last applicable setting will be used. The list may include empty
-                      elements (or 'None') to not apply a clip.""")
+                      elements (or 'None') to not apply a clip. Default computes clips from data min/max.""")
     group_opts.add_argument('--xmax', action='append',
-                      help='Maximum x-axis value (default = data max).')
+                      help='Maximum x-axis value.')
     group_opts.add_argument('--ymin', action='append',
-                      help='Minimum y-axis value (default = data min).')
+                      help='Minimum y-axis value.')
     group_opts.add_argument('--ymax', action='append',
-                      help='Maximum y-axis value (default = data max).')
+                      help='Maximum y-axis value.')
+    group_opts.add_argument('--amin', action='append',
+                      help='Minimum intensity-axis value.')
+    group_opts.add_argument('--amax', action='append',
+                      help='Maximum intensity-axis value.')
     group_opts.add_argument('--cmin', action='append',
-                      help='Minimum colouring value. Must be supplied for every non-discrete axis to be coloured by.')
+                      help='Minimum value to be coloured by.')
     group_opts.add_argument('--cmax', action='append',
-                      help='Maximum colouring value. Must be supplied for every non-discrete axis to be coloured by.')
+                      help='Maximum value to be coloured by.')
     group_opts.add_argument('--cnum', action='append',
                       help=f'Number of steps used to discretize a continuous axis. Default is {DEFAULT_CNUM}.')
+
+    group_opts.add_argument('--xlim-load', action='store_true',
+                      help=f'Load x-axis limits from limits file, if available.')
+    group_opts.add_argument('--ylim-load', action='store_true',
+                      help=f'Load y-axis limits from limits file, if available.')
+    group_opts.add_argument('--clim-load', action='store_true',
+                      help=f'Load colour axis limits from limits file, if available.')
+    group_opts.add_argument('--lim-file', default="{ms}-minmax-cache.json",
+                            help="""Name of limits file to save/load. '{ms}' will be substituted for MS base name.
+                                    Default is '%(default)s'.""")
+    group_opts.add_argument('--no-lim-save', action="store_false", dest="lim_save",
+                            help="""Do not save auto-computed limits to limits file. Default is to save.""")
+    group_opts.add_argument('--lim-save-reset', action="store_true",
+                            help="""Reset limits file when saving. Default adds to existing file.""")
 
     group_opts = parser.add_argument_group('Options for multiple plots or combined plots')
 
     group_opts.add_argument('--iter-field', action="store_true",
                       help='Separate plots per field (default is to combine in one plot)')
-    group_opts.add_argument('--iter-antenna', action="store_true",
-                      help='Separate plots per antenna (default is to combine in one plot)')
     group_opts.add_argument('--iter-spw', action="store_true",
                       help='Separate plots per spw (default is to combine in one plot)')
     group_opts.add_argument('--iter-scan', action="store_true",
@@ -138,6 +150,8 @@ def main(argv):
                       help='Separate plots per correlation or Stokes (default is to combine in one plot)')
     group_opts.add_argument('--iter-ant', action="store_true",
                             help='Separate plots per antenna (default is to combine in one plot)')
+    group_opts.add_argument('--iter-baseline', action="store_true",
+                            help='Separate plots per baseline (default is to combine in one plot)')
 
     group_opts = parser.add_argument_group('Data subset selection')
 
@@ -145,8 +159,9 @@ def main(argv):
                       help='Antennas to plot (comma-separated list of names, default = all)')
     group_opts.add_argument('--ant-num',
                       help='Antennas to plot (comma-separated list of numbers, or a [start]:[stop][:step] slice, overrides --ant)')
-    group_opts.add_argument('--baseline', default='all',
-                      help="Baselines to plot, as 'ant1-ant2' (comma-separated list, default = all)")
+    group_opts.add_argument('--baseline', default='noauto',
+                      help="Baselines to plot, as 'ant1-ant2' (comma-separated list, default of 'noauto' omits "
+                           "auto-correlations, use 'all' to select all)")
     group_opts.add_argument('--spw', default='all',
                       help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)')
     group_opts.add_argument('--field', default='all',
@@ -165,14 +180,25 @@ def main(argv):
     group_opts.add_argument('-Y', '--ycanvas', type=int,
                       help='Canvas y-size in pixels (default = %(default)s)', default=900)
     group_opts.add_argument('--norm', choices=['auto', 'eq_hist', 'cbrt', 'log', 'linear'], default='auto',
-                      help="Pixel scale normalization (default is 'log' when colouring, and 'eq_hist' when not)")
+                      help="Pixel scale normalization (default is 'log' with caxis, 'linear' with aaxis, and "
+                           "'eq_hist' when neither is in use.)")
     group_opts.add_argument('--cmap', default='bkr',
                       help="""Colorcet map used without --colour-by  (default = %(default)s), see
                       https://colorcet.holoviz.org""")
-    group_opts.add_argument('--bmap', default='bkr',
+    group_opts.add_argument('--bmap', default='pride',
                       help='Colorcet map used when colouring by a continuous axis (default = %(default)s)')
     group_opts.add_argument('--dmap', default='glasbey_dark',
                       help='Colorcet map used when colouring by a discrete axis (default = %(default)s)')
+    group_opts.add_argument('--dmap-preserve', action='store_true',
+                      help='Preserve colour assignments in discrete axes even when discrete values are missing.')
+    group_opts.add_argument('--min-alpha', default=40, type=int, metavar="0-255",
+                      help="""Minimum alpha value used in rendering the canvas. Increase to saturate colour at
+                      the expense of dynamic range. Default is %(default)s.""")
+    group_opts.add_argument('--saturate-perc', default=95, type=int, metavar="0-100",
+                      help="""Saturate colors so that the range [min-alpha, X] is mapped to [min-alpha, 255],
+                              where X is the given percentile. Default is %(default)s.""")
+    group_opts.add_argument('--saturate-alpha', default=None, type=int, metavar="0-255",
+                      help="""Saturate colors as above, but with a fixed value of X. Overrides --saturate-perc.""")
     group_opts.add_argument('--spread-pix', type=int, default=0, metavar="PIX",
                       help="""Dynamically spread rendered pixels to this size""")
     group_opts.add_argument('--spread-thr', type=float, default=0.5, metavar="THR",
@@ -180,7 +206,7 @@ def main(argv):
     group_opts.add_argument('--bgcol', dest='bgcol',
                       help='RGB hex code for background colour (default = FFFFFF)', default='FFFFFF')
     group_opts.add_argument('--fontsize', dest='fontsize',
-                      help='Font size for all text elements (default = 20)', default=20)
+                      help='Font size for all text elements (default = 20)', default=16)
 
     group_opts = parser.add_argument_group('Output settings')
 
@@ -189,10 +215,10 @@ def main(argv):
                       help='Send all plots to this output directory')
     group_opts.add_argument('-s', '--suffix', help="suffix to be included in filenames, can include {options}")
     group_opts.add_argument('--png', dest='pngname',
-                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}-{label}{_alphalabel}{_colorlabel}{_suffix}.png",
+                             default="plot-{ms}{_field}{_Spw}{_Scan}{_Ant}{_Baseline}-{label}{_alphalabel}{_colorlabel}{_suffix}.png",
                       help='Template for output png files, default "%(default)s"')
     group_opts.add_argument('--title',
-                             default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_title}{_Alphatitle}{_Colortitle}",
+                             default="{ms}{_field}{_Spw}{_Scan}{_Ant}{_Baseline}{_title}{_Alphatitle}{_Colortitle}",
                       help='Template for plot titles, default "%(default)s"')
     group_opts.add_argument('--xlabel',
                              default="{xname}{_xunit}",
@@ -223,15 +249,12 @@ def main(argv):
 
     options = parser.parse_args(argv)
 
-    cmap = getattr(colorcet, options.cmap, None)
-    if cmap is None:
-        parser.error(f"unknown --cmap {options.cmap}")
-    bmap = getattr(colorcet, options.bmap, None)
-    if bmap is None:
-        parser.error(f"unknown --bmap {options.bmap}")
-    dmap = getattr(colorcet, options.dmap, None)
-    if dmap is None:
-        parser.error(f"unknown --dmap {options.dmap}")
+    cmap = data_plots.get_colormap(options.cmap)
+    bmap = data_plots.get_colormap(options.bmap)
+    dmap = data_plots.get_colormap(options.dmap)
+
+    if options.iter_ant and options.iter_baseline:
+        parser.error("cannot combine --iter-ant and --iter-baseline")
 
     options.ms = options.ms.rstrip('/')
 
@@ -284,6 +307,8 @@ def main(argv):
     ymins = get_conformal_list('ymin', float)
     ymaxs = get_conformal_list('ymax', float)
     aaxes = get_conformal_list('aaxis')
+    amins = get_conformal_list('amin', float)
+    amaxs = get_conformal_list('amax', float)
     areds = get_conformal_list('ared', str, 'mean')
     caxes = get_conformal_list('colour_by')
     cmins = get_conformal_list('cmin', float)
@@ -295,8 +320,10 @@ def main(argv):
         parser.error("--xmin/--xmax must be either both set, or neither")
     if any([(a is None)^(b is None) for a, b in zip(ymins, ymaxs)]):
         parser.error("--xmin/--xmax must be either both set, or neither")
-    if any([(a is None)^(b is None) for a, b in zip(ymins, ymaxs)]):
+    if any([(a is None)^(b is None) for a, b in zip(cmins, cmaxs)]):
         parser.error("--cmin/--cmax must be either both set, or neither")
+    if any([(a is None)^(b is None) for a, b in zip(amins, amaxs)]):
+        parser.error("--amin/--amax must be either both set, or neither")
 
     # check chan slice
     def parse_slice_spec(spec, name):
@@ -340,29 +367,42 @@ def main(argv):
         else:
             subset.ant = ms.antenna.get_subset(options.ant)
         log.info(f"Antenna name(s)  : {' '.join(subset.ant.names)}")
-        mytaql.append("||".join([f'ANTENNA1=={ant}||ANTENNA2=={ant}' for ant in subset.ant.numbers]))
+        antnum_set = f"[{','.join(map(str, subset.ant.numbers))}]"
+        mytaql.append(f"ANTENNA1 IN {antnum_set} && ANTENNA2 IN {antnum_set}")
     else:
         subset.ant = ms.antenna
         log.info('Antenna(s)       : all')
 
-    if options.iter_antenna:
-        raise NotImplementedError("iteration over antennas not currently supported")
-
-    if options.baseline != 'all':
-        subset.baseline = OrderedDict()
+    if options.baseline == 'all':
+        log.info('Baseline(s)      : all')
+        subset.baseline = ms.baseline
+    elif options.baseline == 'noauto':
+        log.info('Baseline(s)      : all except autocorrelations')
+        subset.baseline = ms.all_baseline.get_subset([i for i in ms.baseline.numbers if ms.baseline_lengths[i]!=0])
+        mytaql.append("ANTENNA1!=ANTENNA2")
+    else:
+        bls = set()
+        a1a2 = set()
         for blspec in options.baseline.split(","):
-            match = re.fullmatch(r"(\w+)-(\w+)", blspec)
+            match = re.fullmatch(r"(\w+)-(\w*|[*])", blspec)
             ant1 = match and ms.antenna[match.group(1)]
-            ant2 = match and ms.antenna[match.group(2)]
+            ant2 = match and (ms.antenna[match.group(2)] if match.group(2) not in ['', '*'] else '*')
             if ant1 is None or ant2 is None:
                 raise ValueError("invalid baseline '{blspec}'")
-            subset.baseline[blspec] = (ant1, ant2)
+            if ant2 == '*':
+                ant2set = ms.all_antenna.numbers
+            else:
+                ant2set = [ant2]
+            # loop
+            for ant2 in ant2set:
+                a1, a2 = min(ant1, ant2), max(ant1, ant2)
+                a1a2.add((a1, a2))
+                bls.add(ms.baseline_number(a1, a2))
         # group_cols.append('ANTENNA1')
-        log.info(f"Baseline(s)      : {' '.join(subset.baseline.keys())}")
+        subset.baseline = ms.all_baseline.get_subset(sorted(bls))
+        log.info(f"Baseline(s)      : {' '.join(subset.baseline.names)}")
         mytaql.append("||".join([f'(ANTENNA1=={ant1}&&ANTENNA2=={ant2})||(ANTENNA1=={ant2}&&ANTENNA2=={ant1})'
-                                 for ant1, ant2 in subset.baseline.values()]))
-    else:
-        log.info('Baseline(s)      : all')
+                                 for ant1, ant2 in a1a2]))
 
     if options.field != 'all':
         subset.field = ms.field.get_subset(options.field)
@@ -382,7 +422,7 @@ def main(argv):
         log.info(f'SPW(s)           : all')
 
     if options.scan != 'all':
-        subset.scan = ms.scan.get_subset(options.scan)
+        subset.scan = ms.scan.get_subset(options.scan, allow_numeric_indices=False)
         log.info(f"Scan(s)          : {' '.join(subset.scan.names)}")
         mytaql.append("||".join([f'SCAN_NUMBER=={n}' for n in subset.scan.numbers]))
     else:
@@ -410,6 +450,25 @@ def main(argv):
 
     blank()
 
+    # check minmax cache
+    msbase = os.path.splitext(os.path.basename(options.ms))[0]
+    cache_file = options.lim_file.format(ms=msbase)
+    if options.dir and not "/" in cache_file:
+        cache_file = os.path.join(options.dir, cache_file)
+
+    # try to load the minmax cache file
+    if not os.path.exists(cache_file):
+        minmax_cache = {}
+    else:
+        log.info(f"loading minmax cache from {cache_file}")
+        try:
+            minmax_cache = json.load(open(cache_file, "rt"))
+            if type(minmax_cache) is not dict:
+                raise TypeError("cache cotent is not a dict")
+        except Exception as exc:
+            log.error(f"error reading cache file: {exc}. Minmax cache will be reset.")
+            minmax_cache = {}
+
     # figure out list of plots to make
     all_plots = []
 
@@ -417,8 +476,8 @@ def main(argv):
     have_corr_dependence = False
 
     # now go create definitions
-    for xaxis, yaxis, default_column, caxis, aaxis, ared, xmin, xmax, ymin, ymax, cmin, cmax, cnum in \
-            zip(xaxes, yaxes, columns, caxes, aaxes, areds, xmins, xmaxs, ymins, ymaxs, cmins, cmaxs, cnums):
+    for xaxis, yaxis, default_column, caxis, aaxis, ared, xmin, xmax, ymin, ymax, amin, amax, cmin, cmax, cnum in \
+        zip(xaxes, yaxes, columns, caxes, aaxes, areds, xmins, xmaxs, ymins, ymaxs, amins, amaxs, cmins, cmaxs, cnums):
         # get axis specs
         xspecs = DataAxis.parse_datum_spec(xaxis, default_column, ms=ms)
         yspecs = DataAxis.parse_datum_spec(yaxis, default_column, ms=ms)
@@ -458,11 +517,15 @@ def main(argv):
             plot_ycorr = corr if ycorr is None else ycorr
             plot_acorr = corr if acorr is None else acorr
             plot_ccorr = corr if ccorr is None else ccorr
-            xdatum = DataAxis.register(xfunction, xcolumn, plot_xcorr, ms=ms, minmax=(xmin, xmax), subset=subset)
-            ydatum = DataAxis.register(yfunction, ycolumn, plot_ycorr, ms=ms, minmax=(ymin, ymax),  subset=subset)
-            adatum = afunction and DataAxis.register(afunction, acolumn, plot_acorr, ms=ms,  subset=subset)
+            xdatum = DataAxis.register(xfunction, xcolumn, plot_xcorr, ms=ms, minmax=(xmin, xmax), subset=subset,
+                                       minmax_cache=minmax_cache if options.xlim_load else None)
+            ydatum = DataAxis.register(yfunction, ycolumn, plot_ycorr, ms=ms, minmax=(ymin, ymax), subset=subset,
+                                       minmax_cache=minmax_cache if options.ylim_load else None)
+            adatum = afunction and DataAxis.register(afunction, acolumn, plot_acorr, ms=ms,
+                                                     minmax=(amin, amax), subset=subset)
             cdatum = cfunction and DataAxis.register(cfunction, ccolumn, plot_ccorr, ms=ms,
-                                                     minmax=(cmin, cmax), ncol=cnum, subset=subset)
+                                                     minmax=(cmin, cmax), ncol=cnum, subset=subset,
+                                                     minmax_cache=minmax_cache if options.clim_load else None)
 
             # figure out plot properties -- basically construct a descriptive name and label
             # looks complicated, but we're just trying to figure out what to put in the plot title...
@@ -475,17 +538,20 @@ def main(argv):
                 labels.append(col_to_label(ycolumn))
             titles += describe_corr(plot_ycorr)
             labels += describe_corr(plot_ycorr)
-            titles += [ydatum.mapper.fullname, "vs"]
+            if ydatum.mapper.fullname:
+                titles += [ydatum.mapper.fullname]
+            titles += ["vs"]
             if ydatum.function:
                 labels.append(ydatum.function)
             # add x column/subset.corr, if different
             if xcolumn and (xcolumn != ycolumn or not xdatum.function) and not xdatum.mapper.column:
                 titles.append(xcolumn)
                 labels.append(col_to_label(xcolumn))
-            if plot_xcorr != plot_ycorr:
+            if plot_xcorr is not plot_ycorr:
                 titles += describe_corr(plot_xcorr)
                 labels += describe_corr(plot_xcorr)
-            titles += [xdatum.mapper.fullname]
+            if xdatum.mapper.fullname:
+                titles += [xdatum.mapper.fullname]
             if xdatum.function:
                 labels.append(xdatum.function)
             props['title'] = " ".join(titles)
@@ -496,7 +562,8 @@ def main(argv):
                 if acolumn and (acolumn != xcolumn or acolumn != ycolumn) and adatum.mapper.column is None:
                     titles.append(acolumn)
                     labels.append(col_to_label(acolumn))
-                if plot_acorr and (plot_acorr != plot_xcorr or plot_acorr != plot_ycorr):
+                if plot_acorr is not None and plot_acorr is not False and \
+                        (plot_acorr is not plot_xcorr or plot_acorr is not plot_ycorr):
                     titles += describe_corr(plot_acorr)
                     labels += describe_corr(plot_acorr)
                 titles += [adatum.mapper.fullname]
@@ -512,7 +579,8 @@ def main(argv):
                 if ccolumn and (ccolumn != xcolumn or ccolumn != ycolumn) and cdatum.mapper.column is None:
                     titles.append(ccolumn)
                     labels.append(col_to_label(ccolumn))
-                if plot_ccorr and (plot_ccorr != plot_xcorr or plot_ccorr != plot_ycorr):
+                if plot_ccorr is not None and plot_ccorr is not False and \
+                        (plot_ccorr is not plot_xcorr or plot_ccorr is not plot_ycorr):
                     titles += describe_corr(plot_ccorr)
                     labels += describe_corr(plot_ccorr)
                 if cdatum.mapper.fullname:
@@ -528,6 +596,10 @@ def main(argv):
             all_plots.append((props, xdatum, ydatum, adatum, ared, cdatum))
             log.debug(f"adding plot for {props['title']}")
 
+    # reset minmax cache if requested
+    if options.lim_save_reset:
+        minmax_cache = {}
+
     join_corrs = not options.iter_corr and len(subset.corr) > 1 and have_corr_dependence
 
     log.info('                 : you have asked for {} plots employing {} unique datums'.format(len(all_plots),
@@ -537,12 +609,13 @@ def main(argv):
 
     log.debug(f"taql is {mytaql}, group_cols is {group_cols}, join subset.corr is {join_corrs}")
 
-    dataframes, np = \
+    dataframes, index_subsets, np = \
         data_plots.get_plot_data(ms, group_cols, mytaql, ms.chan_freqs,
                                  chanslice=chanslice, subset=subset,
                                  noflags=options.noflags, noconj=options.noconj,
                                  iter_field=options.iter_field, iter_spw=options.iter_spw,
                                  iter_scan=options.iter_scan, iter_ant=options.iter_ant,
+                                 iter_baseline=options.iter_baseline,
                                  join_corrs=join_corrs,
                                  row_chunk_size=options.row_chunk_size)
 
@@ -562,6 +635,7 @@ def main(argv):
     keys['scan'] = subset.scan.names if options.scan != 'all' else ''
     keys['ant'] = subset.ant.names if options.ant != 'all' else ''  ## TODO: also handle ant-num settings
     keys['spw'] = subset.spw.names if options.spw != 'all' else ''
+    keys['baseline'] = None
 
     keys['suffix'] = suffix = options.suffix.format(**options.__dict__) if options.suffix else ''
     keys['_suffix'] = f".{suffix}" if suffix else ''
@@ -593,20 +667,24 @@ def main(argv):
     jobs = []
     executor = None
 
-    def render_single_plot(df, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel):
+    def render_single_plot(df, subset, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel):
         """Renders a single plot. Make this a function since we might call it in parallel"""
         log.info(f": rendering {pngname}")
         normalize = options.norm
         if normalize == "auto":
-            normalize = "log" if cdatum is not None else "eq_hist"
+            normalize = "log" if cdatum is not None else ("eq_hist" if adatum is None else 'linear')
         if options.profile:
             context = dask.diagnostics.ResourceProfiler
         else:
             context = nullcontext
         with context() as profiler:
-            result = data_plots.create_plot(df, xdatum, ydatum, adatum, ared, cdatum,
+            result = data_plots.create_plot(df, subset, xdatum, ydatum, adatum, ared, cdatum,
                                       cmap=cmap, bmap=bmap, dmap=dmap, normalize=normalize,
+                                      min_alpha=options.min_alpha,
+                                      saturate_alpha=options.saturate_alpha,
+                                      saturate_percentile=options.saturate_perc,
                                       xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
+                                      minmax_cache=minmax_cache,
                                       options=options)
         if result:
             log.info(f'                 : wrote {pngname}')
@@ -616,7 +694,8 @@ def main(argv):
                 log.info(f'                 : wrote profiler info to {profile_file}')
 
 
-    for (fld, spw, scan, antenna), df in dataframes.items():
+    for (fld, spw, scan, antenna_or_baseline), df in dataframes.items():
+        subset = index_subsets[fld, spw, scan, antenna_or_baseline]
         # update keys to be substituted into title and filename
         if fld is not None:
             keys['field_num'] = fld
@@ -625,8 +704,11 @@ def main(argv):
             keys['spw'] = spw
         if scan is not None:
             keys['scan'] = scan
-        if antenna is not None:
-            keys['ant'] = ms.all_antenna[antenna]
+        if antenna_or_baseline is not None:
+            if options.iter_ant:
+                keys['ant'] = ms.all_antenna[antenna_or_baseline]
+            elif options.iter_baseline:
+                keys['baseline'] = ms.all_baseline[antenna_or_baseline]
 
         # now loop over plot types
         for props, xdatum, ydatum, adatum, ared, cdatum in all_plots:
@@ -654,12 +736,12 @@ def main(argv):
                 log.info(f'                 : created output directory {dirname}')
 
             if options.num_parallel < 2 or len(all_plots) < 2:
-                render_single_plot(df, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel)
+                render_single_plot(df, subset, xdatum, ydatum, adatum, ared, cdatum, pngname, title, xlabel, ylabel)
             else:
                 from concurrent.futures import ThreadPoolExecutor
                 executor = ThreadPoolExecutor(options.num_parallel)
                 log.info(f'                 : submitting job for {pngname}')
-                jobs.append(executor.submit(render_single_plot, df, xdatum, ydatum, adatum, ared, cdatum,
+                jobs.append(executor.submit(render_single_plot, df, subset, xdatum, ydatum, adatum, ared, cdatum,
                                             pngname, title, xlabel, ylabel))
 
     # wait for jobs to finish
@@ -672,5 +754,14 @@ def main(argv):
     elapsed = str(round((clock_stop-clock_start), 2))
 
     log.info('Total time       : %s seconds' % (elapsed))
+
+    if minmax_cache and options.lim_save:
+        # ensure floats, because in64s and such cause errors
+        minmax_cache = {axis: list(map(float, minmax)) for axis, minmax in minmax_cache.items()}
+
+        with open(cache_file, "wt") as file:
+            json.dump(minmax_cache, file, sort_keys=True, indent=4, separators=(',', ': '))
+        log.info(f"Saved minmax cache to {cache_file} (disable with --no-lim-save)")
+
     log.info('Finished')
     blank()

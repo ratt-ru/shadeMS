@@ -2,9 +2,9 @@ from MSUtils.msutils import STOKES_TYPES
 from casacore.tables import table
 import re
 import daskms
+import math
 import numpy as np
 from collections import OrderedDict
-from xarray import DataArray
 
 class NamedList(object):
     """Holds a list of names (e.g. field names), and provides common indexing and subset operations"""
@@ -14,6 +14,7 @@ class NamedList(object):
         self.names = names
         self.numbers = numbers or range(len(self.names))
         self.map = dict(zip(names, self.numbers))
+        self.numindex = {num: i for i, num in enumerate(self.numbers)}
 
     def __len__(self):
         return len(self.names)
@@ -22,27 +23,32 @@ class NamedList(object):
         return name in self.map if type(name) is str else name in self.numbers
 
     def __getitem__(self, item, default=None):
-        return self.map.get(item, default) if type(item) is str else self.names[item]
+        if type(item) is str:
+            return self.map.get(item, default)
+        elif type(item) is slice:
+            return self.names[item]
+        else:
+            return self.names[item] # self.numindex[item]]
 
-    def get_subset(self, subset):
+    def get_subset(self, subset, allow_numeric_indices=True):
         """Extracts subset using a comma-separated string or list of indices"""
         if type(subset) in (list, tuple):
-            return NamedList(self.label, [self.names[x] for x in subset], subset)
+            return NamedList(self.label, [self.names[x] for x in subset], [self.numbers[x] for x in subset])
         elif type(subset) is str:
             if subset == "all":
                 return self
-            numbers = []
+            ind = []
             for x in subset.split(","):
-                if re.fullmatch('\d+', x):
+                if allow_numeric_indices and re.fullmatch('\d+', x):
                     x = int(x)
-                    if x < 0 or x >= len(self):
+                    if x not in self.numindex:
                         raise ValueError(f"invalid {self.label} number {x}")
-                    numbers.append(x)
+                    ind.append(self.numindex[x])
                 elif x in self.map:
-                    numbers.append(self.map[x])
+                    ind.append(self.numindex[self.map[x]])
                 else:
                     raise ValueError(f"invalid {self.label} '{x}'")
-            return NamedList(self.label, [self.names[x] for x in numbers], numbers)
+            return NamedList(self.label, [self.names[x] for x in ind], [self.numbers[x] for x in ind])
         else:
             raise TypeError(f"unknown subset of type {type(subset)}")
 
@@ -64,6 +70,9 @@ class MSInfo(object):
 
         self.valid_columns = set(tab.colnames())
 
+        # indexing columns are read into memory in their entirety up front
+        self.indexing_columns = dict()
+
         spw_tab = daskms.xds_from_table(msname + '::SPECTRAL_WINDOW', columns=['CHAN_FREQ'])
         self.chan_freqs = spw_tab[0].CHAN_FREQ   # important for this to be an xarray
         self.nspw = self.chan_freqs.shape[0]
@@ -74,20 +83,49 @@ class MSInfo(object):
         self.field = NamedList("field", table(msname +'::FIELD', ack=False).getcol("NAME"))
         log and log.info(f":   {len(self.field)} fields: {' '.join(self.field.names)}")
 
-        scan_numbers = sorted(set(tab.getcol("SCAN_NUMBER")))
-        log and log.info(f":   {len(scan_numbers)} scans, first #{scan_numbers[0]}, last #{scan_numbers[-1]}")
+        self.indexing_columns["SCAN_NUMBER"] = tab.getcol("SCAN_NUMBER")
+        scan_numbers = sorted(set(self.indexing_columns["SCAN_NUMBER"]))
+        log and log.info(f":   {len(scan_numbers)} scans: {' '.join(map(str, scan_numbers))}")
         all_scans = NamedList("scan", list(map(str, range(scan_numbers[-1]+1))))
         self.scan = all_scans.get_subset(scan_numbers)
 
-        self.all_antenna = NamedList("antenna", table(msname +'::ANTENNA', ack=False).getcol("NAME"))
+        anttab = table(msname +'::ANTENNA', ack=False)
+        antnames = anttab.getcol("NAME")
+        self.all_antenna = antnames = NamedList("antenna", antnames)
+        self.antpos = anttab.getcol("POSITION")
 
-        self.antenna = self.all_antenna.get_subset(list(set(tab.getcol("ANTENNA1"))|set(tab.getcol("ANTENNA2"))))
+        ant1col = self.indexing_columns["ANTENNA1"] = tab.getcol("ANTENNA1")
+        ant2col = self.indexing_columns["ANTENNA2"] = tab.getcol("ANTENNA2")
+        self.antenna = self.all_antenna.get_subset(list(set(ant1col)|set(ant2col)))
 
-        baselines = [(p,q) for p in self.antenna.numbers for q in self.antenna.numbers if p <= q]
-        self.baseline_numbering = { (p, q): i for i, (p, q) in enumerate(baselines)}
-        self.baseline_numbering.update({ (q, p): i for i, (p, q) in enumerate(baselines)})
+        log and log.info(f":   {len(self.antenna)}/{len(self.all_antenna)} antennas: {self.antenna.str_list()}")
 
-        log and log.info(f":   {len(self.antenna)} antennas: {self.antenna.str_list()}")
+        # list of all possible baselines
+        nant = len(antnames)
+        blnames = [f"{a1}-{a2}" for i1, a1 in enumerate(antnames) for a2 in antnames[i1:]]
+        self.all_baseline = NamedList("baseline", blnames)
+
+        # list of baseline lengths
+        self.baseline_lengths = [math.sqrt(((pos1-pos2)**2).sum())
+                                 for i1, pos1 in enumerate(self.antpos) for pos2 in self.antpos[i1:]]
+
+        # sort order to put baselines by length
+        sorted_by_length = sorted([(x, i) for i, x in enumerate(self.baseline_lengths)])
+        self.baseline_sorted_index  = [i for _, i in sorted_by_length]
+        self.baseline_sorted_length = [x for x, _ in sorted_by_length]
+
+        # baselines actually present
+        a1 = np.minimum(ant1col, ant2col)
+        a2 = np.maximum(ant1col, ant2col)
+        bl_set = set(self.baseline_number(a1, a2))
+        bls = sorted(bl_set)
+        self.baseline = NamedList("baseline", [blnames[b] for b in bls], bls)
+
+        # make list of baselines present, in meters
+        blm = [i for i in self.baseline_sorted_index if i in bl_set]
+        self.baseline_m = NamedList("baseline_m", [f"{int(round(self.baseline_lengths[b]))}m" for b in blm], blm)
+
+        log and log.info(f":   {len(self.baseline)}/{len(self.all_baseline)} baselines present")
 
         pol_tab = table(msname + '::POLARIZATION', ack=False)
 
@@ -137,6 +175,7 @@ class MSInfo(object):
 
         log and log.info(f":   corrs/Stokes {' '.join(self.all_corr.names)}")
 
-    def baseline_number(self, ant1, ant2):
-        a1 = DataArray.minimum(ant1, ant2)
-        a2 = DataArray.maximum(ant1, ant2)
+    def baseline_number(self, a1, a2):
+        """Returns baseline number, for a1<=a2"""
+        return a1 * len(self.all_antenna) - a1 * (a1 - 1) // 2 + a2 - a1
+

@@ -1,10 +1,12 @@
 import dask.array as da
+import dask.array.core
 import dask.array.ma as dama
 import xarray
 import numpy as np
 import math
 import re
 import argparse
+from . import ms_info
 from collections import OrderedDict
 from shade_ms import log
 
@@ -27,7 +29,7 @@ def col_to_label(col):
 
 class DataMapper(object):
     """This class defines a mapping from a dask group to an array of real values to be plotted"""
-    def __init__(self, fullname, unit, mapper, column=None, extras=[], conjugate=False, axis=None):
+    def __init__(self, fullname, unit, mapper, column=None, extras=[], conjugate=False, axis=None, const=False):
         """
         :param fullname:    full name of parameter (real, amplitude, etc.)
         :param unit:        unit string
@@ -36,11 +38,15 @@ class DataMapper(object):
         :param extras:      extra arguments needed by mapper (e.g. ["freqs", "wavel"])
         :param conjugate:   sets conjugation flag
         :param axis:        which axis the parameter represets (0 time, 1 freq), if 1-dimensional
+        :param const:       if True, axis is constant (does not depend on MS rows)
         """
         assert mapper is not None
         self.fullname, self.unit, self.mapper, self.column, self.extras = fullname, unit, mapper, column, extras
         self.conjugate = conjugate
         self.axis = axis
+        # if
+        self.const = const
+
 
 _identity = lambda x:x
 
@@ -55,10 +61,11 @@ data_mappers = OrderedDict(
     TIME  = DataMapper("time", "s", axis=0, column="TIME", mapper=_identity),
     ROW   = DataMapper("row number", "", column=False, axis=0, extras=["rows"], mapper=lambda x,rows: rows),
     BASELINE = DataMapper("baseline", "", column=False, axis=0, extras=["baselines"], mapper=lambda x,baselines: baselines),
-    CORR  = DataMapper("correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr),
-    CHAN  = DataMapper("channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans),
-    FREQ  = DataMapper("frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs),
-    WAVEL = DataMapper("wavelength", "m", column=False, axis=1, extras=["wavel"], mapper=lambda x, wavel: wavel),
+    BASELINE_M = DataMapper("baseline", "", column=False, axis=0, extras=["baselines"], mapper=lambda x,baselines: baselines),
+    CORR  = DataMapper("correlation", "", column=False, axis=0, extras=["corr"], mapper=lambda x,corr: corr, const=True),
+    CHAN  = DataMapper("channel", "", column=False, axis=1, extras=["chans"], mapper=lambda x,chans: chans, const=True),
+    FREQ  = DataMapper("frequency", "Hz", column=False, axis=1, extras=["freqs"], mapper=lambda x, freqs: freqs, const=True),
+    WAVEL = DataMapper("wavelength", "m", column=False, axis=1, extras=["wavel"], mapper=lambda x, wavel: wavel, const=True),
     UV    = DataMapper("uv-distance", "wavelengths", column="UVW", extras=["wavel"],
                   mapper=lambda uvw, wavel: da.sqrt((uvw[:,:2]**2).sum(axis=1))/wavel),
     U     = DataMapper("u", "wavelengths", column="UVW", extras=["wavel"],
@@ -133,7 +140,7 @@ class DataAxis(object):
         return function, column, corr, (has_corr_axis and corr is None)
 
     @classmethod
-    def register(cls, function, column, corr, ms, minmax=None, ncol=None, subset=None):
+    def register(cls, function, column, corr, ms, minmax=None, ncol=None, subset=None, minmax_cache=None):
         """
         Registers a data axis, which ultimately ends up as a column in the assembled dataframe.
         For multiple plots, we want to reuse the same information (assuming the same
@@ -144,6 +151,8 @@ class DataAxis(object):
         Corr selects a correlation (or a Stokes product such as I, Q,...)
         minmax sets axis clipping levels
         ncol discretizes the axis into N colours between min and max
+        minmax_cache provides a dict of cached min/max values, which will be looked up via the label, if minmax
+                     is not explicitly set
         """
         # form up label
         label  = "{}_{}_{}".format(col_to_label(column or ''), function, corr)
@@ -153,6 +162,11 @@ class DataAxis(object):
         if key in cls.all_axes:
             return cls.all_axes[key]
         else:
+            # see if minmax should be loaded
+            if (minmax is None or tuple(minmax) == (None,None)) and minmax_cache and label in minmax_cache:
+                log.info(f"loading {label} min/max from cache")
+                minmax = minmax_cache[label]
+
             label0, i = label, 0
             while label in cls.all_labels:
                 i += 1
@@ -168,20 +182,24 @@ class DataAxis(object):
         self.function = function        # function to apply to column (see list of DataMappers below)
         self.corr     = corr if corr != "all" else None
         self.nlevels  = ncol
-        self.minmax   = vmin, vmax = tuple(minmax) if minmax is not None else (None, None)
+        self.minmax   = tuple(minmax) if minmax is not None else (None, None)
+        self._minmax_autorange = (self.minmax == (None, None))
+
         self.label    = label
         self._corr_reduce = None
         self._is_discrete = None
-        self.discretized_labels = None  # filled for corrs and fields and so
-
-        # set up discretized continuous axis
-        if self.nlevels and vmin is not None and vmax is not None:
-            self.discretized_delta = delta = (vmax - vmin) / self.nlevels
-            self.discretized_bin_centers = np.arange(vmin + delta/2, vmax, delta)
-        else:
-            self.discretized_delta = self.discretized_bin_centers = None
-
         self.mapper = data_mappers[function]
+
+        # if set, axis is discrete and labelled
+        self.discretized_labels = None
+
+        # for discrete axes: if a subset of N indices is explicitly selected for plotting, then this
+        # is a list of the selected indices, of length N
+        self.subset_indices = None
+        # ...and this is a dask array that maps selected indices into bins 0...N-1, and all other values into bin N
+        self.subset_remapper = None
+        # ...and this is the maximum valid index in MS
+        maxind = None
 
         # columns with labels?
         if function == 'CORR' or function == 'STOKES':
@@ -198,13 +216,43 @@ class DataAxis(object):
             # we're creating one for a mapper that will iterate over correlations
             if corr is not None:
                 self.mapper = DataMapper(name, "", column=False, axis=-1, mapper=lambda x: corr)
-            self.discretized_labels = subset.corr.names
+            self.subset_indices = subset.corr
+            maxind = ms.all_corr.numbers[-1]
         elif column == "FIELD_ID":
-            self.discretized_labels = [name for name in ms.field.names if name in subset.field]
+            self.subset_indices = subset.field
+            maxind = ms.field.numbers[-1]
         elif column == "ANTENNA1" or column == "ANTENNA2":
-            self.discretized_labels = [name for name in ms.all_antenna.names if name in subset.ant]
+            self.subset_indices = subset.ant
+            maxind = ms.antenna.numbers[-1]
+        elif column == "SCAN_NUMBER":
+            self.subset_indices = subset.scan
+            maxind = ms.scan.numbers[-1]
+        elif function == "BASELINE":
+            self.subset_indices = subset.baseline
+            maxind = ms.baseline.numbers[-1]
+        elif function == "BASELINE_M":
+            bl_subset = set(subset.baseline.numbers)   # active baselines
+            numbers = [i for i in ms.baseline_m.numbers if i in bl_subset]
+            names = [bl for i, bl in zip(ms.baseline_m.numbers, ms.baseline_m.names) if i in bl_subset]
+            self.subset_indices = ms_info.NamedList("baseline_m", names, numbers)
+            maxind = ms.baseline.numbers[-1]
         elif column == "FLAG" or column == "FLAG_ROW":
             self.discretized_labels = ["F", "T"]
+
+        # make a remapper
+        if self.subset_indices is not None:
+            # if the mapping from indices to bins 1:1?
+            subind = np.array(self.subset_indices.numbers)
+            identity = subind[0] == 0 and ((subind[1:]-subind[:-1]) == 1).all()
+            # If mapping is not 1:1, or subset is short of full set, then we need a remapper.
+            # Map indices in subset into their ordinal numbers in the subset (0...N-1), and all other indices to N
+            if len(self.subset_indices) < maxind+1 or not identity:
+                remapper = np.full(maxind+1, len(self.subset_indices))
+                for i, index in enumerate(self.subset_indices.numbers):
+                    remapper[index] = i
+                self.subset_remapper = da.array(remapper)
+            self.discretized_labels = self.subset_indices.names
+            self.subset_indices = self.subset_indices.numbers
 
         if self.discretized_labels:
             self._is_discrete = True
@@ -280,10 +328,18 @@ class DataAxis(object):
         if np.iscomplexobj(coldata) and mapper is data_mappers["_"]:
             mapper = data_mappers["amp"]
         coldata = mapper.mapper(coldata, **{name:extras[name] for name in self.mapper.extras })
-        # scalar expanded to row vector
+        # for a constant axis, compute minmax on the fly
+        if mapper.const and self._minmax_autorange:
+            if np.isscalar(coldata):
+                min1 = max1 = coldata
+            else:
+                min1, max1 = coldata.data.min(), coldata.data.max()
+            self.minmax = min(self.minmax[0], min1) if self.minmax[0] is not None else min1, \
+                          min(self.minmax[1], max1) if self.minmax[1] is not None else max1
+        # scalar is just a scalar
         if np.isscalar(coldata):
-            coldata = da.full_like(flag_row, fill_value=coldata, dtype=type(coldata))
-            flag = flag_row
+            coldata = da.array(coldata)
+            flag = None
         else:
             # apply channel slicing, if there's a channel axis in the array (and the array is a DataArray)
             if type(coldata) is xarray.DataArray and 'chan' in coldata.dims:
@@ -307,24 +363,24 @@ class DataAxis(object):
             if self._is_discrete is False:
                 raise TypeError(f"{self.label}: column changed from continuous-valued to discrete. This is a bug, or a very weird MS.")
             self._is_discrete = True
+            # do we need to apply a remapping?
+            if self.subset_remapper is not None:
+                if type(coldata) is not dask.array.core.Array:  # could be xarray backed by dask array
+                    coldata = coldata.data
+                coldata = self.subset_remapper[coldata]
+                bad_bins = da.greater_equal(coldata, len(self.subset_indices))
+                if flag is None:
+                    flag = bad_bins
+                else:
+                    flag = da.logical_or(flag, bad_bins)
         else:
             if self._is_discrete is True:
                 raise TypeError(f"{self.label}: column chnaged from discrete to continuous-valued. This is a bug, or a very weird MS.")
             self._is_discrete = False
 
-            # # minmax set? discretize over that
-            # if self.discretized_delta is not None:
-            #     coldata = da.floor((coldata - self.minmax[0])/self.discretized_delta)
-            #     coldata = da.minimum(da.maximum(coldata, 0), self.nlevels-1).astype(COUNT_DTYPE)
-            # else:
-            #     if not coldata.dtype is bool:
-            #         if not np.issubdtype(coldata.dtype, np.integer):
-            #             raise TypeError(f"{self.name}: min/max must be set to colour by non-integer values")
-            #         coldata = da.remainder(coldata, self.nlevels).astype(COUNT_DTYPE)
-
+        bad_data = da.logical_not(da.isfinite(coldata))
         if flag is not None:
-            flag |= ~da.isfinite(coldata)
-            return dama.masked_array(coldata, flag)
+            return dama.masked_array(coldata, da.logical_or(flag, bad_data))
         else:
-            return dama.masked_array(coldata, ~da.isfinite(coldata))
+            return dama.masked_array(coldata, bad_data)
 
