@@ -1,0 +1,75 @@
+name: Ubuntu CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.6", "3.7", "3.8"]
+
+    steps:
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Checkout source
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Install latest versions of pip, setuptools and wheel
+        run: python -m pip install -U pip setuptools wheel
+
+      - name: Install shadems
+        run: pip install -e .[testing]
+
+      - name: Run testsuite
+        run: py.test shade_ms/
+
+  # deploy:
+  #   needs: [test]
+  #   runs-on: ubuntu-latest
+  #   # Run on a push to a tag or master
+  #   if: >
+  #     github.event_name == 'push' &&
+  #     (startsWith(github.event.ref, 'refs/tags') ||
+  #      github.event.ref == 'refs/heads/master')
+
+  #   steps:
+  #     - name: Set up Python 3.8
+  #       uses: actions/setup-python@v1
+  #       with:
+  #         python-version: 3.8
+
+  #     - name: Install latest setuptools, wheel, pip
+  #       run: python3 -m pip install -U pip setuptools wheel
+
+  #     - name: Install dephell
+  #       run: curl -L dephell.org/install | python3
+
+  #     - name: Checkout source
+  #       uses: actions/checkout@v2
+  #       with:
+  #         fetch-depth: 1
+
+  #     - name: Build distributions
+  #       run: python setup.py sdist bdist_wheel
+
+  #     - name: Publish distribution 📦 to Test PyPI
+  #       uses: pypa/gh-action-pypi-publish@master
+  #       with:
+  #         user: __token__
+  #         password: ${{ secrets.test_pypi_token }}
+  #         repository_url: https://test.pypi.org/legacy/
+  #       continue-on-error: true
+
+  #     - name: Publish distribution 📦 to PyPI
+  #       uses: pypa/gh-action-pypi-publish@master
+  #       if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags')
+  #       with:
+  #         user: __token__
+  #         password: ${{ secrets.pypi_token }}
