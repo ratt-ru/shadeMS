@@ -11,6 +11,10 @@ except pkg_resources.DistributionNotFound:
     __version__ = "dev"
 
 
+def uppercase(str_):
+    return str_.upper()
+
+
 def cli(argv):
 
     description=("""Rapid Measurement Set plotting with dask-ms and datashader.
@@ -274,6 +278,7 @@ def cli(argv):
     group_opts.add_argument(
         "--corr",
         default="all",
+        type=uppercase,  # need this argument in upper case
         help="""Correlations or Stokes to plot, use indices or labels
              (comma-separated list, default = all)
              """,
@@ -464,9 +469,6 @@ def cli(argv):
     options = parser.parse_args(argv)
 
     options.ms = options.ms.rstrip('/')
-
-    # TOD: make type a function in argsparser
-    options.corr = options.corr.upper()
 
     return options, opt_group_opts
 
