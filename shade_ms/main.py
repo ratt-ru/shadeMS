@@ -392,7 +392,7 @@ def main(argv):
             ant1 = match and ms.antenna[match.group(1)]
             ant2 = match and (ms.antenna[match.group(2)] if match.group(2) not in ['', '*'] else '*')
             if ant1 is None or ant2 is None:
-                raise ValueError("invalid baseline '{blspec}'")
+                raise ValueError(f"invalid baseline '{blspec}'")
             if ant2 == '*':
                 ant2set = ms.all_antenna.numbers
             else:
