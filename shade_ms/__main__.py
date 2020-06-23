@@ -19,8 +19,7 @@ def rstrip_slash(str_):
     return str_.rstrip('/')
 
 
-def cli(argv):
-
+def cli():
     description=("""Rapid Measurement Set plotting with dask-ms and datashader.
                   Version {0:s}"""
                   .format(__version__))
@@ -434,13 +433,13 @@ def cli(argv):
         help='Template for X axis labels, default "%(default)s"',
         )
 
-    opt_group_opts = parser.add_argument_group("Performance & tweaking")
-    opt_group_opts.add_argument(
+    group_opts = parser.add_argument_group("Performance & tweaking")
+    group_opts.add_argument(
         "-d", "--debug",
         action="store_true",
         help="Enable debugging output"
         )
-    opt_group_opts.add_argument(
+    group_opts.add_argument(
         "-z", "--row-chunk-size",
         type=int,
         metavar="NROWS",
@@ -450,7 +449,7 @@ def cli(argv):
              but will certainly use more RAM.
              """,
         )
-    opt_group_opts.add_argument(
+    group_opts.add_argument(
         "-j", "--num-parallel",
         type=int,
         metavar="N",
@@ -465,14 +464,12 @@ def cli(argv):
              You have been advised.
              """,
         )
-    opt_group_opts.add_argument(
+    group_opts.add_argument(
         "--profile",
         action="store_true",
         help="Enable dask profiling output"
         )
 
-    options = parser.parse_args(argv)
-
-    return options, opt_group_opts
+    return parser
 
 # -fin-
