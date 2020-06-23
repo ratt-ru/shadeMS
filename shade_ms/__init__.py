@@ -27,5 +27,5 @@ log.addHandler(log_file_handler)
 log.addHandler(log_console_handler)
 
 
-def blank():
+def separator():
     log.info('------------------------------------------------------')

@@ -22,7 +22,7 @@ from . import data_plots, data_mappers
 from .data_mappers import DataAxis, col_to_label
 from .ms_info import MSInfo
 
-from shade_ms import log, blank
+from shade_ms import log, separator
 
 
 # empty context manager for use when profiling is off
@@ -135,11 +135,11 @@ def main(argv):
 
     log.info(" ".join(sys.argv))
 
-    blank()
+    separator()
 
     ms = MSInfo(options.ms, log=log)
 
-    blank()
+    separator()
     log.info(": Data selected for plotting:")
 
     group_cols = ['FIELD_ID', 'DATA_DESC_ID']
@@ -242,7 +242,7 @@ def main(argv):
         subset.corr = ms.all_corr.get_subset(options.corr)
     log.info(f"Corr/Stokes      : {' '.join(subset.corr.names)}")
 
-    blank()
+    separator()
 
     # check minmax cache
     msbase = os.path.splitext(os.path.basename(options.ms))[0]
@@ -558,4 +558,4 @@ def main(argv):
         log.info(f"Saved minmax cache to {cache_file} (disable with --no-lim-save)")
 
     log.info('Finished')
-    blank()
+    separator()
