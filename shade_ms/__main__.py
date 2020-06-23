@@ -20,9 +20,9 @@ def rstrip_slash(str_):
 
 
 def cli():
-    description=("""Rapid Measurement Set plotting with dask-ms and datashader.
-                  Version {0:s}"""
-                  .format(__version__))
+    description = ("""Rapid Measurement Set plotting with dask-ms and datashader.
+                   Version {0:s}"""
+                   .format(__version__))
     parser = argparse.ArgumentParser(
              description=description,
              )

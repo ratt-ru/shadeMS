@@ -3,17 +3,18 @@
 import matplotlib
 matplotlib.use('agg')
 
-import datetime
-import os
-import shade_ms
-import time
-import logging
-import itertools
-import re
-import sys
 import dask.diagnostics
-from contextlib import contextmanager
+import datetime
+import itertools
 import json
+import logging
+import os
+import re
+import shade_ms
+import sys
+import time
+
+from contextlib import contextmanager
 
 from . import DEFAULT_CNUM, DEFAULT_NUM_RENDERS
 from . import cli
@@ -38,9 +39,7 @@ def main(argv):
 
     # default # of CPUs
 
-
     # ---------------------------------------------------------------------------------------------------------------------------------------------
-
 
     parser = cli()
     # various hidden performance-testing options
@@ -63,11 +62,11 @@ def main(argv):
     # figure our list of plots to make
 
     if not options.xaxis:
-        xaxes = ['TIME'] # Default xaxis if none is specified
+        xaxes = ['TIME']  # Default xaxis if none is specified
     else:
         xaxes = list(itertools.chain(*[opt.split(",") for opt in options.xaxis]))
     if not options.yaxis:
-        yaxes = ['DATA:amp'] # Default yaxis if none is specified
+        yaxes = ['DATA:amp']  # Default yaxis if none is specified
     else:
         yaxes = list(itertools.chain(*[opt.split(",") for opt in options.yaxis]))
 
