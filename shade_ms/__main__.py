@@ -15,6 +15,10 @@ def uppercase(str_):
     return str_.upper()
 
 
+def rstrip_slash(str_):
+    return str_.rstrip('/')
+
+
 def cli(argv):
 
     description=("""Rapid Measurement Set plotting with dask-ms and datashader.
@@ -26,6 +30,7 @@ def cli(argv):
 
     parser.add_argument(
         "ms",
+        type=rstrip_slash,  # remove / from ms by tab complete
         help="Measurement set",
         )
     parser.add_argument(
@@ -467,8 +472,6 @@ def cli(argv):
         )
 
     options = parser.parse_args(argv)
-
-    options.ms = options.ms.rstrip('/')
 
     return options, opt_group_opts
 
