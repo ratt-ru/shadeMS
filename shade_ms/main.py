@@ -159,9 +159,9 @@ def main(argv):
                       help='Antennas to plot (comma-separated list of names, default = all)')
     group_opts.add_argument('--ant-num',
                       help='Antennas to plot (comma-separated list of numbers, or a [start]:[stop][:step] slice, overrides --ant)')
-    group_opts.add_argument('--baseline', default='noauto',
-                      help="Baselines to plot, as 'ant1-ant2' (comma-separated list, wildcards permitted, default of 'noauto' omits "
-                           "auto-correlations, 'auto' selects only auto-correlations, 'all' selects all)")
+    group_opts.add_argument('--baseline', default='noautocorr',
+                      help="Baselines to plot, as 'ant1-ant2' (comma-separated list, wildcards permitted, default of 'noautocorr' omits "
+                           "auto-correlations, 'autocorr' selects only auto-correlations, 'all' selects all)")
     group_opts.add_argument('--spw', default='all',
                       help='Spectral windows (DDIDs) to plot (comma-separated list, default = all)')
     group_opts.add_argument('--field', default='all',
@@ -376,11 +376,11 @@ def main(argv):
     if options.baseline == 'all':
         log.info('Baseline(s)      : all')
         subset.baseline = ms.baseline
-    elif options.baseline == 'noauto':
+    elif options.baseline == 'noautocorr':
         log.info('Baseline(s)      : all except autocorrelations')
         subset.baseline = ms.all_baseline.get_subset([i for i in ms.baseline.numbers if ms.baseline_lengths[i] !=0 ])
         mytaql.append("ANTENNA1!=ANTENNA2")
-    elif options.baseline == 'auto':
+    elif options.baseline == 'autocorr':
         log.info('Baseline(s)      : autocorrelations')
         subset.baseline = ms.all_baseline.get_subset([i for i in ms.baseline.numbers if ms.baseline_lengths[i] == 0])
         mytaql.append("ANTENNA1==ANTENNA2")
