@@ -221,12 +221,13 @@ def cli(argv):
         help="Separate plots per correlation or Stokes (default is to combine in one plot)",
         )
 
-    group_opts.add_argument(
+    ex_group_opts = group_opts.add_mutually_exclusive_group()
+    ex_group_opts.add_argument(
         "--iter-ant",
         action="store_true",
         help="Separate plots per antenna (default is to combine in one plot)",
         )
-    group_opts.add_argument(
+    ex_group_opts.add_argument(
         "--iter-baseline",
         action="store_true",
         help="Separate plots per baseline (default is to combine in one plot)",
@@ -461,10 +462,6 @@ def cli(argv):
         )
 
     options = parser.parse_args(argv)
-
-    # TODO: replace with exclusive argument group to avoid test
-    if options.iter_ant and options.iter_baseline:
-        parser.error("cannot combine --iter-ant and --iter-baseline")
 
     options.ms = options.ms.rstrip('/')
 
