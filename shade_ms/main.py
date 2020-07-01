@@ -205,8 +205,8 @@ def main(argv):
                       help="""Threshold parameter for spreading (0 to 1, default %(default)s)""")
     group_opts.add_argument('--bgcol', dest='bgcol',
                       help='RGB hex code for background colour (default = FFFFFF)', default='FFFFFF')
-    group_opts.add_argument('--fontsize', dest='fontsize',
-                      help='Font size for all text elements (default = 20)', default=16)
+    group_opts.add_argument('--fontsize', dest='fontsize', type=float,
+                      help='Font size for all text elements (default = %(default)s)', default=16)
 
     group_opts = parser.add_argument_group('Output settings')
 
