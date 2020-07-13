@@ -41,9 +41,8 @@ def main(argv):
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
 
-    parser = cli()
+    parser, optimization_opts = cli()
     # various hidden performance-testing options
-    optimization_opts = parser._action_groups[-1]
     data_mappers.add_options(optimization_opts)
     data_plots.add_options(optimization_opts)
 
