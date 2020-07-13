@@ -433,13 +433,13 @@ def cli():
         help='Template for X axis labels, default "%(default)s"',
         )
 
-    group_opts = parser.add_argument_group("Performance & tweaking")
-    group_opts.add_argument(
+    optimization_opts = parser.add_argument_group("Performance & tweaking")
+    optimization_opts.add_argument(
         "-d", "--debug",
         action="store_true",
         help="Enable debugging output"
         )
-    group_opts.add_argument(
+    optimization_opts.add_argument(
         "-z", "--row-chunk-size",
         type=int,
         metavar="NROWS",
@@ -449,7 +449,7 @@ def cli():
              but will certainly use more RAM.
              """,
         )
-    group_opts.add_argument(
+    optimization_opts.add_argument(
         "-j", "--num-parallel",
         type=int,
         metavar="N",
@@ -464,12 +464,12 @@ def cli():
              You have been advised.
              """,
         )
-    group_opts.add_argument(
+    optimization_opts.add_argument(
         "--profile",
         action="store_true",
         help="Enable dask profiling output"
         )
 
-    return parser
+    return parser, optimization_opts
 
 # -fin-
