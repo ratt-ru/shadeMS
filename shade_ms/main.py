@@ -37,11 +37,20 @@ flatten_list = lambda list_: list(itertools.chain(*[str_.split(',') for str_ in 
 # validate limits on axes, both x and y must be present
 eval_none = lambda arr_1, arr_2: any([(a is None)^(b is None) for a, b in zip(arr_1, arr_2)])
 
+
 def unpack_axes(opts_xaxis, opts_yaxis):
     xaxes = ['TIME'] if not opts_xaxis else flatten_list(opts_xaxis)
     yaxes = ['DATA:amp'] if not opts_yaxis else flatten_list(opts_yaxis)
     return xaxes, yaxes
 
+
+# check chan slice
+def parse_slice_spec(spec):
+    if spec:
+        spec_elems = [int(x) if x else None for x in spec.split(":", 2)]
+        return slice(*spec_elems), spec_elems
+    else:
+        return slice(None), []
 
 def main(argv):
 
@@ -120,17 +129,10 @@ def main(argv):
         parser.error("--amin/--amax must be either both set, or neither")
 
     # check chan slice
-    def parse_slice_spec(spec, name):
-        if spec:
-            try:
-                spec_elems = [int(x) if x else None for x in spec.split(":", 2)]
-            except ValueError:
-                parser.error(f"invalid selection --{name} {spec}")
-            return slice(*spec_elems), spec_elems
-        else:
-            return slice(None), []
-
-    chanslice, chanslice_spec = parse_slice_spec(options.chan, name="chan")
+    try:
+        chanslice, chanslice_spec = parse_slice_spec(options.chan)
+    except ValueError:
+        parser.error(f"invalid selection --{'chan'} {options.chan}")
 
     log.info(" ".join(sys.argv))
 
