@@ -393,12 +393,12 @@ def cli():
     group_opts.add_argument(
         "--bgcol",
         default="FFFFFF",
-        help="RGB hex code for background colour (default = FFFFFF)",
+        help="RGB hex code for background colour (default = %(default)s)",
         )
     group_opts.add_argument(
         "--fontsize",
         default=16,
-        help="Font size for all text elements (default = 20)",
+        help="Font size for all text elements (default = %(default)s)",
         )
 
     group_opts = parser.add_argument_group("Output settings")
