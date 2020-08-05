@@ -251,7 +251,7 @@ def cli():
     ex_group_opts.add_argument(
         "--ant-num",
         help="""Antennas to plot (comma-separated list of numbers,
-             or a [start]:[stop][:step] slice, overrides --ant)
+             or a [start]:[stop][:step] slice, mutually exclusive to --ant)
              """,
         )
     group_opts.add_argument(
