@@ -8,16 +8,17 @@ GREEN="\033[1;32m"
 YELLOW="\033[0;33m"
 NOCOLOR="\033[0m"
 
-
+USAGE="Usage: $0 <msfile> [-c|--clean] [-v|--verbose] [-e|--parse_error]"
 # simple input to provide input msfile
 if [[ "$#" -lt 1 ]]
 then
     # TODO: need to improve the unpacking of the input parameters
-    echo "Usage: $0 <msfile> [-c|--clean] [-v|--verbose]"
+    echo $USAGE
     exit 1
 fi
 msfile=$1; shift
 verbose=0
+parserr=0
 # handle optional arguments if they exist, ignore the rest
 while [[ $# -gt 0 ]]
     do
@@ -27,6 +28,16 @@ while [[ $# -gt 0 ]]
             # clean previous output
             make clean
             shift  # past argument
+            ;;
+        -e | --parse_errors)
+            # include tests that will cause paring errors
+            parserr=1
+            shift  # past argument
+            ;;
+        -h | --help)
+            # display usage message
+            echo $USAGE
+            exit 0  # exit here
             ;;
         -v | --verbose)
             # show png output graphs
@@ -43,10 +54,6 @@ done
 # general function to run shadems commands
 function runcmd {
     CMD="shadems $msfile $args"
-    if [ -n "$figname" ]
-    then
-        CMD="$CMD --png $figname"
-    fi
     echo $CMD
 
     if $CMD
@@ -54,7 +61,7 @@ function runcmd {
             echo -e "${GREEN} Success ${NOCOLOR}"
         else
             echo -e "${RED} Failure ${NOCOLOR}"
-            if [[ $succeed == 1 ]]
+            if ! ((ALLOW_FAILURE))
             then
                 exit 1
             fi
@@ -64,6 +71,7 @@ function runcmd {
 
 
 ## base functionality following the README
+ALLOW_FAILURE=0
 ## (all examples must always work)
 ## TODO: select or build an MS that contains one calibrator target, small array, wideband obs
 ARGS=(
@@ -94,6 +102,34 @@ do
     runcmd $msfile $args
 done
 
+
+## induce parser errors
+ERRARGS=(
+# parser error to check len(xaxes) vs len(yaxes)
+"--xaxis TIME --yaxis DATA:amp:XX,DATA:amp:YY"
+# parser error to check all list options are = len to len(xaxes)
+"--xaxis TIME,FREQ --yaxis DATA:amp:XX,YY --cmin 0,0,1 --cmax 5,5,5 --xmin 0.85e9 --xmax 1.712e9"
+# parser error to check that both min and max limits are specified
+"--xaxis FREQ --yaxis DATA:amp --xmin 0.85e9"
+"--xaxis CHAN --yaxis DATA:phase --ymax 180"
+# parser error to check channel slicing input
+"--xaxis TIME --yaxis amp --chan 10:21,4"
+# parser error to check antenna slicing input
+# "--xaxis CHAN --yaxis DATA:phase --ant-num 0:1,3 --ant m010,m054"
+# "--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --ant 1:"
+)
+if [[ $parserr == 1 ]]
+then
+    ALLOW_FAILURE=1
+    for args in "${ERRARGS[@]}"
+    do
+        runcmd $msfile $args
+    done
+    # ## induce fourth parser error to check channel slicing input
+    # ARGS="--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --chan 10:21,4"
+    # runcmd $msfile $ARGS
+fi
+ALLOW_FAILURE=0
 
 # show output graphs
 if [[ $verbose == 1 ]]
