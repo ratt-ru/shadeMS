@@ -94,6 +94,7 @@ ARGS=(
 # axis selection arguments for multiple plots
 "--xaxis TIME,CHAN --yaxis DATA:amp:XX,DATA:amp:YY"
 # comma-separated list via the relevant argument allows for arbitrary data selection
+# "--xaxis CORRECTED_DATA:real,UV --yaxis CORRECTED_DATA:imag,CORRECTED_DATA:amp --field 0 --corr XX,YY"
 "--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY"
 # channel selection, a start[:stop][:step]
 "--xaxis CHAN --yaxis DATA:amp --chan 10:21"
@@ -120,6 +121,14 @@ EXTARGS=(
 "--xaxis CHAN --yaxis DATA:phase --field 0 --corr XX --ymin -180 --ymax 180 --ant-num 0:2,3 --png plot-antcheck4-DATA-phase-CHAN.png"
 "--xaxis CHAN --yaxis DATA:phase --field 0 --corr XX --ant m010,m043,m053,m054 --ymin -180 --ymax 180 --png plot-antcheck5-DATA-phase-CHAN.png"
 "--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --ymin -180 --ymax 180"
+"--xaxis TIME,FREQ --yaxis DATA:amp:XX,YY --field 0 --corr XX,YY --cmin 0 --cmax 5 --xmin 0.85e9 --xmax 1.712e9"
+"--xaxis TIME,FREQ --yaxis DATA:amp:XX,YY --field 0 --cmin 0,0 --cmax 5,5 --xmin 0.85e9 --xmax 1.712e9"
+"--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --chan 10:21:2"
+"--xaxis TIME,TIME --yaxis DATA:amp:XX,DATA:amp:YY --field 0"
+"--xaxis FREQ --yaxis DATA:amp --field 0 --corr XX,YY --xmin 0.85e9 --xmax 1.712e9"
+"--xaxis FREQ --yaxis DATA:amp --field 0 --corr XX,YY --xmin 0.85e9 --xmax 1.712e9 --png plot-withlimits-testim.png"
+# set colours
+"--xaxis FREQ --yaxis DATA:amp --field 0 --corr XX,YY --colour-by DATA:amp --xmin 0.85e9 --xmax 1.712e9 --png plot-colourbyAMP-testim.png"
 )
 if [[ $extended == 1 ]]
 then
