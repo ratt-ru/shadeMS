@@ -127,6 +127,12 @@ EXTARGS=(
 "--xaxis TIME,TIME --yaxis DATA:amp:XX,DATA:amp:YY --field 0"
 "--xaxis FREQ --yaxis DATA:amp --field 0 --corr XX,YY --xmin 0.85e9 --xmax 1.712e9"
 "--xaxis FREQ --yaxis DATA:amp --field 0 --corr XX,YY --xmin 0.85e9 --xmax 1.712e9 --png plot-withlimits-testim.png"
+# iteration
+"--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY --iter-field"
+"--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY --iter-spw"
+"--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY --iter-scan"
+"--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY --iter-corr"
+"--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY --iter-baseline"
 # set colours
 "--xaxis FREQ --yaxis DATA:amp --field 0 --corr XX,YY --colour-by DATA:amp --xmin 0.85e9 --xmax 1.712e9 --png plot-colourbyAMP-testim.png"
 )
