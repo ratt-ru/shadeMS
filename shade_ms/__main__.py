@@ -256,11 +256,12 @@ def cli():
         )
     group_opts.add_argument(
         "--baseline",
-        default="noauto",
+        default="noautocorr",
         help="""Baselines to plot, as 'ant1-ant2'
-             (comma-separated list,
-             default of 'noauto' omits auto-correlations,
-             use 'all' to select all)
+             (comma-separated list:
+             default of 'noautocorr' omits auto-correlations, 'autocorr' selects
+             auto-correlations only, 'all' selects all baselines.
+             Use 'ant1-*' to select all baselines to ant1.)
              """,
         )
     group_opts.add_argument(
@@ -398,7 +399,7 @@ def cli():
         )
     group_opts.add_argument(
         "--fontsize",
-        default=16,
+        default=16, type=float,
         help="Font size for all text elements (default = %(default)s)",
         )
 

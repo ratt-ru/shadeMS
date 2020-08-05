@@ -237,10 +237,14 @@ def main(argv):
     if options.baseline == 'all':
         log.info('Baseline(s)      : all')
         subset.baseline = ms.baseline
-    elif options.baseline == 'noauto':
+    elif options.baseline == 'noautocorr':
         log.info('Baseline(s)      : all except autocorrelations')
-        subset.baseline = ms.all_baseline.get_subset([i for i in ms.baseline.numbers if ms.baseline_lengths[i]!=0])
+        subset.baseline = ms.all_baseline.get_subset([i for i in ms.baseline.numbers if ms.baseline_lengths[i] !=0 ])
         mytaql.append("ANTENNA1!=ANTENNA2")
+    elif options.baseline == 'autocorr':
+        log.info('Baseline(s)      : autocorrelations')
+        subset.baseline = ms.all_baseline.get_subset([i for i in ms.baseline.numbers if ms.baseline_lengths[i] == 0])
+        mytaql.append("ANTENNA1==ANTENNA2")
     else:
         bls = set()
         a1a2 = set()
@@ -249,7 +253,7 @@ def main(argv):
             ant1 = match and ms.antenna[match.group(1)]
             ant2 = match and (ms.antenna[match.group(2)] if match.group(2) not in ['', '*'] else '*')
             if ant1 is None or ant2 is None:
-                raise ValueError("invalid baseline '{blspec}'")
+                raise ValueError(f"invalid baseline '{blspec}'")
             if ant2 == '*':
                 ant2set = ms.all_antenna.numbers
             else:
