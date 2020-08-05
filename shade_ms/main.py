@@ -222,7 +222,7 @@ def main(argv):
                     try:
                         antslice, antslice_spec = parse_slice_spec(spec)
                     except ValueError:
-                        parser.error(f"invalid selection --{'ant-num'} {options.ant-num}")
+                        parser.error(f"invalid selection --{'ant-num'} {options.ant_num}")
                     ant_subset.update(ms.all_antenna.numbers[antslice])
             subset.ant = ms.antenna.get_subset(sorted(ant_subset))
         else:
