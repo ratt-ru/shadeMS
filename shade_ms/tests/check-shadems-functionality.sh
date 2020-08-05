@@ -9,6 +9,7 @@ YELLOW="\033[0;33m"
 NOCOLOR="\033[0m"
 
 USAGE="Usage: $0 <msfile> [-c|--clean] [-v|--verbose] [-e|--parse_error]"
+CLEAN=0
 # simple input to provide input msfile
 if [[ "$#" -lt 1 ]]
 then
@@ -26,7 +27,7 @@ while [[ $# -gt 0 ]]
     case $key in
         -c | --clean)
             # clean previous output
-            make clean
+            CLEAN=1
             shift  # past argument
             ;;
         -e | --parse_errors)
@@ -49,6 +50,10 @@ while [[ $# -gt 0 ]]
             ;;
     esac
 done
+if ((CLEAN))
+then
+    make clean
+fi
 
 
 # general function to run shadems commands
@@ -57,15 +62,15 @@ function runcmd {
     echo $CMD
 
     if $CMD
+    then
+        echo -e "${GREEN} Success ${NOCOLOR}"
+    else
+        echo -e "${RED} Failure ${NOCOLOR}"
+        if ! ((ALLOW_FAILURE))
         then
-            echo -e "${GREEN} Success ${NOCOLOR}"
-        else
-            echo -e "${RED} Failure ${NOCOLOR}"
-            if ! ((ALLOW_FAILURE))
-            then
-                exit 1
-            fi
+            exit 1
         fi
+    fi
     echo
 }
 
