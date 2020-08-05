@@ -242,12 +242,13 @@ def cli():
         )
 
     group_opts = parser.add_argument_group("Data subset selection")
-    group_opts.add_argument(
+    ex_group_opts = group_opts.add_mutually_exclusive_group()
+    ex_group_opts.add_argument(
         "--ant",
         default="all",
         help="Antennas to plot (comma-separated list of names, default = all)",
         )
-    group_opts.add_argument(
+    ex_group_opts.add_argument(
         "--ant-num",
         help="""Antennas to plot (comma-separated list of numbers,
              or a [start]:[stop][:step] slice, overrides --ant)
