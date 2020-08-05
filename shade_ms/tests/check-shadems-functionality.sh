@@ -13,11 +13,9 @@ CLEAN=0
 # simple input to provide input msfile
 if [[ "$#" -lt 1 ]]
 then
-    # TODO: need to improve the unpacking of the input parameters
     echo $USAGE
     exit 1
 fi
-msfile=$1; shift
 verbose=0
 parserr=0
 extended=0
@@ -51,7 +49,8 @@ while [[ $# -gt 0 ]]
             extended=1
             shift  # past argument
             ;;
-        *)  # unknown options
+        *)  # what remains is assumed to be the MS
+            msfile=$1;
             shift  # past unknown arguments
             ;;
     esac
@@ -60,7 +59,6 @@ if ((CLEAN))
 then
     make clean
 fi
-
 
 # general function to run shadems commands
 function runcmd {
