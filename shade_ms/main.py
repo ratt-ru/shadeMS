@@ -212,14 +212,18 @@ def main(argv):
         pass
     subset = Subset()
 
-    if options.ant != 'all' or options.ant_num:
+    if not 'all' in options.ant or options.ant_num:
         if options.ant_num:
             ant_subset = set()
             for spec in options.ant_num.split(","):
                 if re.fullmatch(r"\d+", spec):
                     ant_subset.add(int(spec))
                 else:
-                    ant_subset.update(ms.all_antenna.numbers[parse_slice_spec(spec, "ant-num")[0]])
+                    try:
+                        antslice, antslice_spec = parse_slice_spec(spec)
+                    except ValueError:
+                        parser.error(f"invalid selection --{'ant-num'} {options.ant-num}")
+                    ant_subset.update(ms.all_antenna.numbers[antslice])
             subset.ant = ms.antenna.get_subset(sorted(ant_subset))
         else:
             subset.ant = ms.antenna.get_subset(options.ant)
