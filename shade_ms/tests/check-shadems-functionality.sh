@@ -57,6 +57,7 @@ while [[ $# -gt 0 ]]
 done
 if ((CLEAN))
 then
+    echo -e "${YELLOW} ---- Clear old output images ---- ${NOCOLOR}"
     make clean
 fi
 
@@ -80,6 +81,7 @@ function runcmd {
 
 
 ## base functionality following the README
+echo -e "${YELLOW} ---- Base functionality tests from README ---- ${NOCOLOR}"
 ALLOW_FAILURE=0
 ## (all examples must always work)
 ## TODO: select or build an MS that contains one calibrator target, small array, wideband obs
@@ -114,6 +116,7 @@ done
 
 
 ## Extended functionality testing various options used during development
+echo -e "${YELLOW} ---- Additional development tests ---- ${NOCOLOR}"
 EXTARGS=(
 "--xaxis CHAN --yaxis DATA:phase --ant m010,m054 --png plot-antcheck1-DATA-phase-CHAN.png"
 "--xaxis CHAN --yaxis DATA:phase --ant-num 0:1,1,3 --png plot-antcheck2-DATA-phase-CHAN.png"
@@ -152,6 +155,7 @@ fi
 
 
 ## induce parser errors
+echo -e "${YELLOW} ---- Validate parser will fail as expected ---- ${NOCOLOR}"
 ERRARGS=(
 # parser error to check len(xaxes) vs len(yaxes)
 "--xaxis TIME --yaxis DATA:amp:XX,DATA:amp:YY"
