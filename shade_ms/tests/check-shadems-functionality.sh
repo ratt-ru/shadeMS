@@ -8,7 +8,7 @@ GREEN="\033[1;32m"
 YELLOW="\033[0;33m"
 NOCOLOR="\033[0m"
 
-USAGE="Usage: $0 <msfile> [-c|--clean] [-v|--verbose] [-e|--parse_error]"
+USAGE="Usage: $0 <msfile> [-c|--clean] [-v|--verbose] [-e|--parse_error] [-x|--extended]"
 CLEAN=0
 # simple input to provide input msfile
 if [[ "$#" -lt 1 ]]
@@ -20,6 +20,7 @@ fi
 msfile=$1; shift
 verbose=0
 parserr=0
+extended=0
 # handle optional arguments if they exist, ignore the rest
 while [[ $# -gt 0 ]]
     do
@@ -43,6 +44,11 @@ while [[ $# -gt 0 ]]
         -v | --verbose)
             # show png output graphs
             verbose=1
+            shift  # past argument
+            ;;
+        -x | --extended)
+            # include tests that will cause paring errors
+            extended=1
             shift  # past argument
             ;;
         *)  # unknown options
@@ -108,6 +114,30 @@ do
 done
 
 
+## Extended functionality testing various options used during development
+EXTARGS=(
+"--xaxis CHAN --yaxis DATA:phase --ant m010,m054 --png plot-antcheck1-DATA-phase-CHAN.png"
+"--xaxis CHAN --yaxis DATA:phase --ant-num 0:1,1,3 --png plot-antcheck2-DATA-phase-CHAN.png"
+"--xaxis CHAN --yaxis DATA:phase --ant-num 0:2,3 --png plot-antcheck3-DATA-phase-CHAN.png"
+"--xaxis CHAN --yaxis DATA:phase --field 0 --corr XX --ymin -180 --ymax 180 --ant-num 0:2,3 --png plot-antcheck4-DATA-phase-CHAN.png"
+"--xaxis CHAN --yaxis DATA:phase --field 0 --corr XX --ant m010,m043,m053,m054 --ymin -180 --ymax 180 --png plot-antcheck5-DATA-phase-CHAN.png"
+"--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --ymin -180 --ymax 180"
+)
+if [[ $extended == 1 ]]
+then
+    for args in "${EXTARGS[@]}"
+    do
+        runcmd $msfile $args
+    done
+fi
+
+
+## Functional basics following CASA style plotting from MeerKAT cookbook
+# # shadems msfiles/spectral_line.ms --xaxis CHAN --yaxis DATA:phase --field 0 --corr XX --ymin -180 --ymax 180 --ant-num 0:3,8
+# # shadems msfiles/spectral_line.ms --xaxis CHAN --yaxis DATA:phase --field 0 --corr XX --ant m003,m005,m017,m018,m020 --ymin -180 --ymax 180
+# # shadems msfiles/spectral_line.ms --xaxis CHAN --yaxis DATA:phase --field 0 --corr XX --ymin -180 --ymax 180
+
+
 ## induce parser errors
 ERRARGS=(
 # parser error to check len(xaxes) vs len(yaxes)
@@ -130,9 +160,6 @@ then
     do
         runcmd $msfile $args
     done
-    # ## induce fourth parser error to check channel slicing input
-    # ARGS="--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --chan 10:21,4"
-    # runcmd $msfile $ARGS
 fi
 ALLOW_FAILURE=0
 
