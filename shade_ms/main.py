@@ -14,6 +14,7 @@ import re
 import shade_ms
 import sys
 import time
+import warnings
 
 from contextlib import contextmanager
 
@@ -116,6 +117,22 @@ def main(argv):
     options = parser.parse_args(argv)
     if options.debug:
         shade_ms.log_console_handler.setLevel(logging.DEBUG)
+
+    # issue warning if only a single antenna is specified
+    num_ants_warning = False
+    if options.ant_num:
+        specs = options.ant_num.split(',')
+        if len(specs) == 1 and re.fullmatch(r"\d+", specs[0]):
+            ant_spec = "ant{}".format(int(specs[0])-1)
+            num_ants_warning = True
+    elif not 'all' in options.ant:
+        specs = options.ant.split(',')
+        if len(specs) == 1:
+            ant_spec = "{}".format(specs[0])
+            num_ants_warning = True
+    if num_ants_warning:
+        msg = f"Suggested usage: '--baseline {ant_spec}-*' to select all baselines to {ant_spec}."
+        warnings.warn(msg, category=UserWarning)
 
     # pass options to shade_ms
     data_mappers.set_options(options)
@@ -483,7 +500,8 @@ def main(argv):
                                  iter_baseline=options.iter_baseline,
                                  join_corrs=join_corrs,
                                  row_chunk_size=options.row_chunk_size)
-
+    if len(dataframes) < 1:
+        log.warn("No data for selection subset")
     log.info(f": rendering {len(dataframes)} dataframes with {np:.3g} points into {len(all_plots)} plot types")
 
     ## each dataframe is an instance of the axes being iterated over -- on top of that, we need to iterate over plot types
