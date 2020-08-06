@@ -118,11 +118,7 @@ done
 ## Extended functionality testing various options used during development
 echo -e "${YELLOW} ---- Additional development tests ---- ${NOCOLOR}"
 EXTARGS=(
-"--xaxis CHAN --yaxis DATA:phase --ant m010,m054 --png plot-antcheck1-DATA-phase-CHAN.png"
-"--xaxis CHAN --yaxis DATA:phase --ant-num 0:1,1,3 --png plot-antcheck2-DATA-phase-CHAN.png"
-"--xaxis CHAN --yaxis DATA:phase --ant-num 0:2,3 --png plot-antcheck3-DATA-phase-CHAN.png"
 "--xaxis CHAN --yaxis DATA:phase --field 0 --corr XX --ymin -180 --ymax 180 --ant-num 0:2,3 --png plot-antcheck4-DATA-phase-CHAN.png"
-"--xaxis CHAN --yaxis DATA:phase --field 0 --corr XX --ant m010,m043,m053,m054 --ymin -180 --ymax 180 --png plot-antcheck5-DATA-phase-CHAN.png"
 "--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --ymin -180 --ymax 180"
 "--xaxis TIME,FREQ --yaxis DATA:amp:XX,YY --field 0 --corr XX,YY --cmin 0 --cmax 5 --xmin 0.85e9 --xmax 1.712e9"
 "--xaxis TIME,FREQ --yaxis DATA:amp:XX,YY --field 0 --cmin 0,0 --cmax 5,5 --xmin 0.85e9 --xmax 1.712e9"
@@ -130,6 +126,19 @@ EXTARGS=(
 "--xaxis TIME,TIME --yaxis DATA:amp:XX,DATA:amp:YY --field 0"
 "--xaxis FREQ --yaxis DATA:amp --field 0 --corr XX,YY --xmin 0.85e9 --xmax 1.712e9"
 "--xaxis FREQ --yaxis DATA:amp --field 0 --corr XX,YY --xmin 0.85e9 --xmax 1.712e9 --png plot-withlimits-testim.png"
+# antennas
+"--xaxis CHAN --yaxis DATA:phase --ant m010,m054 --png plot-antcheck1-DATA-phase-CHAN.png"
+"--xaxis CHAN --yaxis DATA:phase --ant-num 0:1,1,3 --png plot-antcheck2-DATA-phase-CHAN.png"
+"--xaxis CHAN --yaxis DATA:phase --ant-num 0:2,3 --png plot-antcheck3-DATA-phase-CHAN.png"
+"--xaxis CHAN --yaxis DATA:phase --ant-num 1:4 --png plot-antcheck4-DATA-phase-CHAN.png"
+"--xaxis CHAN --yaxis DATA:phase --ant-num 1:5 --png plot-antcheck5-DATA-phase-CHAN.png"
+"--xaxis CHAN --yaxis DATA:phase --ant-num 2:"
+"--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --ant-num 1: --png plot-antcheck6-DATA-phase-CHAN.png"
+"--xaxis CHAN --yaxis DATA:phase --field 0 --corr XX --ant m010,m043,m053,m054 --ymin -180 --ymax 180 --png plot-antcheck5-DATA-phase-CHAN.png"
+# baseline selection
+"--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --baseline m010-*"
+"--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --ant m010"
+"--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --ant-num 1"
 # iteration
 "--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY --iter-field"
 "--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY --iter-spw"
@@ -167,8 +176,8 @@ ERRARGS=(
 # parser error to check channel slicing input
 "--xaxis TIME --yaxis amp --chan 10:21,4"
 # parser error to check antenna slicing input
-# "--xaxis CHAN --yaxis DATA:phase --ant-num 0:1,3 --ant m010,m054"
-# "--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --ant 1:"
+"--xaxis CHAN --yaxis DATA:phase --ant-num 0:1,3 --ant m010,m054"
+"--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --ant-num 1:*"
 )
 if [[ $parserr == 1 ]]
 then
