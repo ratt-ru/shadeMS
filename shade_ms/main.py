@@ -125,6 +125,12 @@ def main(argv):
         if len(specs) == 1 and re.fullmatch(r"\d+", specs[0]):
             ant_spec = "ant{}".format(int(specs[0])-1)
             num_ants_warning = True
+        # check ant selection before processing
+        for spec in options.ant_num.split(","):
+            try:
+                antslice, antslice_spec = parse_slice_spec(spec)
+            except ValueError:
+                parser.error(f"invalid selection --{'ant-num'} {options.ant_num}")
     elif not 'all' in options.ant:
         specs = options.ant.split(',')
         if len(specs) == 1:
@@ -236,10 +242,7 @@ def main(argv):
                 if re.fullmatch(r"\d+", spec):
                     ant_subset.add(int(spec))
                 else:
-                    try:
-                        antslice, antslice_spec = parse_slice_spec(spec)
-                    except ValueError:
-                        parser.error(f"invalid selection --{'ant-num'} {options.ant_num}")
+                    antslice, antslice_spec = parse_slice_spec(spec)
                     ant_subset.update(ms.all_antenna.numbers[antslice])
             subset.ant = ms.antenna.get_subset(sorted(ant_subset))
         else:
