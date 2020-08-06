@@ -486,6 +486,7 @@ eval_none = lambda arr_1, arr_2: any([(a is None)^(b is None) for a, b in zip(ar
 # -- parser utility functions --
 
 
+# -- dealing with input arguments to extract expected parameters --
 def get_list(list_, type_=str, default=None, set_len=-1):
     """
         all parameter lists must be the same length as the expected number of plot
