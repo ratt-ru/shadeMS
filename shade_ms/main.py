@@ -15,6 +15,7 @@ import sys
 import dask.diagnostics
 from contextlib import contextmanager
 import json
+import yaml
 
 import argparse
 
@@ -213,6 +214,9 @@ def main(argv):
     group_opts.add_argument('--vline', type=str, metavar="X[-[colour]]", 
                       help="Draw vertical line at given X coordinate(s). You can append a matplotlib linestyle "
                            "(-, --, -., :) and/or a colour. You can also use a comma-separated list.")
+    group_opts.add_argument('-M', '--markup', type=str, action="append", nargs=2, metavar="func {args}", 
+                      help="Add arbitrary matplotlib markup to plot. 'func' is a function known to matplotlib.Axes. "
+                           "The {args} dict should be in YaML format.")
 
     group_opts = parser.add_argument_group('Output settings')
 
@@ -331,11 +335,27 @@ def main(argv):
     if any([(a is None)^(b is None) for a, b in zip(amins, amaxs)]):
         parser.error("--amin/--amax must be either both set, or neither")
 
+    # check markup
+    extra_markup = []
+    for funcname, funcargs in options.markup:
+        from matplotlib.axes import Axes
+        if funcname not in dir(Axes):
+            parser.error(f"unknown function given in --markup {funcname}")
+        args = yaml.safe_load(funcargs)
+        kwargs = []
+        if type(args) not in {list, dict}:
+            parser.error(f"invalid arguments to --markup {funcname} {funcargs}")
+        if type(args) is list:
+            if len(args) > 0 and type(args[-1]) is dict:
+                kwargs = args[-1]
+                args = args[:-1]
+        else:
+            kwargs = args
+            args = []
+        extra_markup.append((funcname, args, kwargs))
+
     # check vline and hline
-    linestyles = ['--', '-', '-.', ':']
-    hlines = []
-    vlines = []
-    for lines, attr in (hlines, 'hline'), (vlines, 'vline'):
+    for attr in 'hline', 'vline':
         if getattr(options, attr, None):
             for spec in getattr(options, attr).split(","):
                 match = re.match('(.*?)((--|-|-\\.|:)([a-zA-Z#].*)?)?$', spec)
@@ -345,8 +365,8 @@ def main(argv):
                     coord = None
                     parser.error(f"invalid --{attr} setting '{spec}'")
                 linestyle = match.group(3) or '-'
-                lines.append((coord, linestyle, match.group(4) or "black"))
-
+                extra_markup.append((f"ax{attr}", [coord], dict(ls=linestyle,
+                                                                color=match.group(4) or "black")))
 
     # check chan slice
     def parse_slice_spec(spec, name):
@@ -355,6 +375,7 @@ def main(argv):
                 spec_elems = [int(x) if x else None for x in spec.split(":", 2)]
             except ValueError:
                 parser.error(f"invalid selection --{name} {spec}")
+                raise
             return slice(*spec_elems), spec_elems
         else:
             return slice(None), []
@@ -711,7 +732,7 @@ def main(argv):
                                       saturate_alpha=options.saturate_alpha,
                                       saturate_percentile=options.saturate_perc,
                                       xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
-                                      hlines=hlines, vlines=vlines,
+                                      extra_markup=extra_markup,
                                       minmax_cache=minmax_cache,
                                       options=options)
         if result:

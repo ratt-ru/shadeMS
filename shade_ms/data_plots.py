@@ -269,7 +269,7 @@ def compute_bounds(unknowns, bounds, ddf):
 
 def create_plot(ddf, index_subsets, xdatum, ydatum, adatum, ared, cdatum, cmap, bmap, dmap, normalize,
                 xlabel, ylabel, title, pngname,
-                hlines=[], vlines=[],
+                extra_markup=[],
                 min_alpha=40, saturate_percentile=None, saturate_alpha=None,
                 minmax_cache=None,
                 options=None):
@@ -477,10 +477,8 @@ def create_plot(ddf, index_subsets, xdatum, ydatum, adatum, ared, cdatum, cmap, 
     fig = pylab.figure(figsize=(figx, figy))
     ax = fig.add_subplot(111, facecolor=bgcol)
 
-    for y, ls, color in hlines:
-        ax.axhline(y, linestyle=ls, color=color)
-    for x, ls, color in vlines:
-        ax.axvline(x, linestyle=ls, color=color)
+    for funcname, args, kwargs in extra_markup:
+        getattr(ax, funcname)(*args, **kwargs)
 
     ax.imshow(X=rgb.data, extent=[xmin, xmax, ymin, ymax],
               aspect='auto', origin='lower', interpolation='nearest')
