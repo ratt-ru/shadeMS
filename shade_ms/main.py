@@ -335,7 +335,7 @@ def main(argv):
     if any([(a is None)^(b is None) for a, b in zip(amins, amaxs)]):
         parser.error("--amin/--amax must be either both set, or neither")
 
-    # check markup
+    # check markup arguments
     extra_markup = []
     for funcname, funcargs in options.markup:
         from matplotlib.axes import Axes
@@ -367,6 +367,13 @@ def main(argv):
                 linestyle = match.group(3) or '-'
                 extra_markup.append((f"ax{attr}", [coord], dict(ls=linestyle,
                                                                 color=match.group(4) or "black")))
+
+    # re-check that kwargs are valid
+    for funcname, args, kwargs in extra_markup:
+        log.info(f"markup: {funcname} *{args} **{kwargs})")
+        if not all([re.match('^\w+$', kw) for kw in kwargs.keys()]):
+            log.error("the above is not a valid markup specification, please fix")
+            sys.exit(1)
 
     # check chan slice
     def parse_slice_spec(spec, name):
