@@ -207,6 +207,12 @@ def main(argv):
                       help='RGB hex code for background colour (default = FFFFFF)', default='FFFFFF')
     group_opts.add_argument('--fontsize', dest='fontsize', type=float,
                       help='Font size for all text elements (default = %(default)s)', default=16)
+    group_opts.add_argument('--hline', type=str, metavar="Y[-[colour]]", 
+                      help="Draw horizontal line(s) at given Y coordinate(s). You can append a matplotlib linestyle "
+                           "(-, --, -., :) and/or a colour. You can also use a comma-separated list.")
+    group_opts.add_argument('--vline', type=str, metavar="X[-[colour]]", 
+                      help="Draw vertical line at given X coordinate(s). You can append a matplotlib linestyle "
+                           "(-, --, -., :) and/or a colour. You can also use a comma-separated list.")
 
     group_opts = parser.add_argument_group('Output settings')
 
@@ -324,6 +330,23 @@ def main(argv):
         parser.error("--cmin/--cmax must be either both set, or neither")
     if any([(a is None)^(b is None) for a, b in zip(amins, amaxs)]):
         parser.error("--amin/--amax must be either both set, or neither")
+
+    # check vline and hline
+    linestyles = ['--', '-', '-.', ':']
+    hlines = []
+    vlines = []
+    for lines, attr in (hlines, 'hline'), (vlines, 'vline'):
+        if getattr(options, attr, None):
+            for spec in getattr(options, attr).split(","):
+                match = re.match('(.*?)((--|-|-\\.|:)([a-zA-Z#].*)?)?$', spec)
+                try:
+                    coord = float(match.group(1))
+                except ValueError:
+                    coord = None
+                    parser.error(f"invalid --{attr} setting '{spec}'")
+                linestyle = match.group(3) or '-'
+                lines.append((coord, linestyle, match.group(4) or "black"))
+
 
     # check chan slice
     def parse_slice_spec(spec, name):
@@ -688,6 +711,7 @@ def main(argv):
                                       saturate_alpha=options.saturate_alpha,
                                       saturate_percentile=options.saturate_perc,
                                       xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
+                                      hlines=hlines, vlines=vlines,
                                       minmax_cache=minmax_cache,
                                       options=options)
         if result:
