@@ -337,7 +337,7 @@ def main(argv):
 
     # check markup arguments
     extra_markup = []
-    for funcname, funcargs in options.markup:
+    for funcname, funcargs in options.markup or []:
         from matplotlib.axes import Axes
         if funcname not in dir(Axes):
             parser.error(f"unknown function given in --markup {funcname}")
