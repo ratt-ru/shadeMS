@@ -312,17 +312,7 @@ class DataAxis(object):
             raise NameError("column {} not found in group".format(" or ".join(self.columns)))
 
     def get_value(self, group, corr, extras, flag, flag_row, chanslice):
-        # if isinstance(flag, xarray.DataArray):
-        #     flag = flag.data
-
-        # if isinstance(flag_row, xarray.DataArray):
-        #     flag_row = flag_row.data
-
         coldata = self.get_column_data(group)
-
-        # if isinstance(coldata, xarray.DataArray):
-        #     coldata = coldata.data
-
         # correlation may be pre-set by plot type, or may be passed to us
         corr = self.corr if self.corr is not None else corr
         # apply correlation reduction
@@ -388,6 +378,7 @@ class DataAxis(object):
                 raise TypeError(f"{self.label}: column chnaged from discrete to continuous-valued. This is a bug, or a very weird MS.")
             self._is_discrete = False
 
+        # Ensure dask arrays for creating dask masked arrays
         if isinstance(coldata, xarray.DataArray):
             coldata = coldata.data
 
