@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 requirements = [
 "dask-ms[xarray]",
 "dask[complete]",
-"datashader @ git+https://github.com/o-smirnov/datashader.git",
+"datashader>=0.11.2a1", # @ git+https://github.com/o-smirnov/datashader.git",
 "holoviews",
 "matplotlib>2.2.3; python_version >= '3.5'",
 "cmasher",
@@ -18,7 +18,7 @@ requirements = [
 extras_require = {'testing': ['pytest', 'pytest-flake8']}
 
 PACKAGE_NAME = 'shadems'
-__version__ = '0.4.0'
+__version__ = '0.5.0'
 
 setup(name = PACKAGE_NAME,
     version = __version__,
