@@ -12,6 +12,10 @@ import os
 import re
 import shade_ms
 import sys
+import dask.diagnostics
+from contextlib import contextmanager
+import json
+import yaml
 import time
 
 from contextlib import contextmanager
@@ -40,7 +44,6 @@ def main(argv):
     # default # of CPUs
 
     # ---------------------------------------------------------------------------------------------------------------------------------------------
-
     parser = cli()
 
     # various hidden performance-testing options
@@ -120,6 +123,46 @@ def main(argv):
     if any([(a is None)^(b is None) for a, b in zip(amins, amaxs)]):
         parser.error("--amin/--amax must be either both set, or neither")
 
+    # check markup arguments
+    extra_markup = []
+    for funcname, funcargs in options.markup or []:
+        from matplotlib.axes import Axes
+        if funcname not in dir(Axes):
+            parser.error(f"unknown function given in --markup {funcname}")
+        args = yaml.safe_load(funcargs)
+        kwargs = []
+        if type(args) not in {list, dict}:
+            parser.error(f"invalid arguments to --markup {funcname} {funcargs}")
+        if type(args) is list:
+            if len(args) > 0 and type(args[-1]) is dict:
+                kwargs = args[-1]
+                args = args[:-1]
+        else:
+            kwargs = args
+            args = []
+        extra_markup.append((funcname, args, kwargs))
+
+    # check vline and hline
+    for attr in 'hline', 'vline':
+        if getattr(options, attr, None):
+            for spec in getattr(options, attr).split(","):
+                match = re.match('(.*?)((--|-|-\\.|:)([a-zA-Z#].*)?)?$', spec)
+                try:
+                    coord = float(match.group(1))
+                except ValueError:
+                    coord = None
+                    parser.error(f"invalid --{attr} setting '{spec}'")
+                linestyle = match.group(3) or '-'
+                extra_markup.append((f"ax{attr}", [coord], dict(ls=linestyle,
+                                                                color=match.group(4) or "black")))
+
+    # re-check that kwargs are valid
+    for funcname, args, kwargs in extra_markup:
+        log.info(f"markup: {funcname} *{args} **{kwargs})")
+        if not all([re.match('^\w+$', kw) for kw in kwargs.keys()]):
+            log.error("the above is not a valid markup specification, please fix")
+            sys.exit(1)
+
     # check chan slice
     def parse_slice_spec(spec, name):
         if spec:
@@ -127,6 +170,7 @@ def main(argv):
                 spec_elems = [int(x) if x else None for x in spec.split(":", 2)]
             except ValueError:
                 parser.error(f"invalid selection --{name} {spec}")
+                raise
             return slice(*spec_elems), spec_elems
         else:
             return slice(None), []
@@ -482,6 +526,7 @@ def main(argv):
                                       saturate_alpha=options.saturate_alpha,
                                       saturate_percentile=options.saturate_perc,
                                       xlabel=xlabel, ylabel=ylabel, title=title, pngname=pngname,
+                                      extra_markup=extra_markup,
                                       minmax_cache=minmax_cache,
                                       options=options)
         if result:
