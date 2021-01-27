@@ -6,7 +6,7 @@ from setuptools import setup, find_packages
 requirements = [
 "dask-ms[xarray]",
 "dask[complete]",
-"datashader>=0.11.2a1", # @ git+https://github.com/o-smirnov/datashader.git",
+"datashader>=0.12.0", 
 "holoviews",
 "matplotlib>2.2.3; python_version >= '3.5'",
 "cmasher",
