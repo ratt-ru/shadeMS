@@ -137,7 +137,7 @@ The example below will produce a plot per field.
 If no ``--field`` selection is provided, then `shadems` will iterate over all fields in the MS:
 
 ```
-$ shadems --xaxis CORRECTED_DATA:real,UV --yaxis CORRECTED_DATA:imag,CORRECTED_DATA:amp --field 0,2 --corr XX,YY --iter-fields <msname>
+$ shadems --xaxis CORRECTED_DATA:real,UV --yaxis CORRECTED_DATA:imag,CORRECTED_DATA:amp --field 0,2 --corr XX,YY --iter-field <msname>
 ```
 
 * You can also iterate over SPWs, scans, correlations and (coming soon) antennas.

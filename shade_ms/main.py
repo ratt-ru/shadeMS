@@ -5,7 +5,6 @@ matplotlib.use('agg')
 
 import dask.diagnostics
 import datetime
-import itertools
 import json
 import logging
 import os
@@ -17,11 +16,12 @@ from contextlib import contextmanager
 import json
 import yaml
 import time
+import warnings
 
 from contextlib import contextmanager
 
 from . import DEFAULT_CNUM, DEFAULT_NUM_RENDERS
-from . import cli
+from . import cli, parse_plot_spec, parse_slice_spec
 from . import data_plots, data_mappers
 
 from .data_mappers import DataAxis, col_to_label
@@ -43,14 +43,11 @@ def main(argv):
 
     # default # of CPUs
 
-    # ---------------------------------------------------------------------------------------------------------------------------------------------
-    parser = cli()
-
+    # ---  dealing with input arguments ---
+    parser, optimization_opts = cli()
     # various hidden performance-testing options
-    optimization_opts = parser._action_groups[-1]
     data_mappers.add_options(optimization_opts)
     data_plots.add_options(optimization_opts)
-
     options = parser.parse_args(argv)
     if options.debug:
         shade_ms.log_console_handler.setLevel(logging.DEBUG)
@@ -59,69 +56,17 @@ def main(argv):
     data_mappers.set_options(options)
     data_plots.set_options(options)
 
+    # set colormaps
     cmap = data_plots.get_colormap(options.cmap)
     bmap = data_plots.get_colormap(options.bmap)
     dmap = data_plots.get_colormap(options.dmap)
 
     # figure our list of plots to make
+    # define plot parameters
+    [xaxes, yaxes, columns, caxes, aaxes, areds,
+     xmins, xmaxs, ymins, ymaxs, amins, amaxs, cmins, cmaxs, cnums] = parse_plot_spec(parser,
+                                                                                      options)
 
-    if not options.xaxis:
-        xaxes = ['TIME']  # Default xaxis if none is specified
-    else:
-        xaxes = list(itertools.chain(*[opt.split(",") for opt in options.xaxis]))
-    if not options.yaxis:
-        yaxes = ['DATA:amp']  # Default yaxis if none is specified
-    else:
-        yaxes = list(itertools.chain(*[opt.split(",") for opt in options.yaxis]))
-
-    if len(xaxes) != len(yaxes):
-        parser.error("--xaxis and --yaxis must be given the same number of times")
-
-    def get_conformal_list(name, force_type=None, default=None):
-        """
-        For all other settings, returns list same length as xaxes, or throws error if no conformance.
-        Can also impose a type such as float (returning None for an empty string)
-        """
-        optlist = getattr(options, name, None)
-        if not optlist:
-            return [default]*len(xaxes)
-        # stick all lists together
-        elems = list(itertools.chain(*[opt.split(",") for opt in optlist]))
-        if len(elems) > 1 and len(elems) != len(xaxes):
-            parser.error(f"--{name} must be given the same number of times as --xaxis, or else just once")
-        # convert type
-        if force_type:
-            elems = [force_type(x) if x and x.lower() != "none" else None for x in elems]
-        if len(elems) != len(xaxes):
-            elems = [elems[0]]*len(xaxes)
-        return elems
-
-    # get list of columns and plot limites of the same length
-    if not options.col:
-        options.col = ["DATA"]
-    columns = get_conformal_list('col')
-    xmins = get_conformal_list('xmin', float)
-    xmaxs = get_conformal_list('xmax', float)
-    ymins = get_conformal_list('ymin', float)
-    ymaxs = get_conformal_list('ymax', float)
-    aaxes = get_conformal_list('aaxis')
-    amins = get_conformal_list('amin', float)
-    amaxs = get_conformal_list('amax', float)
-    areds = get_conformal_list('ared', str, 'mean')
-    caxes = get_conformal_list('colour_by')
-    cmins = get_conformal_list('cmin', float)
-    cmaxs = get_conformal_list('cmax', float)
-    cnums = get_conformal_list('cnum', int, default=DEFAULT_CNUM)
-
-    # check min/max
-    if any([(a is None)^(b is None) for a, b in zip(xmins, xmaxs)]):
-        parser.error("--xmin/--xmax must be either both set, or neither")
-    if any([(a is None)^(b is None) for a, b in zip(ymins, ymaxs)]):
-        parser.error("--xmin/--xmax must be either both set, or neither")
-    if any([(a is None)^(b is None) for a, b in zip(cmins, cmaxs)]):
-        parser.error("--cmin/--cmax must be either both set, or neither")
-    if any([(a is None)^(b is None) for a, b in zip(amins, amaxs)]):
-        parser.error("--amin/--amax must be either both set, or neither")
 
     # check markup arguments
     extra_markup = []
@@ -164,22 +109,38 @@ def main(argv):
             sys.exit(1)
 
     # check chan slice
-    def parse_slice_spec(spec, name):
-        if spec:
-            try:
-                spec_elems = [int(x) if x else None for x in spec.split(":", 2)]
-            except ValueError:
-                parser.error(f"invalid selection --{name} {spec}")
-                raise
-            return slice(*spec_elems), spec_elems
-        else:
-            return slice(None), []
+    try:
+        chanslice, chanslice_spec = parse_slice_spec(options.chan)
+    except ValueError:
+        # parser.error(f"invalid selection --{'chan'} {options.chan}")
+        parser.error(f"invalid selection --chan {options.chan}")
 
-    chanslice, chanslice_spec = parse_slice_spec(options.chan, name="chan")
+    # issue warning if only a single antenna is specified
+    num_ants_warning = False
+    if options.ant_num:
+        specs = options.ant_num.split(',')
+        if len(specs) == 1 and re.fullmatch(r"\d+", specs[0]):
+            ant_spec = "ant{}".format(int(specs[0])-1)
+            num_ants_warning = True
+        # check ant selection before processing
+        for spec in options.ant_num.split(","):
+            try:
+                antslice, antslice_spec = parse_slice_spec(spec)
+            except ValueError:
+                parser.error(f"invalid selection --{'ant-num'} {options.ant_num}")
+    elif not 'all' in options.ant:
+        specs = options.ant.split(',')
+        if len(specs) == 1:
+            ant_spec = "{}".format(specs[0])
+            num_ants_warning = True
+    if num_ants_warning:
+        msg = f"Suggested usage: '--baseline {ant_spec}-*' to select all baselines to {ant_spec}."
+        warnings.warn(msg, category=UserWarning)
 
     log.info(" ".join(sys.argv))
 
     separator()
+    # ---  dealing with input arguments ---
 
     ms = MSInfo(options.ms, log=log)
 
@@ -188,20 +149,22 @@ def main(argv):
 
     group_cols = ['FIELD_ID', 'DATA_DESC_ID']
 
+    # --- building SQL query --
     mytaql = []
 
     class Subset(object):
         pass
     subset = Subset()
 
-    if options.ant != 'all' or options.ant_num:
+    if not 'all' in options.ant or options.ant_num:
         if options.ant_num:
             ant_subset = set()
             for spec in options.ant_num.split(","):
                 if re.fullmatch(r"\d+", spec):
                     ant_subset.add(int(spec))
                 else:
-                    ant_subset.update(ms.all_antenna.numbers[parse_slice_spec(spec, "ant-num")[0]])
+                    antslice, antslice_spec = parse_slice_spec(spec)
+                    ant_subset.update(ms.all_antenna.numbers[antslice])
             subset.ant = ms.antenna.get_subset(sorted(ant_subset))
         else:
             subset.ant = ms.antenna.get_subset(options.ant)
@@ -280,6 +243,7 @@ def main(argv):
         log.info(f"Channels         : {':'.join(str(x) if x is not None else '' for x in chanslice_spec)}")
 
     mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else ''
+  # --- building SQL query --
 
     if options.corr == "ALL":
         subset.corr = ms.corr
@@ -306,7 +270,7 @@ def main(argv):
         try:
             minmax_cache = json.load(open(cache_file, "rt"))
             if type(minmax_cache) is not dict:
-                raise TypeError("cache cotent is not a dict")
+                raise TypeError("cache content is not a dict")
         except Exception as exc:
             log.error(f"error reading cache file: {exc}. Minmax cache will be reset.")
             minmax_cache = {}
@@ -460,7 +424,8 @@ def main(argv):
                                  iter_baseline=options.iter_baseline,
                                  join_corrs=join_corrs,
                                  row_chunk_size=options.row_chunk_size)
-
+    if len(dataframes) < 1:
+        log.warn("No data for selection subset")
     log.info(f": rendering {len(dataframes)} dataframes with {np:.3g} points into {len(all_plots)} plot types")
 
     ## each dataframe is an instance of the axes being iterated over -- on top of that, we need to iterate over plot types
