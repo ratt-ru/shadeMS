@@ -404,6 +404,16 @@ def cli():
         default=16, type=float,
         help="Font size for all text elements (default = %(default)s)",
         )
+        
+    group_opts.add_argument('--hline', type=str, metavar="Y[-[colour]]", 
+                      help="Draw horizontal line(s) at given Y coordinate(s). You can append a matplotlib linestyle "
+                           "(-, --, -., :) and/or a colour. You can also use a comma-separated list.")
+    group_opts.add_argument('--vline', type=str, metavar="X[-[colour]]", 
+                      help="Draw vertical line at given X coordinate(s). You can append a matplotlib linestyle "
+                           "(-, --, -., :) and/or a colour. You can also use a comma-separated list.")
+    group_opts.add_argument('-M', '--markup', type=str, action="append", nargs=2, metavar="func {args}", 
+                      help="Add arbitrary matplotlib markup to plot. 'func' is a function known to matplotlib.Axes. "
+                           "The {args} dict should be in YaML format.")
 
     group_opts = parser.add_argument_group("Output settings")
     # can also use "plot-{msbase}-{column}-{corr}-{xfullname}-vs-{yfullname}", let's expand on this later
