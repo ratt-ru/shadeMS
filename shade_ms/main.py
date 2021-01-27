@@ -112,7 +112,8 @@ def main(argv):
     try:
         chanslice, chanslice_spec = parse_slice_spec(options.chan)
     except ValueError:
-        parser.error(f"invalid selection --{'chan'} {options.chan}")
+        # parser.error(f"invalid selection --{'chan'} {options.chan}")
+        parser.error(f"invalid selection --chan {options.chan}")
 
     # issue warning if only a single antenna is specified
     num_ants_warning = False
