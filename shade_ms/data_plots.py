@@ -446,7 +446,7 @@ def create_plot(ddf, index_subsets, xdatum, ydatum, adatum, ared, cdatum, cmap, 
         alpha -= min_alpha
         if nulls.all():
             log.debug(f"alpha<min_alpha for entire plot -- all data below lower clip perhaps?")
-        else:    
+        else:
             #if percentile if specified, use that to override saturate_alpha
             if saturate_alpha is None:
                 saturate_alpha = np.percentile(alpha[~nulls], saturate_percentile)
