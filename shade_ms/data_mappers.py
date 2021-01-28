@@ -372,11 +372,18 @@ class DataAxis(object):
                 if flag is None:
                     flag = bad_bins
                 else:
-                    flag = da.logical_or(flag, bad_bins)
+                    flag = da.logical_or(flag.data, bad_bins)
         else:
             if self._is_discrete is True:
                 raise TypeError(f"{self.label}: column chnaged from discrete to continuous-valued. This is a bug, or a very weird MS.")
             self._is_discrete = False
+
+        # Ensure dask arrays for creating dask masked arrays
+        if isinstance(coldata, xarray.DataArray):
+            coldata = coldata.data
+
+        if isinstance(flag, xarray.DataArray):
+            flag = flag.data
 
         bad_data = da.logical_not(da.isfinite(coldata))
         if flag is not None:
