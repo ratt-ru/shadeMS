@@ -23,11 +23,9 @@ Some example shadeMS outputs (using a 4k channel MeerKAT dataset, and 64 channel
 
 ## Installation
 
-**Stable releases** will start to be available on PyPI shortly. A stable release will be installable in the 
-usual way, i.e. ``pip install shadems``. However, at the moment we rely on development versions of ``datashader`` and 
-``dask-ms``, so follow the instructions below.
+A stable release is installable in the usual way PyPI. 
 
-Installation within a Python 3 [virtual environment](https://pypi.org/project/virtualenv/) is required. To begin with:
+Installation within a Python 3 [virtual environment](https://pypi.org/project/virtualenv/) is suggested. To begin with:
 
 ```
 $ virtualenv -p python3 ~/venv/shadems
@@ -37,20 +35,9 @@ $ source ~/venv/shadems/bin/activate
 
 Then:
 
-* Clone and install the `shadems` repository:
-
-    ```
-    $ cd ~/Software
-    $ git clone https://github.com/ratt-ru/shadeMS.git
-    $ pip install -e shadeMS/
-    ```
-
-* The latest version of `dask-ms` and ``datashader`` needs to be installed as e.g.:
-
-    ```
-    $ pip install git+https://github.com/ska-sa/dask-ms.git
-    $ pip install git+https://github.com/o-smirnov/datashader
-    ```
+```
+$ pip install shadems
+```
 
 ---
 
