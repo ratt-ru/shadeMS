@@ -31,7 +31,7 @@ setup(name = PACKAGE_NAME,
     extras_require=extras_require,
     include_package_data = True,
     scripts=["bin/" + i for i in os.listdir("bin")],
-    license=["GNU GPL v2"],
+    license="GNU GPL v2",
     python_requires=">=3.6",
     classifiers=[
         "Development Status :: 4 - Beta",
