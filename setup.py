@@ -18,7 +18,7 @@ requirements = [
 extras_require = {'testing': ['pytest', 'pytest-flake8']}
 
 PACKAGE_NAME = 'shadems'
-__version__ = '0.5.0'
+__version__ = '0.5.1'
 
 setup(name = PACKAGE_NAME,
     version = __version__,
