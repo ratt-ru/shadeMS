@@ -3,6 +3,8 @@
 import os
 from setuptools import setup, find_packages
 
+build_root = os.path.dirname(__file__)
+
 requirements = [
 "dask-ms[xarray]",
 "dask[complete]",
