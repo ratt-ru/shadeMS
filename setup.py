@@ -20,7 +20,14 @@ extras_require = {'testing': ['pytest', 'pytest-flake8']}
 PACKAGE_NAME = 'shadems'
 __version__ = '0.5.1'
 
+def readme():
+    """Get readme content for package long description"""
+    with open(os.path.join(build_root, 'README.md')) as f:
+        return f.read()
+
 setup(name = PACKAGE_NAME,
+    long_description=readme(),
+    long_description_content_type="text/markdown",
     version = __version__,
     description = "Rapid Measurement Set plotting with dask-ms and datashader",
     author = "Ian Heywood & RATT",
