@@ -151,15 +151,21 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             # always read flags -- easier that way
             flag = group.FLAG if not noflags else None
             flag_row = group.FLAG_ROW if not noflags else None
-
-            a1 = da.minimum(group.ANTENNA1.data, group.ANTENNA2.data)
-            a2 = da.maximum(group.ANTENNA1.data, group.ANTENNA2.data)
-            baselines = msinfo.baseline_number(a1, a2)
-
+            if not iter_baseline:
+                # if group by then these are attributes, not data arrays
+                a1 = da.minimum(group.ANTENNA1.data, group.ANTENNA2.data)
+                a2 = da.maximum(group.ANTENNA1.data, group.ANTENNA2.data)
+                baselines = msinfo.baseline_number(a1, a2)
+            else:
+                baselines = None
             freqs = chan_freqs[ddid]
             chans = xarray.DataArray(range(len(freqs)), dims=("chan",))
             wavel = freq_to_wavel(freqs)
-            extras = dict(chans=chans, freqs=freqs, wavel=wavel, rows=group.row, baselines=baselines)
+            extras = dict(chans=chans,
+                          freqs=freqs,
+                          wavel=wavel,
+                          rows=group.row,
+                          baselines=baselines if baselines else np.array([baseline]))
 
             nchan = len(group.chan)
             if flag is not None:
