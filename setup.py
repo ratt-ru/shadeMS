@@ -20,7 +20,7 @@ requirements = [
 extras_require = {'testing': ['pytest', 'pytest-flake8']}
 
 PACKAGE_NAME = 'shadems'
-__version__ = '0.5.1.1'
+__version__ = '0.5.2'
 
 def readme():
     """Get readme content for package long description"""
