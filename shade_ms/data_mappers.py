@@ -342,8 +342,10 @@ class DataAxis(object):
             flag = None
         else:
             # apply channel slicing, if there's a channel axis in the array (and the array is a DataArray)
-            if type(coldata) is xarray.DataArray and 'chan' in coldata.dims:
-                coldata = coldata[dict(chan=chanslice)]
+            if coldata.ndim == 2:
+                coldata = coldata[:, chanslice]
+            # if type(coldata) is xarray.DataArray and 'chan' in coldata.dims:
+            #     coldata = coldata[dict(chan=chanslice)]
             # determine flags -- start with original flags
             if flag is not None:
                 if coldata.ndim == 2:

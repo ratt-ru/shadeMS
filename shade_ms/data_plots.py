@@ -165,7 +165,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                           freqs=freqs,
                           wavel=wavel,
                           rows=group.row,
-                          baselines=baselines if baselines else np.array([baseline]))
+                          baselines=baselines if baselines is not None else np.array([baseline]))
 
             nchan = len(group.chan)
             if flag is not None:
@@ -201,6 +201,8 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                             shapes[axis.label] = ()
                         elif value.ndim == 1:
                             timefreq_axis = axis.mapper.axis or 0
+                            if axis.mapper.axis == 1 and chanslice is not None:
+                                value = value[chanslice]
                             assert value.shape[0] == shape[timefreq_axis], \
                                    f"{axis.mapper.fullname}: size {value.shape[0]}, expected {shape[timefreq_axis]}"
                             shapes[axis.label] = ("row",) if timefreq_axis == 0 else ("chan",)
