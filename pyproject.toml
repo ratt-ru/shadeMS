@@ -6,7 +6,7 @@ authors = ["Ian Heywood & RATT <ian.heywood@physics.ox.ac.uk>"]
 license = "GPL-2.0-only"
 homepage = "https://github.com/ratt-ru/shadeMS"
 repository = "https://github.com/ratt-ru/shadeMS"
-include = ["README.md"]
+readme = "README.md"
 kerywords = ["Astronomy", "Visualisation", "Packaging"]
 classifiers = [
         "Development Status :: 4 - Beta",
@@ -40,5 +40,5 @@ dask = {extras = ["array"], version = "2022.9.1"} # Datashader installs the late
 testing = ["pytest", "pytest-flake8"]
 
 [build-system]
-requires = ["setuptools", "poetry"]
+requires = ["setuptools", "poetry-core"]
 build-backend = "poetry.core.masonry.api"
