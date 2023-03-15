@@ -4,12 +4,12 @@ on: [push, pull_request]
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.6", "3.7", "3.8"]
-
+        os: [ ubuntu-20.04, ubuntu-22.04 ]
+        python-version: ["3.8", "3.9", "3.10"]
     steps:
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v1
@@ -26,6 +26,9 @@ jobs:
 
       - name: Install shadems
         run: pip install -e .[testing]
+
+      - name: Test command
+        run: shadems --help
 
       - name: Run testsuite
         run: py.test shade_ms/
