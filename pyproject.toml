@@ -41,4 +41,4 @@ testing = ["pytest", "pytest-flake8"]
 
 [build-system]
 requires = ["setuptools", "poetry"]
-build-backend = "poetry.masonry.api"
+build-backend = "poetry.core.masonry.api"
