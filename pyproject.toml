@@ -1,0 +1,44 @@
+[tool.poetry]
+name = "shadems"
+version = "0.5.2"
+description = "Rapid Measurement Set plotting with dask-ms and datashader"
+authors = ["Ian Heywood & RATT <ian.heywood@physics.ox.ac.uk>"]
+license = "GPL-2.0-only"
+homepage = "https://github.com/ratt-ru/shadeMS"
+repository = "https://github.com/ratt-ru/shadeMS"
+include = ["README.md"]
+kerywords = ["Astronomy", "Visualisation", "Packaging"]
+classifiers = [
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+        "Operating System :: POSIX :: Linux",
+        "Programming Language :: Python",
+        "Topic :: Scientific/Engineering :: Astronomy"
+]
+packages = [
+    { include = "shade_ms" },
+]
+
+[tool.poetry.scripts]
+shadems = {reference = "bin/shadems", type = "file"}
+
+[tool.poetry.dependencies]
+python = "^3.8"
+datashader = "^0.13.0"
+dask-ms = { version = "^0.2.15", extras = ["xarray"] }
+holoviews = "^1.14.9"
+matplotlib = { version = "^3.6.0" }
+cmasher = "^1.6.3"
+future-fstrings = "^1.2.0"
+requests = "^2.27.1"
+numpy = "1.23.5" # Datashader installs the latest numpy which is in conflict with <=1.35.5 required by numba 
+dask = {extras = ["array"], version = "2022.9.1"} # Datashader installs the latest dask which is in conflict with <2023.0.0 required by dask-ms[array]
+
+
+[tool.poetry.extras]
+testing = ["pytest", "pytest-flake8"]
+
+[build-system]
+requires = ["setuptools", "poetry"]
+build-backend = "poetry.masonry.api"
