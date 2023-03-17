@@ -33,8 +33,9 @@ cmasher = "^1.6.3"
 future-fstrings = "^1.2.0"
 requests = "^2.27.1"
 numpy = "1.23.5" # Datashader installs the latest numpy which is in conflict with <=1.35.5 required by numba 
-dask = {extras = ["array"], version = "2022.9.1"} # Datashader installs the latest dask which is in conflict with <2023.0.0 required by dask-ms[array]
-
+dask = { extras = ["array"], version = "2022.9.1" } # Datashader installs the latest dask which is in conflict with <2023.0.0 required by dask-ms[array]
+pytest = { version = "^7.2.2", optional=true }
+pytest-flake8 = { version = "^1.1.1", optional=true }
 
 [tool.poetry.extras]
 testing = ["pytest", "pytest-flake8"]
