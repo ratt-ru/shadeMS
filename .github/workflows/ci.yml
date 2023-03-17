@@ -43,7 +43,7 @@ jobs:
         run: poetry install --extras "testing"
 
       - name: Test command
-        run: shadems --help
+        run: poetry run python bin/shadems --help
 
       - name: Run testsuite
         run: poetry run py.test -vvv shade_ms/
