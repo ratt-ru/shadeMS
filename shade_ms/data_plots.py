@@ -165,7 +165,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                           freqs=freqs,
                           wavel=wavel,
                           rows=group.row,
-                          baselines=baselines if baselines else np.array([baseline]))
+                          baselines=baselines if [baselines] else np.array([baseline]))
 
             nchan = len(group.chan)
             if flag is not None:
