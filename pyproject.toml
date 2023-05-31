@@ -25,7 +25,7 @@ shadems = {reference = "bin/shadems", type = "file"}
 
 [tool.poetry.dependencies]
 python = "^3.8"
-datashader = "^0.13.0"
+datashader = "^0.15.0"
 dask-ms = { version = "^0.2.16", extras = ["xarray"] }
 holoviews = "^1.14.9"
 matplotlib = { version = "^3.6.0" }
