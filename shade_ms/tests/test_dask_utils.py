@@ -3,7 +3,6 @@ import dask.array as da
 import dask.dataframe as dd
 import numpy as np
 from numpy.testing import assert_array_equal
-import pandas as pd
 import pytest
 
 from shade_ms.dask_utils import dataframe_factory
@@ -93,7 +92,7 @@ def test_dataframe_factory_multicol():
     assert_array_equal(df['c0'].min(), data1c.min())
     assert_array_equal(df['c0'].max(), data1c.max())
 
-    df = pd.concat([df, df])
+    df = dd.multi.concat([df, df])
 
     assert_array_equal(df['x'].min(), data1a.min())
     assert_array_equal(df['x'].max(), data1a.max())
