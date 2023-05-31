@@ -3,7 +3,7 @@ import os
 
 # set default number of renderers to half the available cores
 DEFAULT_CNUM = 16
-DEFAULT_NUM_RENDERS = max(1, len(os.sched_getaffinity(0))//2)
+DEFAULT_NUM_RENDERS = max(1, os.cpu_count()//2)
 
 from .__main__ import cli, parse_plot_spec, parse_slice_spec  # noqa
 
