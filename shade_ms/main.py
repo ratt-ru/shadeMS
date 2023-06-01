@@ -573,3 +573,6 @@ def main(argv):
 
     log.info('Finished')
     separator()
+
+def driver()
+    main([a for a in sys.argv[1:]])
