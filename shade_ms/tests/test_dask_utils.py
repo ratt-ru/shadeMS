@@ -92,7 +92,7 @@ def test_dataframe_factory_multicol():
     assert_array_equal(df['c0'].min(), data1c.min())
     assert_array_equal(df['c0'].max(), data1c.max())
 
-    df = df.append(df)
+    df = dd.multi.concat([df, df])
 
     assert_array_equal(df['x'].min(), data1a.min())
     assert_array_equal(df['x'].max(), data1a.max())

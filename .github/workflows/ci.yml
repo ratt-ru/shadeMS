@@ -48,6 +48,13 @@ jobs:
       - name: Run testsuite
         run: poetry run py.test -vvv shade_ms/
 
+      - name: Download test dataset
+        run: curl https://ratt-public-data.s3.af-south-1.amazonaws.com/test-data/HLTau_B6cont.calavg.tav300s.tar.xz | tar xJf -
+
+      - name: Run end to end test
+        run: poetry run python bin/shadems HLTau_B6cont.calavg.tav300s
+
+
   # deploy:
   #   needs: [test]
   #   runs-on: ubuntu-latest
