@@ -43,7 +43,7 @@ jobs:
         run: poetry install --extras "testing"
 
       - name: Test command
-        run: poetry run python bin/shadems --help
+        run: poetry run shadems --help
 
       - name: Run testsuite
         run: poetry run py.test -vvv shade_ms/
@@ -52,7 +52,7 @@ jobs:
         run: curl https://ratt-public-data.s3.af-south-1.amazonaws.com/test-data/HLTau_B6cont.calavg.tav300s.tar.xz | tar xJf -
 
       - name: Run end to end test
-        run: poetry run python bin/shadems HLTau_B6cont.calavg.tav300s
+        run: poetry run shadems HLTau_B6cont.calavg.tav300s
 
 
   # deploy:

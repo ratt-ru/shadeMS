@@ -21,7 +21,7 @@ packages = [
 ]
 
 [tool.poetry.scripts]
-shadems = {reference = "bin/shadems", type = "file"}
+shadems = "shade_ms.main:driver"
 
 [tool.poetry.dependencies]
 python = "^3.8"
