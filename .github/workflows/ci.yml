@@ -21,7 +21,7 @@ jobs:
 
       - name: Cache Installations
         id: cache-installs
-        uses: actions/cache@v4
+        uses: actions/cache@v3
         with:
           path: ~/.local
           key: install-${{ env.INSTALL_CACHE_HASH }}-4
