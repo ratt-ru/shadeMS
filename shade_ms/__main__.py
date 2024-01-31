@@ -35,11 +35,12 @@ def cli():
     group_opts = parser.add_argument_group("Plot types and data sources")
     group_opts.add_argument("-x", "--xaxis", action="append",
         help="""X axis of plot, e.g. "amp:CORRECTED_DATA"
-             This recognizes all column names (also CHAN, FREQ, CORR, ROW, WAVEL, U, V, W, UV)
+             This recognizes all column names (also CHAN, FREQ, CORR, ROW, WAVEL, u, v, w, uv)
              and, for complex columns, keywords such as 'amp', 'phase', 'real', 'imag'.
              You can also specify correlations, e.g. 'DATA:phase:XX',
              and do two-column arithmetic with "+-*/", e.g. 'DATA-MODEL_DATA:amp'.
-             Correlations may be specified by label, number, or as a Stokes parameter.
+             Correlations may be specified by label, number, or as a Stokes parameter 
+             (upper case is required to avoid ambiguity with baseline coordinates).
              The order of specifiers does not matter.""")
     group_opts.add_argument("-y", "--yaxis", action="append",
         help="""Y axis to plot.
