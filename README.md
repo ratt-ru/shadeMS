@@ -61,7 +61,7 @@ $ shadems <msname>
 
 ### Changing the plot axes
 
-* To change the plot axes you can provide selections via the `--xaxis` / `--yaxis` (or `-x` / `-y`) options. Existing Measurement Set columns (e.g. `DATA`, `CORRECTED_DATA`, `TIME`) as well as standard subsets and derivatives and (e.g. `CHAN`, `FREQ`, `U`, `V`) can be provided. Note the capitalised convention. 
+* To change the plot axes you can provide selections via the `--xaxis` / `--yaxis` (or `-x` / `-y`) options. Existing Measurement Set columns (e.g. `DATA`, `CORRECTED_DATA`, `TIME`) as well as standard subsets and derivatives and (e.g. `CHAN`, `FREQ`, `u`, `v`) can be provided. Note the capitalised convention. 
 
 ```
 $ shadems --xaxis FREQ --yaxis DATA:amp <msname>
@@ -127,7 +127,7 @@ The example below will produce a plot per field.
 If no ``--field`` selection is provided, then `shadems` will iterate over all fields in the MS:
 
 ```
-$ shadems --xaxis CORRECTED_DATA:real,UV --yaxis CORRECTED_DATA:imag,CORRECTED_DATA:amp --field 0,2 --corr XX,YY --iter-field <msname>
+$ shadems --xaxis CORRECTED_DATA:real,uv --yaxis CORRECTED_DATA:imag,CORRECTED_DATA:amp --field 0,2 --corr XX,YY --iter-field <msname>
 ```
 
 * You can also iterate over SPWs, scans, correlations and (coming soon) antennas.
@@ -137,7 +137,7 @@ $ shadems --xaxis CORRECTED_DATA:real,UV --yaxis CORRECTED_DATA:imag,CORRECTED_D
 * If you want to see how well your model fits your data then you can subtract the `MODEL_DATA` column from the `CORRECTED_DATA` column prior to plotting. For example, to show this residual product on a uv-distance plot:
 
 ```
-$ shadems --xaxis UV --yaxis CORRECTED_DATA-MODEL_DATA:amp --field 0 --corr XX,YY <msname>
+$ shadems --xaxis uv --yaxis CORRECTED_DATA-MODEL_DATA:amp --field 0 --corr XX,YY <msname>
 ```
 
 * ``CORRECTED_DATA/MODEL_DATA`` can also be useful. For the sake of completeness, ``*`` and ``+`` are also 
@@ -150,7 +150,7 @@ points in the plot according to the selected colourmap. You can instruct `shadem
 using the `--colour-by` switch. For example, to plot amplitude against uv-distance coloured by antenna 1:
 
 ```
-$ shadems --xaxis UV --yaxis DATA:amp:XX --colour-by ANTENNA1 <msname>
+$ shadems --xaxis uv --yaxis DATA:amp:XX --colour-by ANTENNA1 <msname>
 ```
 
 * The `--colour-by` option also supports full MS columns as well as metadata, allowing for 
@@ -159,7 +159,7 @@ you must specify explicit limits with ``--cmin`` and ``--cmax``.
 For example, to make a u,v coverage plot colourised by the corrected visibility amplitudes in XX:
 
 ```
-$ shadems --xaxis U --yaxis V --colour-by CORRECTED_DATA:amp:XX --cmin 0 --cmax 5 <msname>
+$ shadems --xaxis u --yaxis v --colour-by CORRECTED_DATA:amp:XX --cmin 0 --cmax 5 <msname>
 ```
 
 ---
@@ -180,13 +180,14 @@ Plot types and data sources:
   -x XAXIS, --xaxis XAXIS
                         X axis of plot, e.g. "amp:CORRECTED_DATA" This
                         recognizes all column names (also CHAN, FREQ, CORR,
-                        ROW, WAVEL, U, V, W, UV), and, for complex columns,
+                        ROW, WAVEL, u, v, w, uv), and, for complex columns,
                         keywords such as 'amp', 'phase', 'real', 'imag'. You
                         can also specify correlations, e.g. 'DATA:phase:XX',
                         and do two-column arithmetic with "+-*/", e.g. 'DATA-
-                        MODEL_DATA:amp'. Correlations may be specified by
-                        label, number, or as a Stokes parameter. The order of
-                        specifiers does not matter.
+                        MODEL_DATA:amp'. Correlations may be specified by label,
+                        number, or as a Stokes parameter (upper case is required
+                        to avoid ambiguity with baseline coordinates). The order
+                        of specifiers does not matter
   -y YAXIS, --yaxis YAXIS
                         Y axis to plot. Must be given the same number of times
                         as --xaxis. Note that X/Y can employ different columns
