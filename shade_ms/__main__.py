@@ -97,7 +97,6 @@ def cli():
         help="Maximum value to be coloured by.")
     group_opts.add_argument("--cnum", action="append",
         help=f"""Number of steps used to discretize a continuous axis. Default is {DEFAULT_CNUM}.""")
-
     group_opts.add_argument("--xlim-load", action="store_true",
         help=f"Load x-axis limits from limits file, if available.")
     group_opts.add_argument("--ylim-load", action="store_true",
@@ -185,6 +184,9 @@ def cli():
         help="RGB hex code for background colour (default = %(default)s)")
     group_opts.add_argument("--fontsize", default=16, type=float,
         help="Font size for all text elements (default = %(default)s)")
+    group_opts.add_argument("--nocolourbar", action="store_true",
+        help=f"Do not show the colour bar.")
+
 
     group_opts.add_argument('--hline', type=str, metavar="Y[-[colour]]", 
                       help="Draw horizontal line(s) at given Y coordinate(s). You can append a matplotlib linestyle "
