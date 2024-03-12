@@ -556,7 +556,7 @@ def create_plot(ddf, index_subsets, xdatum, ydatum, adatum, ared, cdatum, cmap, 
             ax.set_yticks(range(n), minor=True)
 
     # colorbar?
-    if color_minmax:
+    if color_minmax and not options.nocolourbar: 
         import matplotlib.colors
         # discrete axis
         if caxis is not None and cdatum.is_discrete:
