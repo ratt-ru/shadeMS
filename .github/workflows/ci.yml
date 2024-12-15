@@ -3,7 +3,7 @@ name: Ubuntu CI
 on: [push, pull_request]
 
 env:
-  POETRY_VERSION: 1.4.0
+  POETRY_VERSION: 1.8.5
 
 jobs:
   test:
@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-20.04, ubuntu-22.04 ]
-        python-version: ["3.8", "3.9", "3.10"]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
     steps:
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4

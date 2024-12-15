@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "shadems"
-version = "0.5.3"
+version = "0.5.4"
 description = "Rapid Measurement Set plotting with dask-ms and datashader"
 authors = ["Ian Heywood & RATT <ian.heywood@physics.ox.ac.uk>"]
 license = "GPL-2.0-only"
@@ -24,11 +24,11 @@ packages = [
 shadems = "shade_ms.main:driver"
 
 [tool.poetry.dependencies]
-python = "^3.8"
-datashader = "^0.15.0"
-dask-ms = { version = "^0.2.16", extras = ["xarray"] }
-holoviews = "^1.14.9"
-matplotlib = { version = "^3.6.0" }
+python = "^3.9, < 3.13"
+datashader = "^0.16.0"
+dask-ms = { version = "^0.2.20", extras = ["xarray"] }
+holoviews = "^1.20.0"
+matplotlib = { version = "^3.9.4" }
 cmasher = "^1.6.3"
 future-fstrings = "^1.2.0"
 requests = "^2.27.1"
