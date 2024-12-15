@@ -416,6 +416,35 @@ xarray = ["xarray (>=2023.01.0)"]
 zarr = ["zarr (>=2.12.0,<3.0.0)"]
 
 [[package]]
+name = "dask-ms"
+version = "0.2.23"
+description = "xarray Dataset from CASA Tables"
+optional = false
+python-versions = "<3.13,>=3.10"
+files = [
+    {file = "dask_ms-0.2.23-py3-none-any.whl", hash = "sha256:f4c42c1b379ba579cbb0c9b8676d16d0f47ee0d0ed1921925ec373182db316e4"},
+    {file = "dask_ms-0.2.23.tar.gz", hash = "sha256:54450f7cc0c16a464d8aa79e0e5bdaa49f6494155096ce35f9bbe628b585987b"},
+]
+
+[package.dependencies]
+appdirs = ">=1.4.4,<2.0.0"
+dask = {version = ">=2023.1.1,<2024.11.0", extras = ["array"]}
+donfig = ">=0.8.0"
+fsspec = ">=2022.7.0"
+numpy = ">=2.0.0"
+python-casacore = ">=3.6.1,<4.0.0"
+xarray = {version = ">=2023.01.0", optional = true, markers = "extra == \"katdal\" or extra == \"xarray\" or extra == \"complete\""}
+
+[package.extras]
+arrow = ["pandas (>=2.1.2,<3.0.0)", "pyarrow (>=14.0.1)"]
+complete = ["katdal (>=0.23,<0.24)", "pandas (>=2.1.2,<3.0.0)", "pyarrow (>=14.0.1)", "s3fs (>=2023.1.0)", "xarray (>=2023.01.0)", "zarr (>=2.12.0,<3.0.0)"]
+katdal = ["katdal (>=0.23,<0.24)", "xarray (>=2023.01.0)", "zarr (>=2.12.0,<3.0.0)"]
+s3 = ["s3fs (>=2023.1.0)"]
+testing = ["minio (>=7.2.0,<8.0.0)", "pytest (>=7.1.3,<8.0.0)"]
+xarray = ["xarray (>=2023.01.0)"]
+zarr = ["zarr (>=2.12.0,<3.0.0)"]
+
+[[package]]
 name = "datashader"
 version = "0.16.3"
 description = "Data visualization toolchain based on aggregating into a grid"
@@ -463,6 +492,24 @@ files = [
 
 [package.dependencies]
 pyyaml = "*"
+
+[[package]]
+name = "donfig"
+version = "0.8.1.post1"
+description = "Python package for configuring a python package"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "donfig-0.8.1.post1-py3-none-any.whl", hash = "sha256:2a3175ce74a06109ff9307d90a230f81215cbac9a751f4d1c6194644b8204f9d"},
+    {file = "donfig-0.8.1.post1.tar.gz", hash = "sha256:3bef3413a4c1c601b585e8d297256d0c1470ea012afa6e8461dc28bfb7c23f52"},
+]
+
+[package.dependencies]
+pyyaml = "*"
+
+[package.extras]
+docs = ["cloudpickle", "numpydoc", "pytest", "sphinx (>=4.0.0)"]
+test = ["cloudpickle", "pytest"]
 
 [[package]]
 name = "exceptiongroup"
@@ -2031,4 +2078,4 @@ testing = ["pytest", "pytest-flake8"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9, < 3.13"
-content-hash = "0a2dcddc7dd8824e4500aa12dcc0f0186e38ba425fdc7f8ba4044a5f619c0239"
+content-hash = "a0e8d7545b823140f679e07473d9d0f2c45689bc98eba3dc65cda407c9c3c8d4"
