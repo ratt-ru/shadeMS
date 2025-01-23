@@ -26,6 +26,9 @@ jobs:
           path: ~/.local
           key: install-${{ env.INSTALL_CACHE_HASH }}-4
 
+      - name: Install latest setuptools, wheel, pip
+        run: python3 -m pip install -U pip setuptools wheel
+
       - name: Install Poetry
         if: steps.cache-installs.outputs.cache-hit != 'true'
         run: |
