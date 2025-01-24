@@ -45,6 +45,9 @@ jobs:
       - name: Install shadems
         run: poetry install --extras "testing"
 
+      - name: Check installed version command
+        run: poetry run shadems --version
+
       - name: Test command
         run: poetry run shadems --help
 
