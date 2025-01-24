@@ -27,23 +27,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Cache Installations
-        id: cache-installs
-        uses: actions/cache@v4
-        with:
-          path: ~/.local
-          key: install-${{ env.INSTALL_CACHE_HASH }}-
-
       - name: Install latest setuptools, wheel, pip
         run: python3 -m pip install -U pip setuptools wheel
 
       - name: Install Poetry
-        if: steps.cache-installs.outputs.cache-hit != 'true'
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
-
-      - name: Test poetry
-        run: poetry --version
+        uses: abatilo/actions-poetry@v3
+        with:
+          poetry-version: ${{ env.POETRY_VERSION }}
 
       - name: Checkout source
         uses: actions/checkout@v2
