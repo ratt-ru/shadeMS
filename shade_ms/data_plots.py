@@ -17,8 +17,6 @@ from datashader.reductions import category_modulo, category_binning
 import numpy as np
 import pylab
 import textwrap
-import argparse
-import itertools
 import matplotlib.cm
 from shade_ms import log
 import colorcet
