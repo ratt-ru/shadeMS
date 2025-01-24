@@ -3,13 +3,13 @@
 import argparse
 import itertools
 import numpy
-import pkg_resources
+from importlib.metadata import version, PackageNotFoundError
 
 from . import DEFAULT_CNUM, DEFAULT_NUM_RENDERS
 
 try:
-    __version__ = pkg_resources.require("shadems")[0].version
-except pkg_resources.DistributionNotFound:
+    __version__ = version("shadems")
+except PackageNotFoundError:
     __version__ = "dev"
 
 
