@@ -21,10 +21,10 @@ jobs:
 
       - name: Cache Installations
         id: cache-installs
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.local
-          key: install-${{ env.INSTALL_CACHE_HASH }}-4
+          key: install-${{ env.INSTALL_CACHE_HASH }}-
 
       - name: Install latest setuptools, wheel, pip
         run: python3 -m pip install -U pip setuptools wheel
