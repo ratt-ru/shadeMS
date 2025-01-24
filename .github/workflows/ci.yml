@@ -1,9 +1,17 @@
 name: Ubuntu CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+    - main
+    tags:
+    - "*"
+  pull_request:
+  schedule:
+    - cron: '30 2 * * 1,4' # Every Monday and Thursday @ 2h30am UTC
 
 env:
-  POETRY_VERSION: 1.4.0
+  POETRY_VERSION: 2.0.1
 
 jobs:
   test:
@@ -11,8 +19,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-20.04, ubuntu-22.04 ]
-        python-version: ["3.8", "3.9", "3.10"]
+        os: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04 ]
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
@@ -21,10 +29,13 @@ jobs:
 
       - name: Cache Installations
         id: cache-installs
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.local
-          key: install-${{ env.INSTALL_CACHE_HASH }}-4
+          key: install-${{ env.INSTALL_CACHE_HASH }}-
+
+      - name: Install latest setuptools, wheel, pip
+        run: python3 -m pip install -U pip setuptools wheel
 
       - name: Install Poetry
         if: steps.cache-installs.outputs.cache-hit != 'true'
@@ -41,6 +52,9 @@ jobs:
 
       - name: Install shadems
         run: poetry install --extras "testing"
+
+      - name: Check installed version command
+        run: poetry run shadems --version
 
       - name: Test command
         run: poetry run shadems --help
