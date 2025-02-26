@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "shadems"
-version = "0.5.4"
+version = "0.5.5"
 description = "Rapid Measurement Set plotting with dask-ms and datashader"
 authors = ["Ian Heywood & RATT <ian.heywood@physics.ox.ac.uk>"]
 license = "GPL-2.0-only"
