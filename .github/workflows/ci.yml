@@ -49,7 +49,7 @@ jobs:
       - name: Test command
         run: poetry run shadems --help
 
-      - name: Run testsuite
+      - name: Run test suite
         run: poetry run py.test -vvv shade_ms/
 
       - name: Download test dataset
@@ -58,7 +58,7 @@ jobs:
       - name: Run end to end test
         run: |
           poetry run shadems HLTau_B6cont.calavg.tav300s
-          shadems HLTau_B6cont.calavg.tav300s -x FREQ -y amp -a FLAG --field 0 --title 'test1' --col DATA --png test.png --corr XX --ymin 0 --ymax 30
+          poetry run shadems HLTau_B6cont.calavg.tav300s -x FREQ -y amp -a FLAG --field 0 --title 'test1' --col DATA --png test.png --corr XX --ymin 0 --ymax 30
 
 
   # deploy:
