@@ -74,7 +74,7 @@ class NamedList(object):
                 return self
             ind = []
             for x in subset.split(","):
-                if allow_numeric_indices and re.fullmatch('\d+', x):
+                if allow_numeric_indices and re.fullmatch(r'\d+', x):
                     x = int(x)
                     if x not in self.numindex:
                         raise ValueError(f"invalid {self.label} number {x}")
