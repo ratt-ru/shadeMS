@@ -30,14 +30,11 @@ dependencies = [
     "holoviews>=1.20.0,<2",
     "matplotlib>=3.9.4,<4",
     "pillow>=12.1.1,<13",
-    "pyarrow>=24.0.0",
+    "pyarrow>=24.0.0,<25",
     "requests>=2.32.4,<3",
     "tornado>=6.5.1,<7",
     "urllib3>=2.6.3,<3"
 ]
-
-[project.optional-dependencies]
-testing = ["pytest>=7.2.2,<8", "pytest-flake8>=1.1.1,<2"]
 
 [project.urls]
 Homepage = "https://github.com/ratt-ru/shadeMS"
