@@ -1,5 +1,3 @@
-# -*- coding: future_fstrings -*-
-
 # ian.heywood@physics.ox.ac.uk
 
 import matplotlib

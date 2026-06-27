@@ -1,5 +1,3 @@
-# -*- coding: future_fstrings -*-
-
 import matplotlib
 matplotlib.use('agg')
 

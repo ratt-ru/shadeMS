@@ -1,5 +1,3 @@
-# -*- coding: future_fstrings -*-
-
 import argparse
 import itertools
 import numpy
