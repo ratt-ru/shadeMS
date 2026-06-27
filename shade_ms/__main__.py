@@ -151,6 +151,13 @@ def cli():
     group_opts.add_argument("--chan",
         help="""Channel slice, as [start]:[stop][:step], default is to plot all channels""")
 
+    group_opts = parser.add_argument_group("Data averaging")
+    group_opts.add_argument("--average", action="append", metavar="AXIS:BIN",
+        help="""Average the data along an axis before plotting, as 'AXIS:BIN' where BIN is the
+             bin size: seconds (TIME) or number of channels (CHAN) to average together, or 'all'
+             to collapse the whole axis. A bin size spanning all the data falls back to 'all'.
+             Repeatable, e.g. '--average TIME:60 --average CHAN:4'. Supported axes: TIME, CHAN.""")
+
     group_opts = parser.add_argument_group("Rendering settings")
     group_opts.add_argument("-X", "--xcanvas", default=1280, type=int,
         help="Canvas x-size in pixels (default = %(default)s)")

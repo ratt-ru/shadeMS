@@ -104,7 +104,7 @@ def main(argv):
     # re-check that kwargs are valid
     for funcname, args, kwargs in extra_markup:
         log.info(f"markup: {funcname} *{args} **{kwargs})")
-        if not all([re.match('^\w+$', kw) for kw in kwargs.keys()]):
+        if not all([re.match(r'^\w+$', kw) for kw in kwargs.keys()]):
             log.error("the above is not a valid markup specification, please fix")
             sys.exit(1)
 
@@ -114,6 +114,40 @@ def main(argv):
     except ValueError:
         # parser.error(f"invalid selection --{'chan'} {options.chan}")
         parser.error(f"invalid selection --chan {options.chan}")
+
+    # check averaging spec -- maps an axis name to its bin size: seconds (TIME) or number
+    # of channels (CHAN) to average together, or "all" to collapse the whole axis
+    supported_avg_axes = {"TIME", "CHAN"}
+    phase2_avg_axes = {"BASELINE", "ANTENNA", "SPW", "SCAN", "FIELD"}
+    avg_spec = {}
+    for spec in options.average or []:
+        bits = spec.split(":")
+        if len(bits) != 2:
+            parser.error(f"invalid --average '{spec}', expected AXIS:BIN")
+        axis = bits[0].strip().upper()
+        if axis in phase2_avg_axes:
+            parser.error(f"--average {axis} is not supported yet")
+        if axis not in supported_avg_axes:
+            parser.error(f"unknown --average axis '{axis}', supported: {', '.join(sorted(supported_avg_axes))}")
+        if axis in avg_spec:
+            parser.error(f"axis {axis} given more than once in --average")
+        if bits[1].strip().lower() == "all":
+            binsize = "all"
+        elif axis == "CHAN":
+            try:
+                binsize = int(bits[1])
+            except ValueError:
+                parser.error(f"invalid bin size '{bits[1]}' in --average {spec}, must be a positive integer (channels) or 'all'")
+            if binsize < 1:
+                parser.error(f"invalid bin size {binsize} in --average {spec}, must be >= 1")
+        else:  # TIME bin size is in seconds (may be fractional)
+            try:
+                binsize = float(bits[1])
+            except ValueError:
+                parser.error(f"invalid bin size '{bits[1]}' in --average {spec}, must be a positive number of seconds or 'all'")
+            if binsize <= 0:
+                parser.error(f"invalid bin size {binsize} in --average {spec}, must be > 0")
+        avg_spec[axis] = binsize
 
     # issue warning if only a single antenna is specified
     num_ants_warning = False
@@ -236,11 +270,20 @@ def main(argv):
         log.info('Scan(s)          : all')
     if options.iter_scan:
         group_cols.append('SCAN_NUMBER')
+    # averaging groups per scan: keeps SCAN_NUMBER a scalar group key (carried through the
+    # rebuilt dataset) and stops time bins spanning scans
+    if avg_spec and 'SCAN_NUMBER' not in group_cols:
+        group_cols.append('SCAN_NUMBER')
 
     if chanslice == slice(None):
         log.info('Channels         : all')
     else:
         log.info(f"Channels         : {':'.join(str(x) if x is not None else '' for x in chanslice_spec)}")
+
+    if avg_spec:
+        units = {"TIME": "s", "CHAN": " chan"}
+        log.info("Averaging        : " + ", ".join(
+            f"{ax} {n}" if n == "all" else f"{ax} {n}{units.get(ax, '')}" for ax, n in avg_spec.items()))
 
     mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else ''
   # --- building SQL query --
@@ -423,6 +466,7 @@ def main(argv):
                                  iter_scan=options.iter_scan, iter_ant=options.iter_ant,
                                  iter_baseline=options.iter_baseline,
                                  join_corrs=join_corrs,
+                                 avg_spec=avg_spec,
                                  row_chunk_size=options.row_chunk_size)
     if len(dataframes) < 1:
         log.warn("No data for selection subset")

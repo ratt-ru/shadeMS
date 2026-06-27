@@ -132,6 +132,25 @@ $ shadems --xaxis CORRECTED_DATA:real,uv --yaxis CORRECTED_DATA:imag,CORRECTED_D
 
 * You can also iterate over SPWs, scans, correlations and (coming soon) antennas.
 
+### Averaging
+
+* The data can be time- and/or channel-averaged before plotting, which cuts noise and the
+number of points to render. Use `--average AXIS:BIN`, where `BIN` is the bin size: seconds
+(`TIME`) or number of channels (`CHAN`) to average together. Use `AXIS:all` to collapse the
+whole axis. The flag is repeatable. Averaging is weighted (using `WEIGHT_SPECTRUM`/`WEIGHT`
+if present) and flag-aware:
+
+```
+$ shadems --xaxis CHAN --yaxis DATA:amp --average CHAN:4 <msname>          # 4 channels per bin
+$ shadems --xaxis TIME --yaxis DATA:amp --average TIME:60 <msname>         # 60-second time bins
+$ shadems --xaxis FREQ --yaxis DATA:amp --average TIME:all <msname>        # collapse all time
+$ shadems --xaxis TIME --yaxis DATA:amp --average TIME:60 --average CHAN:4 <msname>
+```
+
+* Supported axes are `TIME` (seconds) and `CHAN` (channels). A bin size spanning all the
+available data falls back to `all` (with a warning). Channel selection (`--chan`) is applied
+*before* averaging. Time averaging is done per scan (bins never span scan boundaries).
+
 ### Plotting residuals
 
 * If you want to see how well your model fits your data then you can subtract the `MODEL_DATA` column from the `CORRECTED_DATA` column prior to plotting. For example, to show this residual product on a uv-distance plot:

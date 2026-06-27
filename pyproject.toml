@@ -30,6 +30,7 @@ dask-ms = [
     { version = "^0.2.20", extras = ["xarray"], python = "<3.12" },
     { version = "^0.2.23", extras = ["xarray"], python = ">=3.12" }
 ]
+codex-africanus = { version = "^0.4.4", extras = ["dask"] }
 holoviews = "^1.20.0"
 matplotlib = { version = "^3.9.4" }
 cmasher = "^1.6.3"

@@ -6,6 +6,7 @@ import matplotlib
 matplotlib.use('agg')
 
 import daskms
+import dask
 import dask.array as da
 import dask.dataframe as dask_df
 import xarray
@@ -57,11 +58,169 @@ def freq_to_wavel(ff):
     c = 299792458.0  # m/s
     return c/ff
 
+
+def _bin_mean_freqs(freqs, chan_bin_size):
+    """Average a 1D frequency array into contiguous bins of chan_bin_size (last bin may be partial)."""
+    freqs = np.asarray(freqs, dtype=float)
+    if chan_bin_size <= 1:
+        return freqs
+    n = freqs.shape[0]
+    nbins = int(np.ceil(n / chan_bin_size))
+    pad = nbins * chan_bin_size - n
+    if pad:
+        freqs = np.concatenate([freqs, np.full(pad, np.nan)])
+    with np.errstate(all='ignore'):
+        return np.nanmean(freqs.reshape(nbins, chan_bin_size), axis=1)
+
+
+def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, row_chunk_size,
+                  warned=None):
+    """Time/channel-average a single MS group with africanus.
+
+    avg_spec maps axis name ('TIME'/'CHAN') to its bin size: seconds (TIME), channels per
+    bin (CHAN), or the string "all" to collapse the whole axis. A bin size that spans all
+    the available data falls back to "all" (warning once via `warned`).
+    Returns (averaged xarray.Dataset, averaged-and-binned chan_freq DataArray). The
+    averaged group carries the same scalar group keys (DATA_DESC_ID, FIELD_ID,
+    SCAN_NUMBER, ...) as the input so downstream indexing is unaffected.
+    """
+    if warned is None:
+        warned = set()
+    from africanus.averaging.dask import time_and_channel
+
+    nrow = len(group.row)
+    chan_freq = np.asarray(chan_freq)[chanslice]
+    nchan = chan_freq.shape[0]
+
+    def _sel_chan(arr):  # arr is (row, chan, corr) -- apply channel selection on axis 1
+        return arr[:, chanslice, :]
+
+    def _ant(name):  # (row,) int array, broadcasting a scalar group key (iter-baseline)
+        a = getattr(group, name)
+        if np.ndim(a) >= 1:  # per-row data column
+            return a.data
+        return da.full((nrow,), int(a), dtype=np.int32)  # scalar group-by attribute
+
+    time = group.TIME.data
+    interval = group.INTERVAL.data
+    ant1, ant2 = _ant("ANTENNA1"), _ant("ANTENNA2")
+
+    # bin sizes: CHAN -> channels per bin (africanus chan_bin_size directly);
+    # TIME -> integrations per bin, converted to a seconds threshold for africanus.
+    # A bin size larger than the available items falls back to collapsing the whole axis.
+    chan_spec = avg_spec.get("CHAN")
+    if chan_spec == "all":
+        chan_bin_size = nchan
+    elif chan_spec:
+        chan_bin_size = int(chan_spec)
+        if chan_bin_size > nchan:
+            if "CHAN" not in warned:
+                warned.add("CHAN")
+                log.warning(f"--average CHAN:{chan_spec} exceeds the {nchan} channels available; "
+                            f"averaging all channels (use 'CHAN:all' to silence this)")
+            chan_bin_size = nchan
+    else:
+        chan_bin_size = 1
+
+    time_spec = avg_spec.get("TIME")
+    if time_spec:
+        tmin, tmax = float(time.min().compute()), float(time.max().compute())
+        dt = float(interval.mean().compute())
+        full_thresh = (tmax - tmin) + dt   # threshold that puts every integration in one bin
+        if time_spec == "all":
+            time_bin_secs = full_thresh
+        else:
+            time_bin_secs = float(time_spec)   # bin size is already in seconds
+            if time_bin_secs >= full_thresh:
+                if "TIME" not in warned:
+                    warned.add("TIME")
+                    log.warning(f"--average TIME:{time_spec} covers the whole {full_thresh:.4g}s "
+                                f"time range; averaging all time (use 'TIME:all' to silence this)")
+                time_bin_secs = full_thresh
+    else:
+        # no time averaging: keep one integration per bin
+        time_bin_secs = max(float(interval.min().compute()) * 0.5, 1e-9)
+
+    if noflags:
+        flag = flag_row = None
+    else:
+        flag = _sel_chan(group.FLAG.data)
+        flag_row = group.FLAG_ROW.data
+
+    weight = weight_spectrum = None
+    if hasattr(group, "WEIGHT_SPECTRUM"):
+        weight_spectrum = _sel_chan(group.WEIGHT_SPECTRUM.data)
+    elif hasattr(group, "WEIGHT"):
+        weight = group.WEIGHT.data
+
+    uvw = group.UVW.data if hasattr(group, "UVW") else None
+    vis = tuple(_sel_chan(getattr(group, c).data) for c in vis_columns)
+
+    res = time_and_channel(time, interval, ant1, ant2,
+                           flag_row=flag_row, uvw=uvw,
+                           weight=weight, weight_spectrum=weight_spectrum,
+                           visibilities=vis if vis else None, flag=flag,
+                           time_bin_secs=time_bin_secs, chan_bin_size=chan_bin_size)
+
+    # africanus output rows are lazy with unknown size; materialise this (small) group
+    out = dict(TIME=res.time, INTERVAL=res.interval, ANTENNA1=res.antenna1, ANTENNA2=res.antenna2)
+    if res.uvw is not None:
+        out["UVW"] = res.uvw
+    if not noflags:
+        out["FLAG"], out["FLAG_ROW"] = res.flag, res.flag_row
+    avg_vis = res.visibilities if isinstance(res.visibilities, (tuple, list)) else (res.visibilities,)
+    for col, arr in zip(vis_columns, avg_vis):
+        out[col] = arr
+    computed = dask.compute(out)[0]
+
+    avg_freqs = _bin_mean_freqs(chan_freq, chan_bin_size)
+    nrow_avg = computed["TIME"].shape[0]
+    if vis_columns:
+        nchan_avg, ncorr = computed[vis_columns[0]].shape[1:3]
+    elif not noflags:
+        nchan_avg, ncorr = computed["FLAG"].shape[1:3]
+    else:
+        nchan_avg, ncorr = len(avg_freqs), None
+
+    def _da1(a):
+        return da.from_array(a, chunks=(row_chunk_size,))
+
+    def _da3(a):
+        return da.from_array(a, chunks=(row_chunk_size, a.shape[1], a.shape[2]))
+
+    data_vars = {col: (("row", "chan", "corr"), _da3(computed[col])) for col in vis_columns}
+    data_vars["TIME"] = (("row",), _da1(computed["TIME"]))
+    data_vars["INTERVAL"] = (("row",), _da1(computed["INTERVAL"]))
+    if "UVW" in computed:
+        u = computed["UVW"]
+        data_vars["UVW"] = (("row", "uvw"), da.from_array(u, chunks=(row_chunk_size, u.shape[1])))
+    if not noflags:
+        data_vars["FLAG"] = (("row", "chan", "corr"), _da3(computed["FLAG"]))
+        data_vars["FLAG_ROW"] = (("row",), _da1(computed["FLAG_ROW"]))
+    # antenna columns are per-row data vars unless this group is keyed by a single baseline
+    # (in which case they are scalar group-by attributes, carried over via attrs below)
+    if np.ndim(getattr(group, "ANTENNA1")) >= 1:
+        data_vars["ANTENNA1"] = (("row",), _da1(computed["ANTENNA1"]))
+        data_vars["ANTENNA2"] = (("row",), _da1(computed["ANTENNA2"]))
+
+    coords = {"row": np.arange(nrow_avg), "chan": np.arange(nchan_avg)}
+    if ncorr is not None:
+        coords["corr"] = np.arange(ncorr)
+
+    avg_group = xarray.Dataset(data_vars, coords=coords)
+    # group-by columns (DATA_DESC_ID, FIELD_ID, SCAN_NUMBER, and scalar ANTENNA1/2 when
+    # iterating baselines) are dataset attributes -- carry them over so downstream indexing works
+    avg_group.attrs.update(group.attrs)
+
+    return avg_group, xarray.DataArray(avg_freqs, dims=("chan",))
+
+
 def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                   chanslice, subset,
                   noflags, noconj,
                   iter_field, iter_spw, iter_scan, iter_ant, iter_baseline,
                   join_corrs=False,
+                  avg_spec=None,
                   row_chunk_size=100000):
 
     ms_cols = {'ANTENNA1', 'ANTENNA2'}
@@ -71,6 +230,20 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
     # get visibility columns
     for axis in DataAxis.all_axes.values():
         ms_cols.update(axis.columns)
+
+    # for averaging, africanus needs extra inputs (and the visibility-like columns it averages)
+    vis_columns = []
+    avg_warned = set()   # tracks which axes already warned about bin-size overflow
+    if avg_spec:
+        vis_columns = sorted({c for axis in DataAxis.all_axes.values() for c in axis.columns
+                              if c and (c.endswith("DATA") or c.endswith("SPECTRUM"))})
+        ms_cols.update({'TIME', 'INTERVAL'})
+        if 'UVW' in msinfo.valid_columns:
+            ms_cols.add('UVW')
+        if 'WEIGHT_SPECTRUM' in msinfo.valid_columns:
+            ms_cols.add('WEIGHT_SPECTRUM')
+        elif 'WEIGHT' in msinfo.valid_columns:
+            ms_cols.add('WEIGHT')
 
     total_num_points = 0  # total number of points to plot
 
@@ -133,6 +306,16 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                              scan if iter_scan else None,
                              antenna if antenna is not None else baseline)
 
+            # average the group along the requested axes before extracting plot data
+            if avg_spec:
+                group, group_freqs = average_group(group, chan_freqs[ddid], vis_columns,
+                                                   avg_spec, chanslice, noflags, row_chunk_size,
+                                                   warned=avg_warned)
+                eff_chanslice = slice(None)   # channel selection already applied during averaging
+            else:
+                group_freqs = chan_freqs[ddid]
+                eff_chanslice = chanslice
+
             # update subsets of MS indexing columns that we've seen for this dataframe
             output_subset1 = output_subsets.setdefault(dataframe_key,
                                                 {column:set() for column in msinfo.indexing_columns.keys()})
@@ -156,7 +339,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                 baselines = msinfo.baseline_number(a1, a2)
             else:
                 baselines = None
-            freqs = chan_freqs[ddid]
+            freqs = group_freqs
             chans = xarray.DataArray(range(len(freqs)), dims=("chan",))
             wavel = freq_to_wavel(freqs)
             extras = dict(chans=chans,
@@ -167,7 +350,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
 
             nchan = len(group.chan)
             if flag is not None:
-                flag = flag[dict(chan=chanslice)]
+                flag = flag[dict(chan=eff_chanslice)]
                 nchan = flag.shape[1]
             shape = (len(group.row), nchan)
 
@@ -192,7 +375,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                         if axis.corr is None:
                             value = None
                     if value is None:
-                        value = axis.get_value(group, corr, extras, flag=flag, flag_row=flag_row, chanslice=chanslice)
+                        value = axis.get_value(group, corr, extras, flag=flag, flag_row=flag_row, chanslice=eff_chanslice)
                         # print(axis.label, value.compute().min(), value.compute().max())
                         num_points = max(num_points, value.size)
                         if value.ndim == 0:
