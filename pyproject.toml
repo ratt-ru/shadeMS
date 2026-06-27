@@ -25,7 +25,8 @@ shadems = "shade_ms.main:driver"
 
 [tool.poetry.dependencies]
 python = "^3.10, < 3.13"
-datashader = "^0.16.0"
+datashader = ">=0.16.3"
+dask = ">=2023.1.1, <2025.1.0"
 dask-ms = [
     { version = "^0.2.20", extras = ["xarray"], python = "<3.12" },
     { version = "^0.2.23", extras = ["xarray"], python = ">=3.12" }
