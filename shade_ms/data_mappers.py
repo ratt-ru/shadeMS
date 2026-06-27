@@ -359,7 +359,7 @@ class DataAxis(object):
         # # discretize
         # if self.nlevels:
 
-        if coldata.dtype is bool or np.issubdtype(coldata.dtype, np.integer):
+        if coldata.dtype == bool or np.issubdtype(coldata.dtype, np.integer):
             if self._is_discrete is False:
                 raise TypeError(f"{self.label}: column changed from continuous-valued to discrete. This is a bug, or a very weird MS.")
             self._is_discrete = True
@@ -375,7 +375,7 @@ class DataAxis(object):
                     flag = da.logical_or(flag.data, bad_bins)
         else:
             if self._is_discrete is True:
-                raise TypeError(f"{self.label}: column chnaged from discrete to continuous-valued. This is a bug, or a very weird MS.")
+                raise TypeError(f"{self.label}: column changed from discrete to continuous-valued. This is a bug, or a very weird MS.")
             self._is_discrete = False
 
         # Ensure dask arrays for creating dask masked arrays
