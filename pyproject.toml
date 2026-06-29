@@ -1,46 +1,66 @@
-[tool.poetry]
+[project]
 name = "shadems"
-version = "0.5.4"
+version = "0.5.5"
 description = "Rapid Measurement Set plotting with dask-ms and datashader"
-authors = ["Ian Heywood & RATT <ian.heywood@physics.ox.ac.uk>"]
-license = "GPL-2.0-only"
-homepage = "https://github.com/ratt-ru/shadeMS"
-repository = "https://github.com/ratt-ru/shadeMS"
+authors = [
+    { name = "Ian Heywood", email = "ian.heywood@physics.ox.ac.uk" },
+    { name = "RATT" }
+]
 readme = "README.md"
+license = "GPL-2.0-only"
+requires-python = ">=3.10,<3.13"
 keywords = ["Astronomy", "Visualisation", "Packaging"]
 classifiers = [
-        "Development Status :: 4 - Beta",
-        "Intended Audience :: Science/Research",
-        "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
-        "Operating System :: POSIX :: Linux",
-        "Programming Language :: Python",
-        "Topic :: Scientific/Engineering :: Astronomy"
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python",
+    "Topic :: Scientific/Engineering :: Astronomy"
 ]
-packages = [
-    { include = "shade_ms" },
+dependencies = [
+    "bokeh>=3.8.2,<4",
+    "cmasher>=1.6.3,<2",
+    "dask>=2024.1.0,<2025",
+    "dask-ms[xarray]>=0.2.20,<0.3; python_version < '3.12'",
+    "dask-ms[xarray]>=0.2.23,<0.3; python_version >= '3.12'",
+    "datashader>=0.16.0,<0.17",
+    "fonttools>=4.61.0,<5",
+    "future-fstrings>=1.2.0,<2",
+    "holoviews>=1.20.0,<2",
+    "matplotlib>=3.9.4,<4",
+    "pillow>=12.1.1,<13",
+    "pyarrow>=24.0.0,<25",
+    "requests>=2.32.4,<3",
+    "tornado>=6.5.1,<7",
+    "urllib3>=2.6.3,<3"
 ]
 
-[tool.poetry.scripts]
+[project.urls]
+Homepage = "https://github.com/ratt-ru/shadeMS"
+Repository = "https://github.com/ratt-ru/shadeMS"
+
+[project.scripts]
 shadems = "shade_ms.main:driver"
 
-[tool.poetry.dependencies]
-python = "^3.10, < 3.13"
-datashader = "^0.16.0"
-dask-ms = [
-    { version = "^0.2.20", extras = ["xarray"], python = "<3.12" },
-    { version = "^0.2.23", extras = ["xarray"], python = ">=3.12" }
+[dependency-groups]
+tests = [
+    "pytest>=7.2.2,<8",
+    "pytest-flake8>=1.1.1,<2"
 ]
-holoviews = "^1.20.0"
-matplotlib = { version = "^3.9.4" }
-cmasher = "^1.6.3"
-future-fstrings = "^1.2.0"
-requests = "^2.27.1"
-pytest = { version = "^7.2.2", optional=true }
-pytest-flake8 = { version = "^1.1.1", optional=true }
 
-[tool.poetry.extras]
-testing = ["pytest", "pytest-flake8"]
+[tool.uv]
+default-groups = ["tests"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::FutureWarning:dask.dataframe",
+    "ignore:Increasing number of chunks by factor of .*:dask.array.PerformanceWarning"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["shade_ms"]
 
 [build-system]
-requires = ["setuptools", "poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
