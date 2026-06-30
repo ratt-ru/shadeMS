@@ -10,8 +10,6 @@ on:
   schedule:
     - cron: '30 2 * * 1,4' # Every Monday and Thursday @ 2h30am UTC
 
-env:
-  POETRY_VERSION: 2.0.1
 
 jobs:
   test:
@@ -19,44 +17,42 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-20.04, ubuntu-22.04, ubuntu-24.04 ]
+        os: [ ubuntu-22.04, ubuntu-24.04 ]
         python-version: ["3.10", "3.11", "3.12"]
     steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install latest setuptools, wheel, pip
-        run: python3 -m pip install -U pip setuptools wheel
-
-      - name: Install Poetry
-        uses: abatilo/actions-poetry@v3
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
         with:
-          poetry-version: ${{ env.POETRY_VERSION }}
+          enable-cache: true
 
-      - name: Checkout source
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 1
-
-      - name: Install shadems
-        run: poetry install --extras "testing"
+      - name: Sync project dependencies
+        run: uv sync --group tests
 
       - name: Check installed version command
-        run: poetry run shadems --version
+        run: uv run shadems --version
 
       - name: Test command
-        run: poetry run shadems --help
+        run: uv run shadems --help
 
       - name: Run testsuite
-        run: poetry run py.test -vvv shade_ms/
+        run: uv run pytest -v
 
       - name: Download test dataset
         run: curl https://ratt-public-data.s3.af-south-1.amazonaws.com/test-data/HLTau_B6cont.calavg.tav300s.tar.xz | tar xJf -
 
       - name: Run end to end test
-        run: poetry run shadems HLTau_B6cont.calavg.tav300s
+        run: uv run shadems HLTau_B6cont.calavg.tav300s
+
+      - name: Run end to end test with discrete colour axis
+        run: uv run shadems -x TIME -y uv -c FLAG HLTau_B6cont.calavg.tav300s
 
 
   # deploy:
