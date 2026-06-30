@@ -385,7 +385,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -1407,7 +1407,7 @@ wheels = [
 
 [[package]]
 name = "shadems"
-version = "0.5.4"
+version = "0.5.5"
 source = { editable = "." }
 dependencies = [
     { name = "bokeh" },
@@ -1426,12 +1426,6 @@ dependencies = [
     { name = "urllib3" },
 ]
 
-[package.optional-dependencies]
-testing = [
-    { name = "pytest" },
-    { name = "pytest-flake8" },
-]
-
 [package.dev-dependencies]
 tests = [
     { name = "pytest" },
@@ -1445,20 +1439,17 @@ requires-dist = [
     { name = "dask", specifier = ">=2024.1.0,<2025" },
     { name = "dask-ms", extras = ["xarray"], marker = "python_full_version < '3.12'", specifier = ">=0.2.20,<0.3" },
     { name = "dask-ms", extras = ["xarray"], marker = "python_full_version >= '3.12'", specifier = ">=0.2.23,<0.3" },
-    { name = "datashader", specifier = ">=0.16.0,<0.17" },
+    { name = "datashader", specifier = ">=0.16.3,<0.17" },
     { name = "fonttools", specifier = ">=4.61.0,<5" },
     { name = "future-fstrings", specifier = ">=1.2.0,<2" },
     { name = "holoviews", specifier = ">=1.20.0,<2" },
     { name = "matplotlib", specifier = ">=3.9.4,<4" },
     { name = "pillow", specifier = ">=12.1.1,<13" },
-    { name = "pyarrow", specifier = ">=24.0.0" },
-    { name = "pytest", marker = "extra == 'testing'", specifier = ">=7.2.2,<8" },
-    { name = "pytest-flake8", marker = "extra == 'testing'", specifier = ">=1.1.1,<2" },
+    { name = "pyarrow", specifier = ">=24.0.0,<25" },
     { name = "requests", specifier = ">=2.32.4,<3" },
     { name = "tornado", specifier = ">=6.5.1,<7" },
     { name = "urllib3", specifier = ">=2.6.3,<3" },
 ]
-provides-extras = ["testing"]
 
 [package.metadata.requires-dev]
 tests = [
