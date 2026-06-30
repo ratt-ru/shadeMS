@@ -104,7 +104,7 @@ def main(argv):
     # re-check that kwargs are valid
     for funcname, args, kwargs in extra_markup:
         log.info(f"markup: {funcname} *{args} **{kwargs})")
-        if not all([re.match('^\w+$', kw) for kw in kwargs.keys()]):
+        if not all([re.match(r'^\w+$', kw) for kw in kwargs.keys()]):
             log.error("the above is not a valid markup specification, please fix")
             sys.exit(1)
 
