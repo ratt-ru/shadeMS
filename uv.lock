@@ -154,6 +154,27 @@ wheels = [
 ]
 
 [[package]]
+name = "codex-africanus"
+version = "0.4.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "appdirs" },
+    { name = "decorator" },
+    { name = "numba" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bc/dc/49af44aa12dbdd751b661d6cda121d3f7c59bf946e85ff6670dbd879f3a0/codex_africanus-0.4.4.tar.gz", hash = "sha256:a2bb6a4b39a4cbec9acb275b5eb85ef0fa2451f6a65b8928124fcabf8fe2433a", size = 298160, upload-time = "2026-04-13T07:14:00.589Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/f4/d604337f04199741c93833502c8b3d880a44e04033931145af80a188d0b1/codex_africanus-0.4.4-py3-none-any.whl", hash = "sha256:535f98fdf9676d7e6f1fdb7cad94eff19e57dbf1e625f68aa3a0e321f64a9212", size = 375667, upload-time = "2026-04-13T07:13:58.941Z" },
+]
+
+[package.optional-dependencies]
+dask = [
+    { name = "dask", extra = ["array"] },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -366,6 +387,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a0/15/3e28732b7ea0985929dd31612c073d5e49b99d67f6974de334ff81f22fb1/datashader-0.16.3.tar.gz", hash = "sha256:9d0040c7887f7a5a5edd374c297402fd208a62bf6845e87631b54f03b9ae479d", size = 35716446, upload-time = "2024-07-04T12:26:26.507Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ce/09/949d6096c7fd3f2014082d6174c864114148c70973c3dd208fe05b0e7610/datashader-0.16.3-py2.py3-none-any.whl", hash = "sha256:90e7425f17b5dc597ab50facca1d16df53c4893708500ad89d4e64b6eb7238aa", size = 18332952, upload-time = "2024-07-04T12:26:22.237Z" },
+]
+
+[[package]]
+name = "decorator"
+version = "5.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/8b/32f9823da46cde7df2087faa08cd98d01b908f8dcab982cdba9c84e85355/decorator-5.3.1.tar.gz", hash = "sha256:4cbcdd55a6efadb9dbea26b858f4fb3264567b52d69ca0d25b721b553f60ea82", size = 58084, upload-time = "2026-05-18T06:03:28.057Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/05/7f/798705f5296a58ca505d600456748d1be48078eac8a7050d8a98bc9edb89/decorator-5.3.1-py3-none-any.whl", hash = "sha256:f47fe6fdbd2edd623ecfe36875d37aba411624e2670dd395dddae1358689bb3c", size = 10365, upload-time = "2026-05-18T06:03:26.517Z" },
 ]
 
 [[package]]
@@ -1412,6 +1442,7 @@ source = { editable = "." }
 dependencies = [
     { name = "bokeh" },
     { name = "cmasher" },
+    { name = "codex-africanus", extra = ["dask"] },
     { name = "dask" },
     { name = "dask-ms", extra = ["xarray"] },
     { name = "datashader" },
@@ -1436,6 +1467,7 @@ tests = [
 requires-dist = [
     { name = "bokeh", specifier = ">=3.8.2,<4" },
     { name = "cmasher", specifier = ">=1.6.3,<2" },
+    { name = "codex-africanus", extras = ["dask"], specifier = ">=0.4.4,<0.5" },
     { name = "dask", specifier = ">=2024.1.0,<2025" },
     { name = "dask-ms", extras = ["xarray"], marker = "python_full_version < '3.12'", specifier = ">=0.2.20,<0.3" },
     { name = "dask-ms", extras = ["xarray"], marker = "python_full_version >= '3.12'", specifier = ">=0.2.23,<0.3" },
