@@ -282,6 +282,15 @@ Data subset selection:
   --chan CHAN           Channel slice, as [start]:[stop][:step], default is to
                         plot all channels
 
+Data averaging:
+  --average AXIS:BIN    Average the data along an axis before plotting, as
+                        'AXIS:BIN' where BIN is the bin size: seconds (TIME)
+                        or number of channels (CHAN) to average together, or
+                        'all' to collapse the whole axis. A bin size spanning
+                        all the data falls back to 'all'. Repeatable, e.g.
+                        '--average TIME:60 --average CHAN:4'. Supported axes:
+                        TIME, CHAN.
+
 Rendering settings:
   -X XCANVAS, --xcanvas XCANVAS
                         Canvas x-size in pixels (default = 1280)

@@ -54,6 +54,9 @@ jobs:
       - name: Run end to end test with discrete colour axis
         run: uv run shadems -x TIME -y uv -c FLAG HLTau_B6cont.calavg.tav300s
 
+      - name: Run end to end test with averaging
+        run: uv run shadems --average CHAN:4 --average TIME:60 HLTau_B6cont.calavg.tav300s
+
 
   # deploy:
   #   needs: [test]
