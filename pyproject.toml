@@ -45,7 +45,7 @@ shadems = "shade_ms.main:driver"
 
 [dependency-groups]
 tests = [
-    "pytest>=7.2.2,<8",
+    "pytest>=7.2.2,<10",
     "pytest-flake8>=1.1.1,<2"
 ]
 
