@@ -24,7 +24,7 @@ dependencies = [
     "dask>=2024.1.0,<2025",
     "dask-ms[xarray]>=0.2.20,<0.3; python_version < '3.12'",
     "dask-ms[xarray]>=0.2.23,<0.3; python_version >= '3.12'",
-    "datashader>=0.16.0,<0.17",
+    "datashader>=0.16.3,<0.17",
     "fonttools>=4.61.0,<5",
     "future-fstrings>=1.2.0,<2",
     "holoviews>=1.20.0,<2",
