@@ -72,7 +72,7 @@ def _bin_mean_freqs(freqs, chan_bin_size):
         return np.nanmean(freqs.reshape(nbins, chan_bin_size), axis=1)
 
 
-def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, row_chunk_size,
+def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, use_flags, row_chunk_size,
                   warned=None):
     """Time/channel-average a single MS group with africanus.
 
@@ -80,6 +80,9 @@ def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, r
     main.parse_average_spec: a "count" of timeslots/channels, a "quantity" in seconds/Hz,
     or "all" to collapse the whole axis. A bin size that spans all the available data
     falls back to "all" (warning once via `warned`).
+    With use_flags, flagged samples are kept out of bins that have unflagged data, and
+    the averaged FLAG/FLAG_ROW come back with the group; without it (--noflags) flags
+    are ignored and every sample counts towards its bin.
     Returns (averaged xarray.Dataset, averaged-and-binned chan_freq DataArray). The
     averaged group carries the same scalar group keys (DATA_DESC_ID, FIELD_ID,
     SCAN_NUMBER, ...) as the input so downstream indexing is unaffected.
@@ -145,13 +148,18 @@ def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, r
                 _warn_overflow("TIME", time_binspec, f"{full_thresh:.4g}s of the time range")
                 time_bin_secs = full_thresh
 
-    if noflags:
-        flag = None
-    else:
+    if use_flags:
         # africanus insists FLAG_ROW agree with FLAG, which real MSs often don't -- fold the
         # row flags in and let it derive a consistent FLAG_ROW from the result (hence no
         # flag_row= below)
         flag = _sel_chan(group.FLAG.data) | group.FLAG_ROW.data[:, None, None]
+    elif vis_columns:
+        flag = None
+    else:
+        # africanus needs one (row, chan, corr) array to work out the channel axis at all, so
+        # with nothing else to average, stand in an unflagged FLAG: it bins everything, just
+        # as --noflags asks, and is dropped from the output below
+        flag = da.zeros_like(_sel_chan(group.FLAG.data))
 
     weight = weight_spectrum = None
     if hasattr(group, "WEIGHT_SPECTRUM"):
@@ -171,7 +179,7 @@ def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, r
     out = dict(TIME=res.time, INTERVAL=res.interval, ANTENNA1=res.antenna1, ANTENNA2=res.antenna2)
     if res.uvw is not None:
         out["UVW"] = res.uvw
-    if not noflags:
+    if res.flag is not None:
         out["FLAG"], out["FLAG_ROW"] = res.flag, res.flag_row
     avg_vis = res.visibilities if isinstance(res.visibilities, (tuple, list)) else (res.visibilities,)
     for col, arr in zip(vis_columns, avg_vis):
@@ -180,12 +188,7 @@ def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, r
 
     avg_freqs = _bin_mean_freqs(chan_freq, chan_bin_size)
     nrow_avg = computed["TIME"].shape[0]
-    if vis_columns:
-        nchan_avg, ncorr = computed[vis_columns[0]].shape[1:3]
-    elif not noflags:
-        nchan_avg, ncorr = computed["FLAG"].shape[1:3]
-    else:
-        nchan_avg, ncorr = len(avg_freqs), None
+    nchan_avg, ncorr = computed[vis_columns[0] if vis_columns else "FLAG"].shape[1:3]
 
     def _da1(a):
         return da.from_array(a, chunks=(row_chunk_size,))
@@ -199,7 +202,7 @@ def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, r
     if "UVW" in computed:
         u = computed["UVW"]
         data_vars["UVW"] = (("row", "uvw"), da.from_array(u, chunks=(row_chunk_size, u.shape[1])))
-    if not noflags:
+    if use_flags:
         data_vars["FLAG"] = (("row", "chan", "corr"), _da3(computed["FLAG"]))
         data_vars["FLAG_ROW"] = (("row",), _da1(computed["FLAG_ROW"]))
     # antenna columns are per-row data vars unless this group is keyed by a single baseline
@@ -208,9 +211,8 @@ def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, r
         data_vars["ANTENNA1"] = (("row",), _da1(computed["ANTENNA1"]))
         data_vars["ANTENNA2"] = (("row",), _da1(computed["ANTENNA2"]))
 
-    coords = {"row": np.arange(nrow_avg), "chan": np.arange(nchan_avg)}
-    if ncorr is not None:
-        coords["corr"] = np.arange(ncorr)
+    coords = {"row": np.arange(nrow_avg), "chan": np.arange(nchan_avg),
+              "corr": np.arange(ncorr)}
 
     avg_group = xarray.Dataset(data_vars, coords=coords)
     # group-by columns (DATA_DESC_ID, FIELD_ID, SCAN_NUMBER, and scalar ANTENNA1/2 when
@@ -222,7 +224,7 @@ def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, r
 
 def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
                   chanslice, subset,
-                  noflags, noconj,
+                  noflags, use_flags, noconj,
                   iter_field, iter_spw, iter_scan, iter_ant, iter_baseline,
                   join_corrs=False,
                   avg_spec=None,
@@ -242,7 +244,9 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
     if avg_spec:
         vis_columns = sorted({c for axis in DataAxis.all_axes.values() for c in axis.columns
                               if c and (c.endswith("DATA") or c.endswith("SPECTRUM"))})
-        ms_cols.update({'TIME', 'INTERVAL'})
+        # FLAG is read even with --noflags: unused, except to stand in for the shape of the
+        # channel axis when there are no visibility columns to average (see average_group)
+        ms_cols.update({'TIME', 'INTERVAL', 'FLAG', 'FLAG_ROW'})
         if 'UVW' in msinfo.valid_columns:
             ms_cols.add('UVW')
         if 'WEIGHT_SPECTRUM' in msinfo.valid_columns:
@@ -314,7 +318,7 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
             # average the group along the requested axes before extracting plot data
             if avg_spec:
                 group, group_freqs = average_group(group, chan_freqs[ddid], vis_columns,
-                                                   avg_spec, chanslice, noflags, row_chunk_size,
+                                                   avg_spec, chanslice, use_flags, row_chunk_size,
                                                    warned=avg_warned)
                 eff_chanslice = slice(None)   # channel selection already applied during averaging
             else:
@@ -436,6 +440,11 @@ def get_plot_data(msinfo, group_cols, mytaql, chan_freqs,
     log.info(": complete")
     return output_dataframes, output_subsets, total_num_points
 
+def _pad_range(minval, maxval):
+    """Widens a zero-width (or inverted) range, which has no scale for datashader to render at."""
+    return (minval-1, minval+1) if minval >= maxval else (minval, maxval)
+
+
 def compute_bounds(unknowns, bounds, ddf):
     """
     Given a list of axis with unknown bounds, computes missing bounds and updates the bounds dict
@@ -456,9 +465,7 @@ def compute_bounds(unknowns, bounds, ddf):
         maxval = np.nanmax(r[:, i + len(unknowns)])
         if not (np.isfinite(minval) and np.isfinite(maxval)):
             minval, maxval = -1.0, 1.0
-        elif minval >= maxval:
-            minval, maxval = minval-1, minval+1
-        bounds[axis] = minval, maxval
+        bounds[axis] = _pad_range(minval, maxval)
 
 
 
@@ -507,6 +514,11 @@ def create_plot(ddf, index_subsets, xdatum, ydatum, adatum, ared, cdatum, cmap, 
             # a single-pixel canvas has no coordinate spacing for holoviews to work out, so keep two
             size = max(int(bounds[datum.label][1]) - int(bounds[datum.label][0]) + 1, 2)
         canvas_sizes.append(size)
+
+    # bounds from the cache, the command line, or a constant axis (e.g. FREQ averaged down to a
+    # single channel) bypass compute_bounds, so they can still be zero-width at this point
+    for axis, (minval, maxval) in bounds.items():
+        bounds[axis] = _pad_range(minval, maxval)
 
     # create rendering canvas.
     canvas = datashader.Canvas(canvas_sizes[0], canvas_sizes[1], x_range=bounds[xaxis], y_range=bounds[yaxis])

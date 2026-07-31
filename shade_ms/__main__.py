@@ -67,7 +67,9 @@ def cli():
              Two-column arithmetic is recognized.""")
 
     group_opts.add_argument("--noflags", action="store_true",
-        help="Enable to ignore flags. Default is to omit flagged data.")
+        help="""Enable to ignore flags entirely: flagged data is not omitted, and takes part in
+             any --average as if it were unflagged. Default is to omit flagged data.
+             Incompatible with plotting a flag column.""")
     group_opts.add_argument("--noconj", action="store_true",
         help="Do not show conjugate points in u,v plots (default = plot conjugates).")
 

@@ -4,7 +4,7 @@ import pytest
 import xarray
 from numpy.testing import assert_array_equal
 
-from shade_ms.data_plots import _bin_mean_freqs, average_group
+from shade_ms.data_plots import _bin_mean_freqs, _pad_range, average_group
 from shade_ms.main import parse_average_spec
 
 NTIME, NBL, NCHAN, NCORR, DT, CHAN_WIDTH = 10, 3, 8, 2, 10.0, 1e6
@@ -48,10 +48,57 @@ def group():
 ])
 def test_average_group_bin_sizes(group, avg_spec, nrow, nchan):
     freqs = 1e9 + CHAN_WIDTH * np.arange(NCHAN)
-    avg, avg_freqs = average_group(group, freqs, ["DATA"], avg_spec, slice(None), False, 100000)
+    avg, avg_freqs = average_group(group, freqs, ["DATA"], avg_spec, slice(None), True, 100000)
     assert len(avg.row) == nrow
     assert len(avg.chan) == nchan
     assert len(avg_freqs) == nchan
+
+
+@pytest.mark.parametrize("vis_columns", [["DATA"], []])
+def test_average_group_flags(group, vis_columns):
+    """With use_flags, the averaged group carries flags; with --noflags it carries none.
+
+    Averaging with no visibility columns at all (e.g. -x TIME -y uv) is the corner africanus
+    cannot handle unaided, so exercise it both ways.
+    """
+    freqs = 1e9 + CHAN_WIDTH * np.arange(NCHAN)
+    avg_spec = {"TIME": ("count", 5, "5")}
+    for use_flags, want_flags in ((True, True), (False, False)):
+        avg, _ = average_group(group, freqs, vis_columns, avg_spec, slice(None), use_flags, 100000)
+        assert ("FLAG" in avg) is want_flags
+        assert ("FLAG_ROW" in avg) is want_flags
+        assert len(avg.row) == 2 * NBL
+        assert len(avg.chan) == NCHAN
+        assert len(avg.corr) == NCORR
+
+
+def test_average_group_flagged_samples(group):
+    """Flagged samples stay out of a bin that has unflagged data in it -- unless --noflags."""
+    nrow, half = NTIME * NBL, (NTIME // 2) * NBL
+    flag = np.zeros((nrow, NCHAN, NCORR), bool)
+    data = np.ones((nrow, NCHAN, NCORR), np.complex64)
+    flag[:half] = True    # flag the first half of the timeslots, with a value to tell them apart
+    data[:half] = 5.0
+    group = group.assign(FLAG=(("row", "chan", "corr"), da.from_array(flag, chunks=flag.shape)),
+                         DATA=(("row", "chan", "corr"), da.from_array(data, chunks=data.shape)))
+    freqs = 1e9 + CHAN_WIDTH * np.arange(NCHAN)
+    avg_spec = {"TIME": ("all", None, "all")}   # one bin per baseline, mixing both halves
+
+    avg, _ = average_group(group, freqs, ["DATA"], avg_spec, slice(None), True, 100000)
+    assert_array_equal(np.unique(avg.DATA.data.compute().real), [1.0])
+    assert not avg.FLAG.data.compute().any()   # every bin has unflagged data in it
+
+    avg, _ = average_group(group, freqs, ["DATA"], avg_spec, slice(None), False, 100000)
+    assert_array_equal(np.unique(avg.DATA.data.compute().real), [3.0])   # (5 + 1) / 2
+
+
+@pytest.mark.parametrize("rng, expected", [
+    ((0.0, 1.0), (0.0, 1.0)),      # a usable range is left alone
+    ((3.0, 3.0), (2.0, 4.0)),      # zero width (e.g. a single averaged channel) is widened
+    ((1.0, 0.0), (0.0, 2.0)),      # ... and so is an inverted one
+])
+def test_pad_range(rng, expected):
+    assert _pad_range(*rng) == expected
 
 
 def test_bin_mean_freqs_identity():

@@ -139,7 +139,9 @@ number of points to render. Use `--average AXIS:BIN`, where `BIN` is the bin siz
 number counts timeslots (`TIME`) or channels (`CHAN`), while a quantity with units is taken
 as such (`60s`, `2min`, `8MHz`). Use `AXIS:all` to collapse the whole axis. The flag is
 repeatable. Averaging is weighted (using `WEIGHT_SPECTRUM`/`WEIGHT` if present) and
-flag-aware:
+flag-aware -- flagged samples do not contribute to a bin that has unflagged data in it, and a
+bin comes out flagged only if everything in it was flagged. With `--noflags`, flags are ignored
+here too, and every sample counts towards its bin:
 
 ```
 $ shadems --xaxis CHAN --yaxis DATA:amp --average CHAN:4 <msname>          # 4 channels per bin
@@ -234,8 +236,10 @@ Plot types and data sources:
                         explicitly include a column. For multiple plots, this
                         can be given multiple times, or as a comma-separated
                         list. Two-column arithmetic is recognized.
-  --noflags             Enable to ignore flags. Default is to omit flagged
-                        data.
+  --noflags             Enable to ignore flags entirely: flagged data is not
+                        omitted, and takes part in any --average as if it were
+                        unflagged. Default is to omit flagged data.
+                        Incompatible with plotting a flag column.
   --noconj              Do not show conjugate points in u,v plots (default =
                         plot conjugates).
 

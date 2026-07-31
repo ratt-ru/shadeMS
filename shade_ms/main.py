@@ -339,6 +339,10 @@ def main(argv):
     # This will be True if any of the specified axes change with correlation
     have_corr_dependence = False
 
+    # --noflags means flags are not read at all, so they take no part in averaging either.
+    # Plotting a flag column also unmasks the data, but must still read (and average) the flags.
+    use_flags = not options.noflags
+
     # now go create definitions
     for xaxis, yaxis, default_column, caxis, aaxis, ared, xmin, xmax, ymin, ymax, amin, amax, cmin, cmax, cnum in \
         zip(xaxes, yaxes, columns, caxes, aaxes, areds, xmins, xmaxs, ymins, ymaxs, amins, amaxs, cmins, cmaxs, cnums):
@@ -357,9 +361,10 @@ def main(argv):
         if datum_itercorr:
             have_corr_dependence = True
         if "FLAG" in (xcolumn, ycolumn, acolumn, ccolumn) or "FLAG_ROW" in (xcolumn, ycolumn, acolumn, ccolumn):
-            if not options.noflags:
-                log.info(": plotting a flag column implies that flagged data will not be masked")
-                options.noflags = True
+            if not use_flags:
+                parser.error("--noflags ignores the flag columns entirely, so plotting one is meaningless")
+            log.info(": plotting a flag column implies that flagged data will not be masked")
+            options.noflags = True
 
         # do we iterate over correlations/Stokes to make separate plots now?
         if datum_itercorr and options.iter_corr:
@@ -476,7 +481,7 @@ def main(argv):
     dataframes, index_subsets, np = \
         data_plots.get_plot_data(ms, group_cols, mytaql, ms.chan_freqs,
                                  chanslice=chanslice, subset=subset,
-                                 noflags=options.noflags, noconj=options.noconj,
+                                 noflags=options.noflags, use_flags=use_flags, noconj=options.noconj,
                                  iter_field=options.iter_field, iter_spw=options.iter_spw,
                                  iter_scan=options.iter_scan, iter_ant=options.iter_ant,
                                  iter_baseline=options.iter_baseline,
