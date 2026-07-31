@@ -57,6 +57,10 @@ jobs:
       - name: Run end to end test with averaging
         run: uv run shadems --average CHAN:4 --average TIME:60 HLTau_B6cont.calavg.tav300s
 
+      # this MS has 500 MHz channels, so CHAN:1GHz bins two of them together
+      - name: Run end to end test with averaging by quantity
+        run: uv run shadems --average CHAN:1GHz --average TIME:60s HLTau_B6cont.calavg.tav300s
+
 
   # deploy:
   #   needs: [test]

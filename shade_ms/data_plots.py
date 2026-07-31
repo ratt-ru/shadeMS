@@ -16,6 +16,7 @@ from datashader.reductions import category_modulo, category_binning
 import numpy as np
 import pylab
 import textwrap
+import warnings
 import matplotlib.cm
 from shade_ms import log
 import colorcet
@@ -75,9 +76,10 @@ def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, r
                   warned=None):
     """Time/channel-average a single MS group with africanus.
 
-    avg_spec maps axis name ('TIME'/'CHAN') to its bin size: seconds (TIME), channels per
-    bin (CHAN), or the string "all" to collapse the whole axis. A bin size that spans all
-    the available data falls back to "all" (warning once via `warned`).
+    avg_spec maps axis name ('TIME'/'CHAN') to (kind, value, binspec), as returned by
+    main.parse_average_spec: a "count" of timeslots/channels, a "quantity" in seconds/Hz,
+    or "all" to collapse the whole axis. A bin size that spans all the available data
+    falls back to "all" (warning once via `warned`).
     Returns (averaged xarray.Dataset, averaged-and-binned chan_freq DataArray). The
     averaged group carries the same scalar group keys (DATA_DESC_ID, FIELD_ID,
     SCAN_NUMBER, ...) as the input so downstream indexing is unaffected.
@@ -103,47 +105,53 @@ def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, r
     interval = group.INTERVAL.data
     ant1, ant2 = _ant("ANTENNA1"), _ant("ANTENNA2")
 
-    # bin sizes: CHAN -> channels per bin (africanus chan_bin_size directly);
-    # TIME -> integrations per bin, converted to a seconds threshold for africanus.
-    # A bin size larger than the available items falls back to collapsing the whole axis.
-    chan_spec = avg_spec.get("CHAN")
-    if chan_spec == "all":
-        chan_bin_size = nchan
-    elif chan_spec:
-        chan_bin_size = int(chan_spec)
-        if chan_bin_size > nchan:
-            if "CHAN" not in warned:
-                warned.add("CHAN")
-                log.warning(f"--average CHAN:{chan_spec} exceeds the {nchan} channels available; "
-                            f"averaging all channels (use 'CHAN:all' to silence this)")
-            chan_bin_size = nchan
-    else:
-        chan_bin_size = 1
+    def _warn_overflow(axis, binspec, what):
+        if axis not in warned:
+            warned.add(axis)
+            log.warning(f"--average {axis}:{binspec} covers all {what}; averaging the whole axis "
+                        f"(use '{axis}:all' to silence this)")
 
-    time_spec = avg_spec.get("TIME")
-    if time_spec:
+    # africanus takes a channel bin size in channels, and a time bin size in seconds. A bin
+    # covering all the available data falls back to collapsing the whole axis.
+    chan_kind, chan_value, chan_binspec = avg_spec.get("CHAN", (None, None, None))
+    if chan_kind is None:
+        chan_bin_size = 1
+    elif chan_kind == "all":
+        chan_bin_size = nchan
+    else:
+        if chan_kind == "quantity":
+            # a bandwidth: convert to channels via the (uniform) channel width
+            width = abs(np.median(np.diff(chan_freq))) if nchan > 1 else np.inf
+            chan_bin_size = max(int(round(chan_value / width)), 1)
+        else:
+            chan_bin_size = chan_value
+        if chan_bin_size > nchan:
+            _warn_overflow("CHAN", chan_binspec, f"{nchan} channels")
+            chan_bin_size = nchan
+
+    time_kind, time_value, time_binspec = avg_spec.get("TIME", (None, None, None))
+    if time_kind is None:
+        time_bin_secs = 0.0   # no time averaging: one integration per bin
+    else:
         tmin, tmax = float(time.min().compute()), float(time.max().compute())
         dt = float(interval.mean().compute())
         full_thresh = (tmax - tmin) + dt   # threshold that puts every integration in one bin
-        if time_spec == "all":
+        if time_kind == "all":
             time_bin_secs = full_thresh
         else:
-            time_bin_secs = float(time_spec)   # bin size is already in seconds
+            # a count of timeslots becomes a seconds threshold via the mean integration time
+            time_bin_secs = time_value * dt if time_kind == "count" else time_value
             if time_bin_secs >= full_thresh:
-                if "TIME" not in warned:
-                    warned.add("TIME")
-                    log.warning(f"--average TIME:{time_spec} covers the whole {full_thresh:.4g}s "
-                                f"time range; averaging all time (use 'TIME:all' to silence this)")
+                _warn_overflow("TIME", time_binspec, f"{full_thresh:.4g}s of the time range")
                 time_bin_secs = full_thresh
-    else:
-        # no time averaging: keep one integration per bin
-        time_bin_secs = max(float(interval.min().compute()) * 0.5, 1e-9)
 
     if noflags:
-        flag = flag_row = None
+        flag = None
     else:
-        flag = _sel_chan(group.FLAG.data)
-        flag_row = group.FLAG_ROW.data
+        # africanus insists FLAG_ROW agree with FLAG, which real MSs often don't -- fold the
+        # row flags in and let it derive a consistent FLAG_ROW from the result (hence no
+        # flag_row= below)
+        flag = _sel_chan(group.FLAG.data) | group.FLAG_ROW.data[:, None, None]
 
     weight = weight_spectrum = None
     if hasattr(group, "WEIGHT_SPECTRUM"):
@@ -154,8 +162,7 @@ def average_group(group, chan_freq, vis_columns, avg_spec, chanslice, noflags, r
     uvw = group.UVW.data if hasattr(group, "UVW") else None
     vis = tuple(_sel_chan(getattr(group, c).data) for c in vis_columns)
 
-    res = time_and_channel(time, interval, ant1, ant2,
-                           flag_row=flag_row, uvw=uvw,
+    res = time_and_channel(time, interval, ant1, ant2, uvw=uvw,
                            weight=weight, weight_spectrum=weight_spectrum,
                            visibilities=vis if vis else None, flag=flag,
                            time_bin_secs=time_bin_secs, chan_bin_size=chan_bin_size)
@@ -433,8 +440,11 @@ def compute_bounds(unknowns, bounds, ddf):
     """
     Given a list of axis with unknown bounds, computes missing bounds and updates the bounds dict
     """
-    # setup function to compute min/max on every column for which we don't have a min/max
-    with np.errstate(all='ignore'):
+    # setup function to compute min/max on every column for which we don't have a min/max.
+    # A wholly-flagged partition is all-NaN, and contributes a NaN that the nanmin/nanmax below
+    # ignore -- so silence numpy grumbling about it
+    with np.errstate(all='ignore'), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
         r = ddf.map_partitions(lambda df:
                 np.array([[(np.nanmin(df[axis].values).item() if bounds[axis][0] is None else bounds[axis][0]) for axis in unknowns]+
                           [(np.nanmax(df[axis].values).item() if bounds[axis][1] is None else bounds[axis][1]) for axis in unknowns]]),
@@ -494,7 +504,8 @@ def create_plot(ddf, index_subsets, xdatum, ydatum, adatum, ared, cdatum, cmap, 
     for datum, size in (xdatum, options.xcanvas), (ydatum, options.ycanvas):
         if datum.is_discrete:
             bounds[datum.label] = bounds[datum.label][0]-0.5, bounds[datum.label][1]+0.5
-            size = int(bounds[datum.label][1]) - int(bounds[datum.label][0]) + 1
+            # a single-pixel canvas has no coordinate spacing for holoviews to work out, so keep two
+            size = max(int(bounds[datum.label][1]) - int(bounds[datum.label][0]) + 1, 2)
         canvas_sizes.append(size)
 
     # create rendering canvas.

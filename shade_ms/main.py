@@ -18,6 +18,8 @@ import warnings
 
 from contextlib import contextmanager
 
+from casacore.quanta import quantity
+
 from . import DEFAULT_CNUM, DEFAULT_NUM_RENDERS
 from . import cli, parse_plot_spec, parse_slice_spec
 from . import data_plots, data_mappers
@@ -32,6 +34,50 @@ from shade_ms import log, separator
 @contextmanager
 def nullcontext(enter_result=None):
     yield enter_result
+
+
+AVERAGE_AXES = {'TIME': 's', 'CHAN': 'Hz'}          # supported axes, and their quantity unit
+AVERAGE_AXES_TODO = {'BASELINE', 'ANTENNA', 'SPW', 'SCAN', 'FIELD'}
+
+
+def parse_average_spec(specs):
+    """Parses --average AXIS:BIN options into {axis: (kind, value, binspec)}.
+
+    A bare number is a count of timeslots (TIME) or channels (CHAN); a unit-bearing
+    quantity such as 60s or 256MHz is converted to the axis unit (s or Hz); 'all'
+    collapses the axis. Kind is one of "all", "count", "quantity". Raises ValueError.
+    """
+    avg_spec = {}
+    for spec in specs:
+        axis, sep, binspec = spec.partition(':')
+        axis, binspec = axis.strip().upper(), binspec.strip()
+        if not sep or not binspec:
+            raise ValueError(f"invalid --average '{spec}', expected AXIS:BIN")
+        if axis in AVERAGE_AXES_TODO:
+            raise ValueError(f"--average {axis} is not supported yet")
+        if axis not in AVERAGE_AXES:
+            raise ValueError(f"unknown --average axis '{axis}', supported: {', '.join(AVERAGE_AXES)}")
+        if axis in avg_spec:
+            raise ValueError(f"axis {axis} given more than once in --average")
+        unit = AVERAGE_AXES[axis]
+        if binspec.lower() == 'all':
+            avg_spec[axis] = ('all', None, binspec)
+            continue
+        try:
+            value, kind = int(binspec), 'count'
+        except ValueError:
+            try:
+                q = quantity(binspec)
+            except RuntimeError:
+                raise ValueError(f"invalid bin size '{binspec}' in --average {spec}, expected a count, "
+                                 f"a quantity in {unit}, or 'all'") from None
+            if not q.conforms(quantity(1.0, unit)):
+                raise ValueError(f"bin size '{binspec}' in --average {spec} is not a quantity in {unit}")
+            value, kind = q.get_value(unit), 'quantity'
+        if value <= 0:
+            raise ValueError(f"bin size '{binspec}' in --average {spec} must be positive")
+        avg_spec[axis] = (kind, value, binspec)
+    return avg_spec
 
 
 def main(argv):
@@ -113,39 +159,11 @@ def main(argv):
         # parser.error(f"invalid selection --{'chan'} {options.chan}")
         parser.error(f"invalid selection --chan {options.chan}")
 
-    # check averaging spec -- maps an axis name to its bin size: seconds (TIME) or number
-    # of channels (CHAN) to average together, or "all" to collapse the whole axis
-    supported_avg_axes = {"TIME", "CHAN"}
-    phase2_avg_axes = {"BASELINE", "ANTENNA", "SPW", "SCAN", "FIELD"}
-    avg_spec = {}
-    for spec in options.average or []:
-        bits = spec.split(":")
-        if len(bits) != 2:
-            parser.error(f"invalid --average '{spec}', expected AXIS:BIN")
-        axis = bits[0].strip().upper()
-        if axis in phase2_avg_axes:
-            parser.error(f"--average {axis} is not supported yet")
-        if axis not in supported_avg_axes:
-            parser.error(f"unknown --average axis '{axis}', supported: {', '.join(sorted(supported_avg_axes))}")
-        if axis in avg_spec:
-            parser.error(f"axis {axis} given more than once in --average")
-        if bits[1].strip().lower() == "all":
-            binsize = "all"
-        elif axis == "CHAN":
-            try:
-                binsize = int(bits[1])
-            except ValueError:
-                parser.error(f"invalid bin size '{bits[1]}' in --average {spec}, must be a positive integer (channels) or 'all'")
-            if binsize < 1:
-                parser.error(f"invalid bin size {binsize} in --average {spec}, must be >= 1")
-        else:  # TIME bin size is in seconds (may be fractional)
-            try:
-                binsize = float(bits[1])
-            except ValueError:
-                parser.error(f"invalid bin size '{bits[1]}' in --average {spec}, must be a positive number of seconds or 'all'")
-            if binsize <= 0:
-                parser.error(f"invalid bin size {binsize} in --average {spec}, must be > 0")
-        avg_spec[axis] = binsize
+    # check averaging spec
+    try:
+        avg_spec = parse_average_spec(options.average or [])
+    except ValueError as exc:
+        parser.error(str(exc))
 
     # issue warning if only a single antenna is specified
     num_ants_warning = False
@@ -279,9 +297,8 @@ def main(argv):
         log.info(f"Channels         : {':'.join(str(x) if x is not None else '' for x in chanslice_spec)}")
 
     if avg_spec:
-        units = {"TIME": "s", "CHAN": " chan"}
         log.info("Averaging        : " + ", ".join(
-            f"{ax} {n}" if n == "all" else f"{ax} {n}{units.get(ax, '')}" for ax, n in avg_spec.items()))
+            f"{axis} {binspec}" for axis, (_, _, binspec) in avg_spec.items()))
 
     mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else ''
   # --- building SQL query --

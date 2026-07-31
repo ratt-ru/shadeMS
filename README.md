@@ -135,21 +135,25 @@ $ shadems --xaxis CORRECTED_DATA:real,uv --yaxis CORRECTED_DATA:imag,CORRECTED_D
 ### Averaging
 
 * The data can be time- and/or channel-averaged before plotting, which cuts noise and the
-number of points to render. Use `--average AXIS:BIN`, where `BIN` is the bin size: seconds
-(`TIME`) or number of channels (`CHAN`) to average together. Use `AXIS:all` to collapse the
-whole axis. The flag is repeatable. Averaging is weighted (using `WEIGHT_SPECTRUM`/`WEIGHT`
-if present) and flag-aware:
+number of points to render. Use `--average AXIS:BIN`, where `BIN` is the bin size. A bare
+number counts timeslots (`TIME`) or channels (`CHAN`), while a quantity with units is taken
+as such (`60s`, `2min`, `8MHz`). Use `AXIS:all` to collapse the whole axis. The flag is
+repeatable. Averaging is weighted (using `WEIGHT_SPECTRUM`/`WEIGHT` if present) and
+flag-aware:
 
 ```
 $ shadems --xaxis CHAN --yaxis DATA:amp --average CHAN:4 <msname>          # 4 channels per bin
-$ shadems --xaxis TIME --yaxis DATA:amp --average TIME:60 <msname>         # 60-second time bins
+$ shadems --xaxis CHAN --yaxis DATA:amp --average CHAN:8MHz <msname>       # 8 MHz-wide bins
+$ shadems --xaxis TIME --yaxis DATA:amp --average TIME:60 <msname>         # 60 timeslots per bin
+$ shadems --xaxis TIME --yaxis DATA:amp --average TIME:60s <msname>        # 60-second time bins
 $ shadems --xaxis FREQ --yaxis DATA:amp --average TIME:all <msname>        # collapse all time
-$ shadems --xaxis TIME --yaxis DATA:amp --average TIME:60 --average CHAN:4 <msname>
+$ shadems --xaxis TIME --yaxis DATA:amp --average TIME:2min --average CHAN:4 <msname>
 ```
 
-* Supported axes are `TIME` (seconds) and `CHAN` (channels). A bin size spanning all the
-available data falls back to `all` (with a warning). Channel selection (`--chan`) is applied
-*before* averaging. Time averaging is done per scan (bins never span scan boundaries).
+* Supported axes are `TIME` (timeslots or a time quantity) and `CHAN` (channels or a
+bandwidth). A bin size spanning all the available data falls back to `all` (with a warning).
+Channel selection (`--chan`) is applied *before* averaging. Time averaging is done per scan
+(bins never span scan boundaries).
 
 ### Plotting residuals
 
@@ -284,12 +288,13 @@ Data subset selection:
 
 Data averaging:
   --average AXIS:BIN    Average the data along an axis before plotting, as
-                        'AXIS:BIN' where BIN is the bin size: seconds (TIME)
-                        or number of channels (CHAN) to average together, or
-                        'all' to collapse the whole axis. A bin size spanning
-                        all the data falls back to 'all'. Repeatable, e.g.
-                        '--average TIME:60 --average CHAN:4'. Supported axes:
-                        TIME, CHAN.
+                        'AXIS:BIN' where BIN is the bin size. A bare number
+                        counts timeslots (TIME) or channels (CHAN), while a
+                        quantity with units is taken as such, e.g. '--average
+                        TIME:60s --average CHAN:8MHz'. 'all' collapses the
+                        whole axis, as does a bin size spanning all the data.
+                        Repeatable, e.g. '--average TIME:60 --average CHAN:4'.
+                        Supported axes: TIME, CHAN.
 
 Rendering settings:
   -X XCANVAS, --xcanvas XCANVAS
