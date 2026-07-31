@@ -61,6 +61,13 @@ jobs:
       - name: Run end to end test with averaging by quantity
         run: uv run shadems --average CHAN:1GHz --average TIME:60s HLTau_B6cont.calavg.tav300s
 
+      - name: Run end to end test with averaging and a discrete colour axis
+        run: uv run shadems -x TIME -y uv -c FLAG --average CHAN:2 --average TIME:60 HLTau_B6cont.calavg.tav300s
+
+      # averaging to a single channel leaves the FREQ axis with a zero-width range
+      - name: Run end to end test with averaging down to one channel
+        run: uv run shadems -x FREQ -y DATA:amp --average CHAN:all HLTau_B6cont.calavg.tav300s
+
 
   # deploy:
   #   needs: [test]
