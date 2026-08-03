@@ -1,5 +1,3 @@
-# -*- coding: future_fstrings -*-
-
 import matplotlib
 matplotlib.use('agg')
 
@@ -20,6 +18,8 @@ import warnings
 
 from contextlib import contextmanager
 
+from casacore.quanta import quantity
+
 from . import DEFAULT_CNUM, DEFAULT_NUM_RENDERS
 from . import cli, parse_plot_spec, parse_slice_spec
 from . import data_plots, data_mappers
@@ -34,6 +34,50 @@ from shade_ms import log, separator
 @contextmanager
 def nullcontext(enter_result=None):
     yield enter_result
+
+
+AVERAGE_AXES = {'TIME': 's', 'CHAN': 'Hz'}          # supported axes, and their quantity unit
+AVERAGE_AXES_TODO = {'BASELINE', 'ANTENNA', 'SPW', 'SCAN', 'FIELD'}
+
+
+def parse_average_spec(specs):
+    """Parses --average AXIS:BIN options into {axis: (kind, value, binspec)}.
+
+    A bare number is a count of timeslots (TIME) or channels (CHAN); a unit-bearing
+    quantity such as 60s or 256MHz is converted to the axis unit (s or Hz); 'all'
+    collapses the axis. Kind is one of "all", "count", "quantity". Raises ValueError.
+    """
+    avg_spec = {}
+    for spec in specs:
+        axis, sep, binspec = spec.partition(':')
+        axis, binspec = axis.strip().upper(), binspec.strip()
+        if not sep or not binspec:
+            raise ValueError(f"invalid --average '{spec}', expected AXIS:BIN")
+        if axis in AVERAGE_AXES_TODO:
+            raise ValueError(f"--average {axis} is not supported yet")
+        if axis not in AVERAGE_AXES:
+            raise ValueError(f"unknown --average axis '{axis}', supported: {', '.join(AVERAGE_AXES)}")
+        if axis in avg_spec:
+            raise ValueError(f"axis {axis} given more than once in --average")
+        unit = AVERAGE_AXES[axis]
+        if binspec.lower() == 'all':
+            avg_spec[axis] = ('all', None, binspec)
+            continue
+        try:
+            value, kind = int(binspec), 'count'
+        except ValueError:
+            try:
+                q = quantity(binspec)
+            except RuntimeError:
+                raise ValueError(f"invalid bin size '{binspec}' in --average {spec}, expected a count, "
+                                 f"a quantity in {unit}, or 'all'") from None
+            if not q.conforms(quantity(1.0, unit)):
+                raise ValueError(f"bin size '{binspec}' in --average {spec} is not a quantity in {unit}")
+            value, kind = q.get_value(unit), 'quantity'
+        if value <= 0:
+            raise ValueError(f"bin size '{binspec}' in --average {spec} must be positive")
+        avg_spec[axis] = (kind, value, binspec)
+    return avg_spec
 
 
 def main(argv):
@@ -114,6 +158,12 @@ def main(argv):
     except ValueError:
         # parser.error(f"invalid selection --{'chan'} {options.chan}")
         parser.error(f"invalid selection --chan {options.chan}")
+
+    # check averaging spec
+    try:
+        avg_spec = parse_average_spec(options.average or [])
+    except ValueError as exc:
+        parser.error(str(exc))
 
     # issue warning if only a single antenna is specified
     num_ants_warning = False
@@ -236,11 +286,19 @@ def main(argv):
         log.info('Scan(s)          : all')
     if options.iter_scan:
         group_cols.append('SCAN_NUMBER')
+    # averaging groups per scan: keeps SCAN_NUMBER a scalar group key (carried through the
+    # rebuilt dataset) and stops time bins spanning scans
+    if avg_spec and 'SCAN_NUMBER' not in group_cols:
+        group_cols.append('SCAN_NUMBER')
 
     if chanslice == slice(None):
         log.info('Channels         : all')
     else:
         log.info(f"Channels         : {':'.join(str(x) if x is not None else '' for x in chanslice_spec)}")
+
+    if avg_spec:
+        log.info("Averaging        : " + ", ".join(
+            f"{axis} {binspec}" for axis, (_, _, binspec) in avg_spec.items()))
 
     mytaql = ' && '.join([f"({t})" for t in mytaql]) if mytaql else ''
   # --- building SQL query --
@@ -281,6 +339,10 @@ def main(argv):
     # This will be True if any of the specified axes change with correlation
     have_corr_dependence = False
 
+    # --noflags means flags are not read at all, so they take no part in averaging either.
+    # Plotting a flag column also unmasks the data, but must still read (and average) the flags.
+    use_flags = not options.noflags
+
     # now go create definitions
     for xaxis, yaxis, default_column, caxis, aaxis, ared, xmin, xmax, ymin, ymax, amin, amax, cmin, cmax, cnum in \
         zip(xaxes, yaxes, columns, caxes, aaxes, areds, xmins, xmaxs, ymins, ymaxs, amins, amaxs, cmins, cmaxs, cnums):
@@ -299,9 +361,10 @@ def main(argv):
         if datum_itercorr:
             have_corr_dependence = True
         if "FLAG" in (xcolumn, ycolumn, acolumn, ccolumn) or "FLAG_ROW" in (xcolumn, ycolumn, acolumn, ccolumn):
-            if not options.noflags:
-                log.info(": plotting a flag column implies that flagged data will not be masked")
-                options.noflags = True
+            if not use_flags:
+                parser.error("--noflags ignores the flag columns entirely, so plotting one is meaningless")
+            log.info(": plotting a flag column implies that flagged data will not be masked")
+            options.noflags = True
 
         # do we iterate over correlations/Stokes to make separate plots now?
         if datum_itercorr and options.iter_corr:
@@ -418,11 +481,12 @@ def main(argv):
     dataframes, index_subsets, np = \
         data_plots.get_plot_data(ms, group_cols, mytaql, ms.chan_freqs,
                                  chanslice=chanslice, subset=subset,
-                                 noflags=options.noflags, noconj=options.noconj,
+                                 noflags=options.noflags, use_flags=use_flags, noconj=options.noconj,
                                  iter_field=options.iter_field, iter_spw=options.iter_spw,
                                  iter_scan=options.iter_scan, iter_ant=options.iter_ant,
                                  iter_baseline=options.iter_baseline,
                                  join_corrs=join_corrs,
+                                 avg_spec=avg_spec,
                                  row_chunk_size=options.row_chunk_size)
     if len(dataframes) < 1:
         log.warn("No data for selection subset")

@@ -1,5 +1,3 @@
-# -*- coding: future_fstrings -*-
-
 import argparse
 import itertools
 import numpy
@@ -69,7 +67,9 @@ def cli():
              Two-column arithmetic is recognized.""")
 
     group_opts.add_argument("--noflags", action="store_true",
-        help="Enable to ignore flags. Default is to omit flagged data.")
+        help="""Enable to ignore flags entirely: flagged data is not omitted, and takes part in
+             any --average as if it were unflagged. Default is to omit flagged data.
+             Incompatible with plotting a flag column.""")
     group_opts.add_argument("--noconj", action="store_true",
         help="Do not show conjugate points in u,v plots (default = plot conjugates).")
 
@@ -150,6 +150,14 @@ def cli():
              (comma-separated list, default = all)""")
     group_opts.add_argument("--chan",
         help="""Channel slice, as [start]:[stop][:step], default is to plot all channels""")
+
+    group_opts = parser.add_argument_group("Data averaging")
+    group_opts.add_argument("--average", action="append", metavar="AXIS:BIN",
+        help="""Average the data along an axis before plotting, as 'AXIS:BIN' where BIN is the
+             bin size. A bare number counts timeslots (TIME) or channels (CHAN), while a
+             quantity with units is taken as such, e.g. '--average TIME:60s --average CHAN:8MHz'.
+             'all' collapses the whole axis, as does a bin size spanning all the data.
+             Repeatable, e.g. '--average TIME:60 --average CHAN:4'. Supported axes: TIME, CHAN.""")
 
     group_opts = parser.add_argument_group("Rendering settings")
     group_opts.add_argument("-X", "--xcanvas", default=1280, type=int,

@@ -145,6 +145,14 @@ EXTARGS=(
 "--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY --iter-scan"
 "--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY --iter-corr"
 "--xaxis DATA:real,UV --yaxis DATA:imag,DATA:amp --field 0 --corr XX,YY --iter-baseline"
+# averaging (BIN is a count of timeslots/channels, a quantity in s/Hz, or 'all')
+"--xaxis CHAN --yaxis DATA:amp --field 0 --average CHAN:4"
+"--xaxis CHAN --yaxis DATA:amp --field 0 --average CHAN:8MHz"
+"--xaxis FREQ --yaxis DATA:amp --field 0 --average TIME:all"
+"--xaxis TIME --yaxis DATA:amp --field 0 --average TIME:60 --average CHAN:4"
+"--xaxis TIME --yaxis DATA:amp --field 0 --average TIME:2min --average CHAN:4"
+# bin size larger than available items -- should warn and fall back to 'all', not fail
+"--xaxis FREQ --yaxis DATA:amp --field 0 --average CHAN:99999"
 # set colours
 "--xaxis FREQ --yaxis DATA:amp --field 0 --corr XX,YY --colour-by DATA:amp --xmin 0.85e9 --xmax 1.712e9 --png plot-colourbyAMP-testim.png"
 )
@@ -178,6 +186,13 @@ ERRARGS=(
 # parser error to check antenna slicing input
 "--xaxis CHAN --yaxis DATA:phase --ant-num 0:1,3 --ant m010,m054"
 "--xaxis TIME --yaxis amp -C DATA --corr XX,YY --field 0 --ant-num 1:*"
+# parser errors for --average: unknown axis, missing bin, bad bin, wrong units,
+# unsupported (phase-2) axis
+"--xaxis CHAN --yaxis DATA:amp --average FOO:2"
+"--xaxis CHAN --yaxis DATA:amp --average TIME"
+"--xaxis CHAN --yaxis DATA:amp --average TIME:0"
+"--xaxis CHAN --yaxis DATA:amp --average TIME:8MHz"
+"--xaxis CHAN --yaxis DATA:amp --average BASELINE:1"
 )
 if [[ $parserr == 1 ]]
 then

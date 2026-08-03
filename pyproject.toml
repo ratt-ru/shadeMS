@@ -21,6 +21,7 @@ classifiers = [
 dependencies = [
     "bokeh>=3.8.2,<4",
     "cmasher>=1.6.3,<2",
+    "codex-africanus[dask]>=0.4.4,<0.5",
     "dask>=2024.1.0,<2025",
     "dask-ms[xarray]>=0.2.20,<0.3; python_version < '3.12'",
     "dask-ms[xarray]>=0.2.23,<0.3; python_version >= '3.12'",

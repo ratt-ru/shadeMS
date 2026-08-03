@@ -1,5 +1,3 @@
-# -*- coding: future_fstrings -*-
-
 import datashape
 import datashape.coretypes as ct
 import datashader.reductions
