@@ -335,7 +335,7 @@ class DataAxis(object):
             else:
                 min1, max1 = coldata.data.min(), coldata.data.max()
             self.minmax = min(self.minmax[0], min1) if self.minmax[0] is not None else min1, \
-                          min(self.minmax[1], max1) if self.minmax[1] is not None else max1
+                          max(self.minmax[1], max1) if self.minmax[1] is not None else max1
         # scalar is just a scalar
         if np.isscalar(coldata):
             coldata = da.array(coldata)
